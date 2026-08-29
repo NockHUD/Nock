@@ -1103,6 +1103,37 @@ local function buildOptionsTable()
               if reg then reg:NotifyChange("Nock") end
             end,
           },
+          editGridHeader = { type = "header", name = "Edit-mode grid", order = 30.06 },
+          editGridShow = {
+            type = "toggle", name = "Show grid while unlocked", order = 30.07, width = "full",
+            desc = "A raster overlay behind every frame while unlocked, with a control panel at the top of the screen (drag the panel anywhere). Same switches as on that panel.",
+            get = function() return Nock.db.profile.editGridShow ~= false end,
+            set = function(_, v) Nock.db.profile.editGridShow = v and true or false; Nock:SendMessage("NOCK_EDITGRID_CHANGED") end,
+          },
+          editGridSize = {
+            type = "range", name = "Raster", order = 30.08, min = 4, max = 64, step = 2,
+            desc = "Grid spacing in screen units.",
+            get = function() return Nock.db.profile.editGridSize or 16 end,
+            set = function(_, v) Nock.db.profile.editGridSize = v; Nock:SendMessage("NOCK_EDITGRID_CHANGED") end,
+          },
+          editGridSnap = {
+            type = "select", name = "Snap to grid", order = 30.09,
+            desc = "Off: frames land where you drop them. On release: a dropped frame is moved onto the grid. While dragging: a ghost outline shows where it will land, then it snaps on release. While snapping, a nudge-pad step is one raster.",
+            values = { off = "Off", release = "On release", drag = "While dragging (ghost)" },
+            sorting = { "off", "release", "drag" },
+            dialogControl = lsmWidget(nil, "plain"),
+            get = function() return Nock.UI.EditSnapMode(Nock.db.profile) end,
+            set = function(_, v) Nock.db.profile.editGridSnap = v; Nock:SendMessage("NOCK_EDITGRID_CHANGED") end,
+          },
+          editSnapBy = {
+            type = "select", name = "Snap by", order = 30.095,
+            desc = "Nearest: per axis, whichever of the frame's edges or centre is closest to a grid line lands on it (a centred bar stays centred, a corner-aligned panel stays cornered). Corner: the top-left corner always.",
+            values = { nearest = "Nearest edge or centre", corner = "Top-left corner" },
+            sorting = { "nearest", "corner" },
+            dialogControl = lsmWidget(nil, "plain"),
+            get = function() return Nock.db.profile.editSnapBy or "nearest" end,
+            set = function(_, v) Nock.db.profile.editSnapBy = v; Nock:SendMessage("NOCK_EDITGRID_CHANGED") end,
+          },
           minimapIcon = {
             type = "toggle",
             name = "Minimap icon",
@@ -5603,11 +5634,11 @@ local function buildOptionsTable()
       set = function(_, v) visualsSet(_, "reactConsumablesAlways", v) end,
     }
 
-    -- Reference-WA extras: the Kill Command glows and the per-slot range tint.
+    -- Glows & tints (the reference WA's icon conditions): the Kill Command glows, the per-slot range tint, dim, no-mana.
     -- All three ship OFF (user, 2026-08-29). kcActionBarGlow lights the real
     -- bar button, so it is not React-gated — but it lives here, where the user
     -- asked for it.
-    gridArgs.kcHeader = { type = "header", name = "Reference-WA extras", order = 69 }
+    gridArgs.kcHeader = { type = "header", name = "Glows & tints", order = 69 }
     gridArgs.reactKcProcGlow = {
       type = "toggle",
       name = "Kill Command proc glow",

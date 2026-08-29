@@ -230,6 +230,11 @@ function Nock:Tick()
   local pr = self._practice
   if pr and state.sim.active then pr:Step(state, now) end
 
+  -- Edit mode: while a frame is being dragged with snap-while-dragging on, the
+  -- grid's ghost outline follows the snapped landing spot (one call, nil-cheap).
+  local em = self.EditMode
+  if em and em._drag then em:DragTick() end
+
   if state.ranged.swingStart > 0 then
     state.ranged.swingRemaining = math.max(0, state.ranged.swingStart + state.ranged.swingDuration - now)
   end

@@ -2,10 +2,22 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
+## Unreleased
+
+- **Edit-mode grid.** `/nock unlock` now draws a raster behind every frame
+  (lines every 16 units from the screen centre, the centre cross brighter) and
+  a small control bar at the top of the screen — drag it anywhere: raster
+  size (4–64), grid on/off, **Snap** (off / on release / while dragging, where
+  a green ghost outline shows where the frame will land), **Snap by** (nearest
+  edge or centre per axis, or the top-left corner) and a Lock button. Snapping
+  is off by default; while it is on, a nudge-pad step is one raster. The same
+  switches sit in Options → General beside Lock/Unlock.
+- The Cooldown Grid's *Reference-WA extras* header is now *Glows & tints*.
+
 ## 1.1.2
 
 - **React HUD: five reference-WA extras, all off by default** (React HUD →
-  Cooldown Grid → *Reference-WA extras*). **Kill Command proc glow** puts the
+  Cooldown Grid → *Glows & tints*). **Kill Command proc glow** puts the
   animated action-button glow on the KC tile while the proc is up (the static
   border stays the default). **Kill Command glow on the action bar** lights the
   real bar button(s) holding Kill Command — or a macro casting it — while the

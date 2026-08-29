@@ -12,6 +12,12 @@ Nock.Defaults = {
     -- panel, buff/debuff trackers, shopping list, free-layout rows). The setup
     -- wizard unlocks while it is open and locks again on close.
     locked           = true,
+    -- Edit-mode grid (/nock unlock): the raster overlay and its control panel.
+    editGridShow     = true,        -- draw the grid while unlocked
+    editGridSize     = 16,          -- raster in screen units (4..64, step 2)
+    editGridSnap     = "off",       -- "off" | "release" (snap when the drag ends) | "drag" (ghost outline while dragging, snap on release)
+    editSnapBy       = "nearest",   -- "nearest" (edge or centre, per axis) | "corner" (top-left)
+    editPanelPos     = false,       -- false = top centre; else { point, relPoint, x, y } (UIParent-relative)
     -- LibDBIcon's own table for the minimap button (hide, minimapPos, ...).
     minimap          = { hide = false },
     -- Master switch for the HUD frame itself (swing bars, shot display, cooldown

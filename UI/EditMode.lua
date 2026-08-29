@@ -62,6 +62,160 @@ function Nock.UI.RegisterNudgeable(frame, spec)
       EditMode:SelectByFrame(frame)
     end)
   end
+  -- Grid snapping rides on the drag the frame already implements: the hook
+  -- runs AFTER the frame's own OnDragStop (which saved the free position and
+  -- re-anchored), reads the live rect and re-writes through spec.set -- the
+  -- one path the nudge pad uses too, so no frame needs snap code of its own.
+  -- spec.dragTarget names the handle when it is not the frame (a title bar).
+  local handle = spec.dragTarget or spec.clickTarget or frame
+  if handle and handle.HookScript and not handle._nockSnapHooked then
+    handle._nockSnapHooked = true
+    handle:HookScript("OnDragStart", function() EditMode:OnDragBegin(frame) end)
+    handle:HookScript("OnDragStop",  function() EditMode:OnDragEnd(frame) end)
+  end
+end
+
+-- ---------------------------------------------------------------------------
+-- The grid (pure parts; UI/Frame_EditGrid.lua draws it)
+-- ---------------------------------------------------------------------------
+-- Line positions for a width x height screen, every `raster` units from the
+-- CENTRE outward (so a centre cross always exists), edges excluded. Sorted.
+function Nock.UI.GridLines(width, height, raster)
+  local xs, ys = {}, {}
+  if not raster or raster <= 0 then return xs, ys end
+  local function fill(out, size)
+    local c = size / 2
+    out[#out + 1] = c
+    local k = 1
+    while c - k * raster > 0 do
+      out[#out + 1] = c - k * raster
+      out[#out + 1] = c + k * raster
+      k = k + 1
+    end
+    table.sort(out)
+  end
+  fill(xs, width)
+  fill(ys, height)
+  return xs, ys
+end
+
+-- How far a frame's rect (left/right/top/bottom, UIParent units) must move to
+-- sit on the grid: per axis the nearest of left / centre / right (top / centre
+-- / bottom) to a grid line wins in "nearest" mode; "corner" snaps left and top
+-- only. The grid is anchored on `origin` (the screen centre). Returns dx, dy.
+local function toLine(v, raster, o)
+  local k = math.floor((v - o) / raster + 0.5)
+  return (o + k * raster) - v
+end
+function Nock.UI.SnapDelta(rect, raster, origin, mode)
+  if not rect or not raster or raster <= 0 then return 0, 0 end
+  local ox, oy = origin and origin.x or 0, origin and origin.y or 0
+  local xc, yc
+  if mode == "corner" then
+    xc = { rect.left }
+    yc = { rect.top }
+  else
+    xc = { rect.left, (rect.left + rect.right) / 2, rect.right }
+    yc = { rect.top, (rect.top + rect.bottom) / 2, rect.bottom }
+  end
+  local function best(cands, o)
+    local bd
+    for _, v in ipairs(cands) do
+      local d = toLine(v, raster, o)
+      if bd == nil or math.abs(d) < math.abs(bd) then bd = d end
+    end
+    return bd or 0
+  end
+  return best(xc, ox), best(yc, oy)
+end
+
+-- profile.editGridSnap: "off" | "release" | "drag" (a legacy boolean = release).
+function Nock.UI.EditSnapMode(p)
+  local v = p and p.editGridSnap
+  if v == true then return "release" end
+  if v == "release" or v == "drag" then return v end
+  return "off"
+end
+
+-- The nudge pad's step: one unit (ten with Shift), or one raster while
+-- snapping -- a nudge then moves grid line to grid line.
+function Nock.UI.EditNudgeStep(p, shift)
+  local base = 1
+  if Nock.UI.EditSnapMode(p) ~= "off" then
+    local r = tonumber(p and p.editGridSize)
+    if r and r > 0 then base = r end
+  end
+  return shift and base * 10 or base
+end
+
+-- A frame's rect in UIParent units (GetLeft & co. report in the frame's own
+-- scale). nil when the frame has no rect yet.
+function EditMode:FrameRect(frame)
+  local l, r, t, b = frame:GetLeft(), frame:GetRight(), frame:GetTop(), frame:GetBottom()
+  if not (l and r and t and b) then return nil, 1 end
+  local es = (frame.GetEffectiveScale and frame:GetEffectiveScale() or 1)
+           / (UIParent.GetEffectiveScale and UIParent:GetEffectiveScale() or 1)
+  return { left = l * es, right = r * es, top = t * es, bottom = b * es }, es
+end
+
+function EditMode:GridOrigin()
+  return { x = (UIParent:GetWidth() or 0) / 2, y = (UIParent:GetHeight() or 0) / 2 }
+end
+
+-- The entry for a frame, if registered.
+local function entryFor(frame)
+  local reg = Nock.UI.GetNudgeables()
+  for i = 1, #reg do if reg[i].frame == frame then return reg[i] end end
+  return nil
+end
+
+function EditMode:OnDragBegin(frame)
+  self._drag = entryFor(frame)
+end
+
+-- The snapped position for an entry, or nil when snapping is off / nothing to
+-- do. Delta is computed in UIParent units and converted into the frame's own
+-- offset units (SetPoint offsets are in the frame's scale).
+function EditMode:SnappedPosition(entry)
+  local p = Nock.db and Nock.db.profile or {}
+  if Nock.UI.EditSnapMode(p) == "off" then return nil end
+  local spec = entry.spec
+  local rect, es = self:FrameRect(entry.frame)
+  if not rect then return nil end
+  local dx, dy = Nock.UI.SnapDelta(rect, tonumber(p.editGridSize) or 16, self:GridOrigin(), p.editSnapBy or "nearest")
+  if math.abs(dx) < 0.01 and math.abs(dy) < 0.01 then return nil end
+  local live = spec.capture and spec.capture() or self:CapturePosition(entry.frame)
+  if not live then return nil end
+  return {
+    point = live.point, relPoint = live.relPoint or live.point,
+    x = (live.x or 0) + dx / es, y = (live.y or 0) + dy / es,
+  }, rect, dx, dy
+end
+
+function EditMode:OnDragEnd(frame)
+  local entry = self._drag or entryFor(frame)
+  self._drag = nil
+  local grid = Nock.UI.EditGrid
+  if grid then grid:SetGhost(nil) end
+  if not entry then return end
+  if entry.spec.secure and InCombatLockdown() then return end
+  local pos = self:SnappedPosition(entry)
+  if pos then entry.spec.set(pos) end
+end
+
+-- Called from the central tick while a drag is running: in "drag" mode the
+-- ghost outline shows where the frame will land.
+function EditMode:DragTick()
+  local entry = self._drag
+  if not entry then return end
+  local grid = Nock.UI.EditGrid
+  if not grid then return end
+  local p = Nock.db and Nock.db.profile or {}
+  if Nock.UI.EditSnapMode(p) ~= "drag" then grid:SetGhost(nil); return end
+  local rect = self:FrameRect(entry.frame)
+  if not rect then grid:SetGhost(nil); return end
+  local dx, dy = Nock.UI.SnapDelta(rect, tonumber(p.editGridSize) or 16, self:GridOrigin(), p.editSnapBy or "nearest")
+  grid:SetGhost({ left = rect.left + dx, right = rect.right + dx, top = rect.top + dy, bottom = rect.bottom + dy })
 end
 
 function Nock.UI.GetNudgeables()
@@ -149,6 +303,9 @@ function EditMode:Nudge(entry, dir, step)
 end
 
 local function stepSize()
+  if Nock.UI.EditNudgeStep then
+    return Nock.UI.EditNudgeStep(Nock.db and Nock.db.profile, IsShiftKeyDown and IsShiftKeyDown())
+  end
   return IsShiftKeyDown() and 10 or 1
 end
 

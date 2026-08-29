@@ -135,6 +135,14 @@ ok(root.general.childGroups == "tree", "general: sections are left-sidebar child
 ok(g.lockState and g.lockState.type == "description", "general: lock state line present")
 ok(g.lockAll and g.lockAll.type == "execute", "general: Lock is its own button")
 ok(g.unlockAll and g.unlockAll.type == "execute", "general: Unlock is its own button")
+-- Edit-mode grid (2026-08-30): the panel's four switches mirrored beside Lock/Unlock.
+ok(g.editGridShow and g.editGridShow.type == "toggle" and g.editGridSize and g.editGridSize.type == "range"
+   and g.editGridSize.min == 4 and g.editGridSize.max == 64,
+   "general: grid show toggle + raster range 4..64")
+ok(g.editGridSnap and g.editGridSnap.values.off and g.editGridSnap.values.release and g.editGridSnap.values.drag
+   and g.editSnapBy and g.editSnapBy.values.nearest and g.editSnapBy.values.corner
+   and g.editGridSnap.dialogControl and g.editSnapBy.dialogControl,
+   "general: snap mode off/release/drag and snap-by nearest/corner selects, LSM-guarded")
 ok(g.lockAll.name == "Lock all frames" and g.unlockAll.name == "Unlock all frames",
    "general: static button labels (no layout shift)")
 ok(type(g.lockAll.disabled) == "function" and type(g.unlockAll.disabled) == "function",
@@ -543,7 +551,7 @@ local function onlyKeys(args, allowed, label, prefixes)
   end
 end
 onlyKeys(root.general.args,
-  { "intro", "lockState", "lockAll", "unlockAll", "minimapIcon", "runWizard", "resetPos", "scale",
+  { "intro", "lockState", "lockAll", "unlockAll", "editGridHeader", "editGridShow", "editGridSize", "editGridSnap", "editSnapBy", "minimapIcon", "runWizard", "resetPos", "scale",
     "grpLook", "grpVisibility", "grpCastBar", "grpMedia", "grpSetup" },
   "general")
 onlyKeys(root.hud.args, { "intro", "hudMode", "classic", "react" }, "hud family")
@@ -742,6 +750,8 @@ do
   local anyWidth = false
   for _, g in pairs(tabs) do if type(g) == "table" and g.args and g.args.practiceTimelineWidth then anyWidth = true end end
   ok(not anyWidth and D.practiceTimelineWidth == nil, "practice: the review's Width (px) is gone from Options and Defaults")
+ok(D.editGridShow == true and D.editGridSize == 16 and D.editGridSnap == "off" and D.editSnapBy == "nearest" and D.editPanelPos == false,
+   "defaults: grid on, raster 16, snap off, nearest, panel at the default spot")
 ok(D.reactKcProcGlow == false and D.kcActionBarGlow == false and D.reactRangeTint == "off"
    and D.reactTileDim == false and D.reactManaTint == false and D.reactReadySoon == nil,
    "defaults: every reference-WA extra ships off; ready-soon is gone")
