@@ -2,7 +2,7 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
-## Unreleased
+## 1.1.3
 
 - **Edit-mode grid.** `/nock unlock` now draws a raster behind every frame
   (lines every 16 units from the screen centre, the centre cross brighter) and

@@ -4,7 +4,7 @@
 ## Author: Yaxal @ Spineshatter
 ## X-License: WTFPL
 ## X-Website: https://github.com/NockHUD/Nock
-## Version: 1.1.2
+## Version: 1.1.3
 ## SavedVariables: NockDB
 
 embeds.xml
