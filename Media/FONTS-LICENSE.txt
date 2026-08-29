@@ -1,0 +1,36 @@
+Fonts bundled with Nock, all under the SIL Open Font License 1.1:
+
+=== sairaextracondensed ===
+Copyright 2016 The Saira Project Authors (omnibus.type@gmail.com), with reserved font name "Saira".
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+...
+
+=== ibmplexsans ===
+Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+
+This license is copied below, and is also available with a FAQ at: http://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+...
+
+=== ibmplexmono ===
+Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+
+This license is copied below, and is also available with a FAQ at: http://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+...
+
+Full license text: https://openfontlicense.org/open-font-license-official-text/
