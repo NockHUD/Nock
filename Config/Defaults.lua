@@ -642,6 +642,12 @@ Nock.Defaults = {
     reactShowNotation    = true,        -- rotation notation on the auto bar's right edge
     -- React cooldown grid.
     reactConsumablesAlways = false,     -- row 3: always show slots (ignore the whenActive auto-hide)
+    -- Reference-WA extras (React HUD -> Cooldowns). All off by default (user, 2026-08-29).
+    reactKcProcGlow        = false,     -- KC slot: Blizzard action-button overlay glow while the proc is up (else the static border)
+    kcActionBarGlow        = false,     -- glow the real action-bar button(s) holding Kill Command while the proc is up (any HUD mode)
+    reactRangeTint         = "off",     -- React grid slots whose spell is out of range: "off" | "red" | "grey"
+    reactTileDim           = false,     -- a tile on cooldown or not usable: desaturated at 60% (the WA's condition 1)
+    reactManaTint          = false,     -- a tile whose spell lacks mana: blue + desaturated (the WA's condition 4)
     -- false = the built-in REACT_CD_ROWS layout; a table of 3 key arrays
     -- ({ {row1 keys}, {row2}, {row3} }) once the user edits the rows on the
     -- React HUD tab. Row heights/styles stay fixed; only membership + order

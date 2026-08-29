@@ -578,8 +578,26 @@ onlyKeys(raBars, { "autoHeader", "reactAutoLegend", "reactShowNotation", "reactS
   "grpEngine" }, "react tabBars")
 onlyKeys(raRange, { "rangeHeader", "rangeFinderFindingStyle" }, "react tabRange")
 onlyKeys(raGrid, { "gridHeader", "gridNote", "reactConsumablesAlways", "rcustHeader",
+  "kcHeader", "reactKcProcGlow", "kcActionBarGlow", "reactRangeTint", "reactTileDim", "reactManaTint",
   "addHeader", "addType", "addId", "addProc", "addLabel", "addBtn" },
   "react tabGrid", { "rcd_", "rcust_" })
+
+-- Reference-WA extras on the grid tab (2026-08-29): two Kill Command glows and
+-- the per-slot out-of-range tint. All ship OFF; the action-bar glow is the one
+-- control there that is NOT React-gated (it lights the real bar button).
+ok(raGrid.reactKcProcGlow and raGrid.reactKcProcGlow.type == "toggle"
+   and raGrid.reactKcProcGlow.disabled == raGrid.reactConsumablesAlways.disabled,
+   "react tabGrid: KC proc glow is a React-gated toggle")
+ok(raGrid.kcActionBarGlow and raGrid.kcActionBarGlow.type == "toggle"
+   and raGrid.kcActionBarGlow.disabled == nil,
+   "react tabGrid: the action-bar glow is not React-gated")
+ok(raGrid.reactRangeTint and raGrid.reactRangeTint.type == "select"
+   and raGrid.reactRangeTint.values.off and raGrid.reactRangeTint.values.red and raGrid.reactRangeTint.values.grey
+   and raGrid.reactRangeTint.dialogControl ~= nil,
+   "react tabGrid: out-of-range is an off/red/grey select with the LSM leak guard")
+ok(raGrid.kcHeader.order < raGrid.reactKcProcGlow.order
+   and raGrid.reactRangeTint.order < raGrid.rcustHeader.order,
+   "react tabGrid: the KC block sits between the grid rows and the custom entries")
 onlyKeys(raBuff, { "buffHeader", "sharedNote", "reactBuffRows", "reactBuffPositional", "reactBuffFrenzyMode", "customHeader", "customNote",
   "addBuffId", "addBuffBtn" }, "react tabBuff", { "rb_en_", "rbc_" })
 onlyKeys(raSkin, { "skinHeader", "skinNote", "reactBarTexture", "reactFont", "reactFontSize",
@@ -724,6 +742,12 @@ do
   local anyWidth = false
   for _, g in pairs(tabs) do if type(g) == "table" and g.args and g.args.practiceTimelineWidth then anyWidth = true end end
   ok(not anyWidth and D.practiceTimelineWidth == nil, "practice: the review's Width (px) is gone from Options and Defaults")
+ok(D.reactKcProcGlow == false and D.kcActionBarGlow == false and D.reactRangeTint == "off"
+   and D.reactTileDim == false and D.reactManaTint == false and D.reactReadySoon == nil,
+   "defaults: every reference-WA extra ships off; ready-soon is gone")
+ok(raGrid.reactTileDim and raGrid.reactManaTint and raGrid.reactReadySoon == nil
+   and raGrid.reactManaTint.order < raGrid.rcustHeader.order,
+   "react tabGrid: dim / no-mana toggles sit in the WA-extras block, no ready-soon")
 
   local pra = tabs.general and tabs.general.args
   ok(pra ~= nil, "practice page found")

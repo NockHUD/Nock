@@ -237,4 +237,18 @@ end
 
 local Nock = rawget(_G, "Nock")
 if Nock then Nock.RangeEngine = Engine end
+-- Per-slot out-of-range for the React grid's tint. `apiIn` is IsSpellInRange
+-- as a tri-state (true / false / nil unknown); `meleeIn` is the Wing Clip
+-- probe the same way. A next-melee ability (`isMelee`: Raptor Strike) answers
+-- IsSpellInRange "in range" from 30 yd on this client, so it follows the
+-- melee probe instead. Returns true (out), false (in) or nil (unknown).
+function Engine.SlotOut(isMelee, apiIn, meleeIn)
+  if isMelee then
+    if meleeIn == nil then return nil end
+    return not meleeIn
+  end
+  if apiIn == nil then return nil end
+  return not apiIn
+end
+
 return Engine

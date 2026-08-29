@@ -116,6 +116,7 @@ Nock.state = {
     alive       = false,
     friendly    = false,
     rangeZone   = nil,  -- LEGACY classification: "TOO_CLOSE" | "SWEET" | "TOO_FAR" | "OUT" | nil
+    spellOut    = {},   -- [cooldown key] = true (out of range for that slot's spell) | false | nil (unknown / not a spell); RangeFinder, 10 Hz
                         -- (feeds RangeSounds/WeaveCoach/Rotation; unchanged semantics)
     inMelee     = false,
     meleeProximity = 0, -- LEGACY anchor value (P_* constants, instant), ~[-0.15..0.15]

@@ -188,6 +188,8 @@ function ReactCooldownsView:Rebuild()
       slot._lastIcon       = nil
       slot._lastText       = ""
       slot._lastVisState   = nil
+      slot._lastLook       = nil
+      Nock.UI.SetIconProcGlow(slot, false)
       slot._lastCdStart    = 0
       slot._lastCdDuration = 0
       slot._lastCount      = nil
@@ -228,14 +230,18 @@ function ReactCooldownsView:ApplyExternalCdAddon()
   end
 end
 
--- Visual state: proc glow while the tracked buff is up; otherwise plain.
--- (No next-action/rotation-helper glow in the React skin — the reference
--- grid is pure cooldown state.)
-local function visualState(cd)
-  if cd.procActive then return "proc" end
-  if cd.ready then return "ready" end
-  return "cd"
-end
+-- The slot's look is Nock.UI.ReactSlotLook (UI/Widgets.lua, pure, tested):
+-- proc glow while the tracked buff is up (the Blizzard overlay on the KC slot
+-- behind reactKcProcGlow, else the static border), the consumable rows'
+-- recharging grey, and the reference WA's out-of-range tint (reactRangeTint,
+-- off / red / grey) off state.target.spellOut. No next-action glow in the
+-- React skin — the reference grid is pure cooldown state. One scratch table
+-- for the options: nothing is allocated on the tick.
+local LOOK = { procGlow = false, tint = "off", whenActive = false, dim = false, manaTint = false }
+local RES  = {}
+-- The reference WA's colours: out-of-range red (its 0.77/0.12/0.23), no-mana
+-- blue (0.33/0.54/1.0).
+local TINT = { red = { 0.77, 0.12, 0.23, 1 }, blue = { 0.33, 0.54, 1, 1 } }
 
 function ReactCooldownsView:Refresh(state)
   if not self.frame:IsShown() then return end
@@ -288,22 +294,25 @@ function ReactCooldownsView:Refresh(state)
           slot._lastIcon = dispIcon
         end
 
-        local vis = visualState(cd)
-        if vis ~= slot._lastVisState then
-          slot.icon:SetVertexColor(1, 1, 1, 1)
-          -- Consumable (whenActive) rows: grey the icon while recharging so
-          -- the slot reads "used, waiting" at a glance — active buff (proc)
-          -- and ready states stay full-color. Rotation/utility rows keep the
-          -- reference look (swipe only).
-          if slot.icon.SetDesaturated then
-            slot.icon:SetDesaturated((slot._whenActive and vis == "cd") or false)
-          end
-          if vis == "proc" then
-            Nock.UI.SetIconHighlight(slot, C.COLORS.PROC_GLOW)
-          else
-            Nock.UI.SetIconHighlight(slot, nil)
-          end
-          slot._lastVisState = vis
+        LOOK.procGlow   = (entry.key == "KC" and p.reactKcProcGlow) and true or false
+        LOOK.tint       = p.reactRangeTint or "off"
+        LOOK.dim        = p.reactTileDim and true or false
+        LOOK.manaTint   = p.reactManaTint and true or false
+        LOOK.whenActive = slot._whenActive
+        local so = state.target.spellOut
+        local r  = Nock.UI.ReactSlotLook(cd, so and so[entry.key], LOOK, RES)
+        local lk = Nock.UI.ReactLookKey(r)
+        if lk ~= slot._lastLook then
+          local c = r.tint and TINT[r.tint]
+          if c then slot.icon:SetVertexColor(c[1], c[2], c[3], c[4])
+          else slot.icon:SetVertexColor(1, 1, 1, 1) end
+          slot.icon:SetAlpha(r.alpha)
+          if slot.icon.SetDesaturated then slot.icon:SetDesaturated(r.desat) end
+          Nock.UI.SetIconHighlight(slot, (r.glow == "border") and C.COLORS.PROC_GLOW or nil)
+          -- Uncoloured: the same gold overlay as the action bar (user, 2026-08-29:
+          -- the PROC_GLOW-tinted one read blue).
+          Nock.UI.SetIconProcGlow(slot, r.glow == "overlay", nil)
+          slot._lastLook = lk
         end
 
         local txt = (dispRem and dispRem > 0) and formatCD(dispRem) or ""

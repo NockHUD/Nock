@@ -1370,6 +1370,71 @@ function Nock.UI.ApplyFreePanelPosition(panel, key, applyGlue, scale)
 end
 
 ----------------------------------------------------------------------------
+-- React cooldown grid: the look of one slot as a pure decision, and the
+-- Kill Command proc overlay. UI/Frame_ReactCooldowns.lua paints from these.
+----------------------------------------------------------------------------
+
+-- Look(cd, out, opts, res) fills `res` (a caller-owned scratch table) and
+-- returns it. Everything the reference WA's icon conditions do, as levers:
+--   cd    state.cooldowns[key] (procActive, ready, remaining, usable, noMana)
+--   out   state.target.spellOut[key]: true out of range / false / nil unknown
+--   opts  procGlow   the overlay glow on THIS slot (reactKcProcGlow, KC only)
+--         tint       reactRangeTint "off" | "red" | "grey"        (WA cond. 5)
+--         dim        reactTileDim: unavailable -> grey at 0.6     (WA cond. 1)
+--         manaTint   reactManaTint: no mana -> blue + grey        (WA cond. 4)
+--         whenActive a consumable row (grey while recharging)
+-- res.vis "proc"|"ready"|"cd"; glow "overlay"|"border"|nil; desat; tint
+-- "red"|"blue"|nil; alpha 1|0.6. (The WA's under-3-s cue was built and
+-- dropped the same day -- noise, user 2026-08-30.)
+function Nock.UI.ReactSlotLook(cd, out, opts, res)
+  res = res or {}
+  opts = opts or {}
+  local vis
+  if cd.procActive then vis = "proc"
+  elseif cd.ready then vis = "ready"
+  else vis = "cd" end
+  res.vis = vis
+  res.glow = (vis == "proc") and (opts.procGlow and "overlay" or "border") or nil
+  local desat = (opts.whenActive and vis == "cd") or false
+  local tint, alpha = nil, 1
+  if opts.dim and vis ~= "proc" and (vis == "cd" or cd.usable == false) then
+    desat, alpha = true, 0.6
+  end
+  if opts.manaTint and cd.noMana then
+    desat, tint = true, "blue"
+  end
+  if out == true then
+    if opts.tint == "red" then tint = "red"
+    elseif opts.tint == "grey" then desat = true end
+  end
+  res.desat, res.tint, res.alpha = desat, tint, alpha
+  return res
+end
+
+-- One string per distinct look, for the painter's change guard.
+function Nock.UI.ReactLookKey(r)
+  return r.vis .. "|" .. tostring(r.glow) .. "|" .. (r.desat and "d" or "-") .. tostring(r.tint)
+         .. "|" .. tostring(r.alpha)
+end
+
+-- The Blizzard-style action-button overlay on a slot (LibCustomGlow's
+-- ButtonGlow — what the reference WA's "Action Button Glow" is). Diffed on the
+-- slot so the tick can call it freely; falls back to the static border when
+-- the library is missing. React slots never carry the rotation's next
+-- highlight, so the library's single ButtonGlow per frame is ours here.
+function Nock.UI.SetIconProcGlow(slot, on, color)
+  on = on and true or false
+  if slot._nockProcGlow == on then return end
+  slot._nockProcGlow = on
+  if LCG and LCG.ButtonGlow_Start and LCG.ButtonGlow_Stop then
+    if on then LCG.ButtonGlow_Start(slot, color, 0.3)
+    else LCG.ButtonGlow_Stop(slot) end
+  else
+    Nock.UI.SetIconHighlight(slot, on and (color or C.COLORS.PROC_GLOW) or nil)
+  end
+end
+
+----------------------------------------------------------------------------
 -- Practice lane icons. Shared by the practice timeline window and the live
 -- conveyor strip: both draw the same lane symbols, and two private caches of
 -- the same textures is one cache too many.

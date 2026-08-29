@@ -133,5 +133,66 @@ s = newSlot()
 Paint(s, { icon = 1, label = "RANGE", sub = "Legolas" }, 100)
 ok(s.label.text == "RANGE", "label beats sub when both are present")
 
+--------------------------------------------------------------------------------
+-- ReactSlotLook: the React cooldown grid's look decision as a pure function.
+-- Look(cd, out, opts, res) fills and returns `res`:
+--   vis     "proc" | "ready" | "cd"
+--   glow    "overlay" | "border" | nil     (overlay = the WA's action-button glow)
+--   desat   grey icon (consumable recharging, grey range tint, dim, no mana)
+--   tint    "red" (out of range) | "blue" (no mana) | nil
+--   alpha   1, or 0.6 while dimmed (the WA's "unavailable")
+--------------------------------------------------------------------------------
+local Look = Nock.UI.ReactSlotLook
+ok(type(Look) == "function", "Nock.UI.ReactSlotLook exists")
+local R = {}
+local function look(cd, out, opts) return Look(cd, out, opts, R) end
+
+local proc  = { procActive = true,  ready = false }
+local ready = { procActive = false, ready = true }
+local oncd  = { procActive = false, ready = false, remaining = 10 }
+local OFF   = { procGlow = false, tint = "off" }
+
+-- Proc glow: border by default, the overlay only for the slot the option names.
+local r = look(proc, false, OFF)
+ok(r.vis == "proc" and r.glow == "border", "proc without the option: the static border")
+r = look(proc, false, { procGlow = true, tint = "off" })
+ok(r.vis == "proc" and r.glow == "overlay", "proc with the option: the overlay glow")
+r = look(ready, false, { procGlow = true, tint = "off" })
+ok(r.vis == "ready" and r.glow == nil, "no proc: no glow whatever the option")
+
+-- Out of range: off / red / grey; never without the flag.
+r = look(ready, true, OFF);                             ok(not r.desat and r.tint == nil, "tint off: out of range changes nothing")
+r = look(ready, true, { tint = "red" });                ok(r.tint == "red" and not r.desat, "tint red: red, not desaturated")
+r = look(ready, true, { tint = "grey" });               ok(r.desat and r.tint == nil, "tint grey: desaturated, not red")
+r = look(ready, false, { tint = "red" });               ok(not r.desat and r.tint == nil, "in range: no tint")
+r = look(ready, nil, { tint = "red" });                 ok(not r.desat and r.tint == nil, "unknown range (no target, an item slot): no tint")
+r = look(proc, true, { procGlow = true, tint = "red" }); ok(r.vis == "proc" and r.glow == "overlay" and r.tint == "red", "proc + out of range: overlay glow AND red")
+
+-- Consumable rows keep their recharging grey.
+r = look(oncd, false, { tint = "off", whenActive = true });  ok(r.vis == "cd" and r.desat, "whenActive row on cooldown: desaturated")
+r = look(ready, false, { tint = "off", whenActive = true }); ok(not r.desat, "whenActive row ready: full colour")
+r = look(oncd, false, { tint = "grey" });                    ok(not r.desat and r.alpha == 1, "rotation row on cooldown, in range, no dim: untouched")
+
+-- Dim while unavailable (WA condition 1): on cooldown OR not usable -> grey at 0.6.
+r = look(oncd, false, { tint = "off", dim = true });                       ok(r.desat and r.alpha == 0.6, "dim: on cooldown -> grey, 0.6")
+r = look({ ready = true, usable = false }, false, { tint = "off", dim = true }); ok(r.desat and r.alpha == 0.6, "dim: ready but not usable (no proc / pet dead) -> grey, 0.6")
+r = look({ ready = true, usable = true }, false, { tint = "off", dim = true });  ok(not r.desat and r.alpha == 1, "dim: ready and usable -> full")
+r = look(ready, false, { tint = "off", dim = true });                      ok(not r.desat and r.alpha == 1, "dim: usability unknown (item) -> full")
+r = look(proc, false, { tint = "off", dim = true, procGlow = true });      ok(not r.desat and r.alpha == 1 and r.glow == "overlay", "dim never touches a proc")
+r = look(oncd, false, { tint = "off", dim = false });                      ok(not r.desat and r.alpha == 1, "dim off: nothing")
+
+-- No mana (WA condition 4): blue + grey; out of range (5) wins over it.
+r = look({ ready = true, noMana = true }, false, { tint = "off", manaTint = true }); ok(r.tint == "blue" and r.desat, "no mana: blue, desaturated")
+r = look({ ready = true, noMana = true }, false, { tint = "off" });                  ok(r.tint == nil, "no mana without the option: nothing")
+r = look({ ready = true, noMana = true }, true, { tint = "red", manaTint = true });  ok(r.tint == "red", "no mana AND out of range: red wins")
+
+-- LookKey: one string per distinct look, so the painter's diff can key on it.
+local k1 = Nock.UI.ReactLookKey(look(ready, true,  { tint = "red" }))
+local k2 = Nock.UI.ReactLookKey(look(ready, false, { tint = "red" }))
+local k3 = Nock.UI.ReactLookKey(look(ready, true,  { tint = "red" }))
+local k4 = Nock.UI.ReactLookKey(look({ ready = true, usable = false }, false, { tint = "off", dim = true }))
+local k5 = Nock.UI.ReactLookKey(look({ ready = true, usable = true },  false, { tint = "off", dim = true }))
+ok(k1 ~= k2 and k1 == k3 and k4 ~= k5, "the look key changes with the range / dim and is stable otherwise")
+
 print(("react_slot_paint: %d passed, %d failed"):format(pass, fail))
 if fail > 0 then os.exit(1) end

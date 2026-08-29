@@ -180,5 +180,21 @@ else
   end
 end
 
+--------------------------------------------------------------------------------
+-- SlotOut: the React grid's per-slot out-of-range answer. A ranged ability
+-- trusts IsSpellInRange; a next-melee ability (Raptor Strike) does NOT -- the
+-- Anniversary client answers "in range" for it at 30 yd (diag 2026-08-29) --
+-- so it follows the Wing Clip melee probe instead. nil = unknown, never tinted.
+--------------------------------------------------------------------------------
+local SlotOut = Engine.SlotOut
+ok(type(SlotOut) == "function", "SlotOut exists")
+ok(SlotOut(false, true,  nil)  == false, "ranged: API in range -> not out")
+ok(SlotOut(false, false, nil)  == true,  "ranged: API out of range -> out")
+ok(SlotOut(false, nil,   nil)  == nil,   "ranged: API unknown -> unknown")
+ok(SlotOut(true,  true,  true) == false, "melee: in melee -> not out, whatever the API says")
+ok(SlotOut(true,  true,  false) == true, "melee: API 'in range' but not in melee -> out")
+ok(SlotOut(true,  nil,   nil)  == nil,   "melee: probe unknown -> unknown")
+ok(SlotOut(true,  false, true) == false, "melee: the probe wins over the API both ways")
+
 print(("range_engine: %d passed, %d failed"):format(pass, fail))
 if fail > 0 then os.exit(1) end

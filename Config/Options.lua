@@ -5603,6 +5603,56 @@ local function buildOptionsTable()
       set = function(_, v) visualsSet(_, "reactConsumablesAlways", v) end,
     }
 
+    -- Reference-WA extras: the Kill Command glows and the per-slot range tint.
+    -- All three ship OFF (user, 2026-08-29). kcActionBarGlow lights the real
+    -- bar button, so it is not React-gated — but it lives here, where the user
+    -- asked for it.
+    gridArgs.kcHeader = { type = "header", name = "Reference-WA extras", order = 69 }
+    gridArgs.reactKcProcGlow = {
+      type = "toggle",
+      name = "Kill Command proc glow",
+      desc = "While the Kill Command proc is up, the KC tile gets the animated action-button glow (as in the reference WeakAura) instead of the static highlight border.",
+      order = 69.1, width = "full", disabled = notReact,
+      get = get,
+      set = function(_, v) visualsSet(_, "reactKcProcGlow", v) end,
+    }
+    gridArgs.kcActionBarGlow = {
+      type = "toggle",
+      name = "Kill Command glow on the action bar",
+      desc = "Also glow the real action-bar button(s) that hold Kill Command (or a macro casting it) while the proc is up. Blizzard bars, Dominos, Bartender4 and ElvUI bars are found; works in combat. Not tied to the HUD mode.",
+      order = 69.2, width = "full",
+      get = get,
+      set = function(_, v) visualsSet(_, "kcActionBarGlow", v) end,
+    }
+    gridArgs.reactRangeTint = {
+      type = "select",
+      name = "Out of range",
+      desc = "Tint a grid tile whose spell cannot reach the current target (per spell, as the reference WeakAura does): shots go out of range in the dead zone and beyond max range, Raptor Strike outside melee. Item tiles are never tinted.",
+      order = 69.3,
+      values = { off = "Off", red = "Red tint", grey = "Greyed out" },
+      sorting = { "off", "red", "grey" },
+      dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
+      disabled = notReact,
+      get = function() return Nock.db.profile.reactRangeTint or "off" end,
+      set = function(_, v) visualsSet(_, "reactRangeTint", v) end,
+    }
+    gridArgs.reactTileDim = {
+      type = "toggle",
+      name = "Dim while unavailable",
+      desc = "A tile that is on cooldown or whose spell is not usable right now (no Kill Command proc, pet dead, ...) is greyed out at 60% -- the reference WeakAura's look. Consumable tiles keep their own grey.",
+      order = 69.4, width = "full", disabled = notReact,
+      get = get,
+      set = function(_, v) visualsSet(_, "reactTileDim", v) end,
+    }
+    gridArgs.reactManaTint = {
+      type = "toggle",
+      name = "No mana: blue",
+      desc = "A tile whose spell you cannot afford is tinted blue and greyed, as in the reference WeakAura. Out of range (red) wins when both apply.",
+      order = 69.5, width = "full", disabled = notReact,
+      get = get,
+      set = function(_, v) visualsSet(_, "reactManaTint", v) end,
+    }
+
     -- Shared custom entries: the same profile.cooldownCustom store the classic
     -- grid edits. The manage list here is customs-only (built-ins live in the
     -- classic ordered list); adds surface in the row Add dropdowns above.

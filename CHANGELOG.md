@@ -2,6 +2,23 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
+## Unreleased
+
+- **React HUD: three reference-WA extras, all off by default** (React HUD →
+  Cooldown Grid → *Kill Command & range*). **Kill Command proc glow** puts the
+  animated action-button glow on the KC tile while the proc is up (the static
+  border stays the default). **Kill Command glow on the action bar** lights the
+  real bar button(s) holding Kill Command — or a macro casting it — while the
+  proc is up; Blizzard bars, Dominos, Bartender4 and ElvUI are found, it works
+  in combat, and it is not tied to the HUD mode. **Out of range** tints a grid
+  tile whose spell cannot reach the target, per spell like the WA — shots in the
+  dead zone or beyond max range, Raptor Strike outside melee — as a red tint or
+  greyed out; item tiles are never tinted. And the rest of that WA's icon
+  conditions as two more toggles: **Dim while unavailable** (on cooldown or
+  not usable → greyed at 60 %) and **No mana: blue**. The Kill Command proc is
+  read the way the WA reads it — the spell usable, off cooldown, and a live pet
+  (the client reports Kill Command usable with no pet out).
+
 ## 1.1.1
 
 - **Licence.** Nock is released under the WTFPL (`LICENSE`); the source lives

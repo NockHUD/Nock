@@ -467,6 +467,19 @@ function Nock:HandleSlashCommand(input)
       elseif sub == "off" then rw:Preview(false)
       else rw:Dump() end
     end
+  elseif input:match("^kcglow") then
+    -- Kill Command glow diag (branch react-kc-range): every layer between the
+    -- proc and the action-bar glow in a copybox; "test on|off" forces the
+    -- overlay onto the found buttons regardless of the proc.
+    local ag = self:GetModule("ActionGlow", true)
+    local arg = input:match("^kcglow%s+test%s+(%a+)")
+    local tile = input:match("^kcglow%s+tile%s+(%a+)")
+    if not ag then self:Print("ActionGlow module is not loaded.")
+    elseif tile then ag:TestTile(tile)
+    elseif input:match("^kcglow%s+trace") then ag:Trace()
+    elseif arg == "on" then ag:Test(true); self:Print("KC glow forced ON for the found buttons (/nock kcglow test off to clear).")
+    elseif arg == "off" then ag:Test(false); self:Print("KC glow force cleared.")
+    else ag:Diag() end
   elseif input == "tonkdebug" then
     local tg = self:GetModule("TonkGuard", true)
     if tg then

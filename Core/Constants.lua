@@ -97,6 +97,7 @@ Nock.Constants = {
     BESTIAL_WRATH = 19574,
     READINESS     = 23989,
     KILL_COMMAND  = 34026,
+    KILL_COMMAND_PROC = 34027,  -- the "Kill Command" buff a ranged crit puts on the hunter
     TRANQ_SHOT    = 19801,
     MISDIRECTION  = 34477,
     FEIGN_DEATH   = 5384,
@@ -522,8 +523,8 @@ Nock.Constants = {
     -- Blood Fury AP 20572, Berserking mana-class 20554, Arcane Torrent mana
     -- 28730, Gift of the Naaru 28880, War Stomp 20549, Stoneform 20594,
     -- Shadowmeld 20580).
-    { key = "KC",      type = "spell", id = 34026, label = "KC",     trackedOnly = true },  -- Kill Command
-    { key = "Raptor",  type = "spell", id = 27014, label = "Raptor", trackedOnly = true },  -- Raptor Strike (React melee-bar color + grid)
+    { key = "KC",      type = "spell", id = 34026, label = "KC",     trackedOnly = true, usable = true, needsPet = true },  -- Kill Command: procActive = the spell is USABLE and off cooldown (the reference WA's rule; the proc aura is not visible to UnitBuff on this client)
+    { key = "Raptor",  type = "spell", id = 27014, label = "Raptor", trackedOnly = true, melee = true },  -- Raptor Strike (React melee-bar color + grid; melee: range tint follows the Wing Clip probe)
     { key = "MD",      type = "spell", id = 34477, label = "MD",     trackedOnly = true },  -- Misdirection
     { key = "ManaPot", type = "item",  id = 22832, label = "Mana",   trackedOnly = true },  -- Super Mana Potion
     { key = "Racial",  type = "raceSpell", label = "Racial", trackedOnly = true,

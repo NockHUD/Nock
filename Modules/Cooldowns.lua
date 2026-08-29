@@ -9,6 +9,32 @@ local C = Nock.Constants
 local AURA_THROTTLE = 0.1
 local GCD_TOLERANCE = 1.5
 
+-- IsUsableSpell for the entries whose "proc" IS usability (Kill Command:
+-- the reference WA glows it on spellUsable AND not onCooldown; the proc aura
+-- never shows up in UnitBuff on this client, 2026-08-29 trace).
+-- -> usable, noMana (both booleans; nil, nil when the client cannot say)
+local function spellUsable(spellID)
+  if C_Spell and C_Spell.IsSpellUsable then
+    local usable, noMana = C_Spell.IsSpellUsable(spellID)
+    return usable and true or false, noMana and true or false
+  end
+  if IsUsableSpell then
+    local usable, noMana = IsUsableSpell(spellID)
+    return usable and true or false, noMana and true or false
+  end
+  return nil, nil
+end
+
+-- The one writer of procActive: flips the flag and announces the edge, so
+-- both the React grid and ActionGlow read one truth (NOCK_PROC_ACTIVE).
+local function setProc(entry, s, active)
+  active = active and true or false
+  if s.procActive ~= active then
+    s.procActive = active
+    Nock:SendMessage("NOCK_PROC_ACTIVE", entry.key, active)
+  end
+end
+
 local function getSpellCD(spellID)
   if C_Spell and C_Spell.GetSpellCooldown then
     local info = C_Spell.GetSpellCooldown(spellID)
@@ -410,6 +436,9 @@ function Cooldowns:OnEnable()
   self:RegisterEvent("PLAYER_ENTERING_WORLD")
   self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
   self:RegisterEvent("SPELL_UPDATE_COOLDOWN")
+  pcall(self.RegisterEvent, self, "SPELL_UPDATE_USABLE", "ScanUsable")
+  pcall(self.RegisterEvent, self, "UNIT_PET")
+  pcall(self.RegisterEvent, self, "UNIT_HEALTH")
   self:RegisterEvent("BAG_UPDATE_COOLDOWN")
   self:RegisterEvent("BAG_UPDATE_DELAYED")
   self:RegisterEvent("UNIT_AURA")
@@ -543,8 +572,11 @@ function Cooldowns:ScanCooldowns()
     local s = Nock.state.cooldowns[entry.key]
     if not (Nock.state.sim.active and SIM_OWNED[entry.key]) then
       local start, duration = 0, 0
+      s.spellId = nil   -- the spell behind the slot, for the React grid's range tint (nil = item / unresolved)
+      s.melee   = entry.melee or nil   -- next-melee ability: the tint follows the melee probe, not IsSpellInRange
       if entry.type == "spell" then
         start, duration = getSpellCD(entry.id)
+        s.spellId = entry.id
         s.count = nil
       elseif entry.type == "item" then
         start, duration = getItemCD(entry.id)
@@ -556,6 +588,7 @@ function Cooldowns:ScanCooldowns()
         local id = resolveSpecSpell(entry)
         if id then
           s.icon = getSpellIcon(id)
+          s.spellId = id
           start, duration = getSpellCD(id)
         else
           s.icon = nil
@@ -565,6 +598,7 @@ function Cooldowns:ScanCooldowns()
         local id = resolveRaceSpell(entry)
         if id then
           s.icon = getSpellIcon(id)
+          s.spellId = id
           start, duration = getSpellCD(id)
         else
           s.icon = nil
@@ -585,6 +619,7 @@ function Cooldowns:ScanCooldowns()
       end
     end
   end
+  self:ScanUsable()
 end
 
 local function buffForItemId(itemId)
@@ -610,6 +645,10 @@ function Cooldowns:ScanAuras()
   for _, entry in ipairs(self:GetTracked()) do
     local s = Nock.state.cooldowns[entry.key]
     if not (Nock.state.sim.active and SIM_OWNED[entry.key]) then
+      if entry.usable then
+        -- Usability-driven (Kill Command): ScanUsable owns procActive.
+        s.buffIcon, s.buffDuration, s.buffStartTime = nil, 0, 0
+      else
       -- An explicit procBuff (custom entries) always wins: it lets the user
       -- glow a slot off any aura, not just the ITEM_PROC_BUFFS map.
       local buffId = entry.procBuff
@@ -629,7 +668,7 @@ function Cooldowns:ScanAuras()
       end
 
       local isActive = buffId and (active[buffId] == true)
-      s.procActive = isActive or false
+      setProc(entry, s, isActive)
 
       if isActive and data[buffId] then
         local d = data[buffId]
@@ -642,6 +681,61 @@ function Cooldowns:ScanAuras()
         s.buffDuration  = 0
         s.buffStartTime = 0
       end
+      end
     end
+  end
+end
+
+-- procActive for the usability-driven entries: usable AND off cooldown
+-- (Nock.ActionGlowEngine.UsableProc). Runs on SPELL_UPDATE_USABLE -- the
+-- event the client fires when a spell's usability flips, i.e. at the proc
+-- and at its expiry -- and after every cooldown scan.
+-- A live pet: Kill Command reads USABLE with no pet out on this client, so
+-- pet-bound entries (catalog needsPet) are gated on this as well -- the
+-- reference WA's pet-health trigger.
+local function petAlive()
+  if not UnitExists then return nil end   -- headless: unknown, no gate
+  if not UnitExists("pet") then return false end
+  if UnitIsDeadOrGhost then return not UnitIsDeadOrGhost("pet") end
+  return not UnitIsDead("pet")
+end
+
+-- Also publishes s.usable / s.noMana for EVERY spell tile (the React grid's
+-- dim-while-unavailable and no-mana tints, the reference WA's conditions 1
+-- and 4); nil on item tiles and when the client cannot say. A needsPet entry
+-- is not usable without a live pet, whatever the client says.
+function Cooldowns:ScanUsable()
+  local now = GetTime()
+  local pet = petAlive()
+  for _, entry in ipairs(self:GetTracked()) do
+    local s = Nock.state.cooldowns[entry.key]
+    local id = s.spellId
+    if id then
+      s.usable, s.noMana = spellUsable(id)
+      if entry.needsPet and pet == false then s.usable = false end
+    else
+      s.usable, s.noMana = nil, nil
+    end
+    if entry.usable and not (Nock.state.sim.active and SIM_OWNED[entry.key]) then
+      local onCd = (s.duration or 0) > 0 and (s.startTime + s.duration) > now
+      local E = Nock.ActionGlowEngine
+      local u = s.usable or false
+      local petOk = (entry.needsPet and pet ~= nil) and pet or nil
+      setProc(entry, s, E and E.UsableProc(u, onCd, petOk) or (u and not onCd))
+    end
+  end
+end
+
+-- The pet's presence and life flip usability without SPELL_UPDATE_USABLE.
+function Cooldowns:UNIT_PET(_, unit)
+  if unit == "player" then self:ScanUsable() end
+end
+
+function Cooldowns:UNIT_HEALTH(_, unit)
+  if unit ~= "pet" then return end
+  local dead = not petAlive()
+  if dead ~= self._petDead then
+    self._petDead = dead
+    self:ScanUsable()
   end
 end

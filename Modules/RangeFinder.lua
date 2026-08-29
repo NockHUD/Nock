@@ -282,7 +282,44 @@ end
 -- resolves the bracket key. nil probe reads count as false (WA behavior) —
 -- at 100ms cadence and 5yd-wide brackets, grace holds aren't worth the state.
 local LADDER_SCAN = 0.1
-function RangeFinder:ScanLadder(now, shoot)
+
+-- Per-slot spell range for the React grid's out-of-range tint (the reference
+-- WA's per-icon IsSpellInRange). Reads the spell each tracked cooldown slot
+-- resolved to (state.cooldowns[key].spellId, Modules/Cooldowns.lua) and writes
+-- state.target.spellOut[key]: true out of range, false in range, nil unknown.
+local SPELL_NAME = {}
+local function spellNameOf(id)
+  local n = SPELL_NAME[id]
+  if n then return n end
+  if C_Spell and C_Spell.GetSpellInfo then
+    local info = C_Spell.GetSpellInfo(id)
+    n = info and info.name
+  elseif GetSpellInfo then
+    n = GetSpellInfo(id)
+  end
+  if n then SPELL_NAME[id] = n end
+  return n
+end
+local function scanSpellOut(so, meleeIn)
+  for key, s in pairs(Nock.state.cooldowns) do
+    local id = s.spellId
+    local v
+    if id then
+      if C_Spell and C_Spell.IsSpellInRange then v = C_Spell.IsSpellInRange(id, "target") end
+      if v == nil and IsSpellInRange then
+        local nm = spellNameOf(id)
+        if nm then v = IsSpellInRange(nm, "target") end
+      end
+    end
+    so[key] = Nock.RangeEngine.SlotOut(s.melee, tri(v), meleeIn)
+  end
+end
+local function wipeSpellOut(t)
+  local so = t.spellOut
+  if so then for k in pairs(so) do so[k] = nil end end
+end
+
+function RangeFinder:ScanLadder(now, shoot, melee)
   if (now - self._ladderAt) < LADDER_SCAN then return end
   self._ladderAt = now
   local r = self._lr
@@ -308,6 +345,7 @@ function RangeFinder:ScanLadder(now, shoot)
   end
   self._bracket = Nock.RangeEngine.ResolveBracket(
     r, self._hawkEye or 0, self._scatterKnown, self.hmName ~= nil)
+  scanSpellOut(Nock.state.target.spellOut, melee)
 end
 
 -- Exposed for /nock debug — lets the user read the raw probes on a real boss.
@@ -479,6 +517,7 @@ function RangeFinder:Refresh(state)
 
   if not UnitExists("target") then
     clearTarget(self, t)
+    wipeSpellOut(t)
     return
   end
 
@@ -491,6 +530,7 @@ function RangeFinder:Refresh(state)
     t.inMelee, t.meleeProximity = false, 0
     t.rangeState, t.rangeProg, t.rangeBracket = nil, -1, nil
     t.rangeEstimateStale = false
+    wipeSpellOut(t)
     self._prog = 0
     self._zone, self._inMelee = nil, false
     return
@@ -557,7 +597,7 @@ function RangeFinder:Refresh(state)
   end
 
   if eng.state == "LONG" then
-    self:ScanLadder(now, shoot)
+    self:ScanLadder(now, shoot, melee)
     t.rangeBracket = self._bracket
   else
     t.rangeBracket = nil
