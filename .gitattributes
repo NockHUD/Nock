@@ -6,3 +6,4 @@
 *.md  text eol=lf
 LICENSE    text eol=lf
 .gitignore text eol=lf
+.pkgmeta   text eol=lf
