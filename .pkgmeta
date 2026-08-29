@@ -1,0 +1,19 @@
+# CurseForge automatic packaging (webhook on push; a pushed tag = a release file).
+# Keep the ignore list in step with .claude/scripts/Build-Release.ps1 so the
+# zip CurseForge builds matches the one attached to the GitHub Release.
+package-as: Nock
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+enable-nolib-creation: no
+
+ignore:
+  - Tests
+  - README.md
+  - Media/readme-banner-dark.png
+  - Media/readme-banner-light.png
+  - .pkgmeta
+  - .gitattributes
+  - .gitignore
