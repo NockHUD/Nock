@@ -1,4 +1,7 @@
-# Nock
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="Media/readme-banner-dark.png">
+  <img src="Media/readme-banner-light.png" alt="Nock" width="100%">
+</picture>
 
 A combat HUD for Hunters on **TBC Classic Anniversary** realms (Burning Crusade
 2.5.x). Nock measures your Auto Shot live, tells you exactly when a cast will
