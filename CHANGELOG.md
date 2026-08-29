@@ -2,10 +2,10 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
-## Unreleased
+## 1.1.2
 
-- **React HUD: three reference-WA extras, all off by default** (React HUD →
-  Cooldown Grid → *Kill Command & range*). **Kill Command proc glow** puts the
+- **React HUD: five reference-WA extras, all off by default** (React HUD →
+  Cooldown Grid → *Reference-WA extras*). **Kill Command proc glow** puts the
   animated action-button glow on the KC tile while the proc is up (the static
   border stays the default). **Kill Command glow on the action bar** lights the
   real bar button(s) holding Kill Command — or a macro casting it — while the
