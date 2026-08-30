@@ -324,15 +324,24 @@ function ReactBuffs:RefreshTalents()
 end
 
 -- The pet's Frenzy proc, if up: icon, expiration, duration.
+-- Aura reads go through Core/AuraCache.lua (every read allocates ~1.9 KB on
+-- this client; this row used to walk the player twice and the pet once per
+-- refresh). Module-level callbacks with scratch upvalues: no closure per scan.
+local AC = Nock.AuraCache
+local sc_self, sc_flagsOnly, sc_dis
+
 function ReactBuffs:ScanPetFrenzy()
-  if not (UnitExists and UnitExists("pet") and UnitBuff) then return nil end
-  for i = 1, 40 do
-    local name, icon, _, _, dur, exp, _, _, _, spellId = UnitBuff("pet", i)
-    if not name then break end
-    if self._petNames[name] == "frenzy" or spellId == C.REACT_BUFFS.FRENZY then
-      return icon, exp, dur
+  if not (AC and UnitExists and UnitExists("pet")) then return nil end
+  local a = AC.BySpell("pet", C.REACT_BUFFS.FRENZY)
+  if not a then
+    for name, key in pairs(self._petNames) do
+      if key == "frenzy" then
+        a = AC.ByName("pet", name)
+        if a then break end
+      end
     end
   end
+  if a then return a.icon, a.expirationTime, a.duration end
   return nil
 end
 
@@ -388,23 +397,25 @@ end
 -- flagsOnly = true: only refresh the LotP / Grace on-me flags (the positional
 -- alerts read them and go into the row BEFORE the player's procs); false:
 -- add the proc items. Two passes over UnitBuff, both cheap, no allocation.
-function ReactBuffs:ScanPlayer(flagsOnly)
-  if flagsOnly then self._lotpOnMe, self._goaOnMe = false, false end
-  if not UnitBuff then return end
-  local dis = self._dis or EMPTY
-  for i = 1, 40 do
-    local name, icon, _, _, dur, exp, _, _, _, spellId = UnitBuff("player", i)
-    if not name then break end
-    if flagsOnly then
-      if self._lotpNames[name] then self._lotpOnMe = true end
-      if self._graceNames[name] then self._goaOnMe = true end
-    else
-      local ukey = self._playerNames[name]
-      if (spellId and self._impIds[spellId]) or (ukey and not dis[ukey]) then
-        addItem(self._items, icon, exp, dur)
-      end
+local function onPlayerAura(a)
+  if a.isHarmful then return end
+  local self, name, spellId = sc_self, a.name, a.spellId
+  if sc_flagsOnly then
+    if self._lotpNames[name] then self._lotpOnMe = true end
+    if self._graceNames[name] then self._goaOnMe = true end
+  else
+    local ukey = self._playerNames[name]
+    if (spellId and self._impIds[spellId]) or (ukey and not sc_dis[ukey]) then
+      addItem(self._items, a.icon, a.expirationTime, a.duration)
     end
   end
+end
+
+function ReactBuffs:ScanPlayer(flagsOnly)
+  if flagsOnly then self._lotpOnMe, self._goaOnMe = false, false end
+  if not AC then return end
+  sc_self, sc_flagsOnly, sc_dis = self, flagsOnly, self._dis or EMPTY
+  AC.ForEach("player", onPlayerAura)
 end
 
 -- A live, attackable target the bow cannot reach: RangeFinder's legacy zone
@@ -419,26 +430,28 @@ function ReactBuffs:TargetOutOfRange(state)
   return true
 end
 
-function ReactBuffs:ScanPet()
-  if not (UnitExists and UnitExists("pet") and UnitBuff) then return end
-  local dis = self._dis or EMPTY
-  for i = 1, 40 do
-    local name, icon, _, _, dur, exp, _, _, _, spellId = UnitBuff("pet", i)
-    if not name then break end
-    local ukey = self._petNames[name]
-    -- Bestial Wrath lives on the PET, not the player (the player only carries
-    -- an aura when talented The Beast Within), so the player-ID scan can never
-    -- see it — match it here by exact ID, same convention as ScanPlayer.
-    -- Frenzy (the pet's crit proc) likewise: by name through _petNames, and
-    -- by id as a belt-and-braces for a client whose aura name differs.
-    local isFrenzy = (ukey == "frenzy") or spellId == C.REACT_BUFFS.FRENZY
-    if isFrenzy then
-      -- Alert mode already seated it at the front of the row.
-      if not dis.frenzy and not self._frenzyAlert then addItem(self._items, icon, exp, dur) end
-    elseif (ukey and not dis[ukey]) or spellId == C.SpellID.BESTIAL_WRATH then
-      addItem(self._items, icon, exp, dur)
-    end
+local function onPetAura(a)
+  if a.isHarmful then return end
+  local self, dis, spellId = sc_self, sc_dis, a.spellId
+  local ukey = self._petNames[a.name]
+  -- Bestial Wrath lives on the PET, not the player (the player only carries
+  -- an aura when talented The Beast Within), so the player-ID scan can never
+  -- see it — match it here by exact ID, same convention as ScanPlayer.
+  -- Frenzy (the pet's crit proc) likewise: by name through _petNames, and
+  -- by id as a belt-and-braces for a client whose aura name differs.
+  local isFrenzy = (ukey == "frenzy") or spellId == C.REACT_BUFFS.FRENZY
+  if isFrenzy then
+    -- Alert mode already seated it at the front of the row.
+    if not dis.frenzy and not self._frenzyAlert then addItem(self._items, a.icon, a.expirationTime, a.duration) end
+  elseif (ukey and not dis[ukey]) or spellId == C.SpellID.BESTIAL_WRATH then
+    addItem(self._items, a.icon, a.expirationTime, a.duration)
   end
+end
+
+function ReactBuffs:ScanPet()
+  if not (AC and UnitExists and UnitExists("pet")) then return end
+  sc_self, sc_dis = self, self._dis or EMPTY
+  AC.ForEach("pet", onPetAura)
 end
 
 -- Subgroup sweep for the LotP / Grace-of-Air RANGE and MISSING states. Both
@@ -503,6 +516,9 @@ function ReactBuffs:Refresh(state)
     return
   end
   if not self.frame:IsShown() then self.frame:Show() end
+  -- Shown but under a hidden host (hideOoc, HUD off): the three 40-slot buff
+  -- walks and the roster sweep below paint nothing anyone can see.
+  if not self.frame:IsVisible() then return end
   local classic = self:IsClassicHost()
 
   -- Free position: a single anchor supplies no width, so keep it matched to the

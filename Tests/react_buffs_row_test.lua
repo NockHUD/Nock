@@ -78,6 +78,19 @@ Nock.UI = {
 }
 Nock.parentFrame = Stub.CreateFrame("Frame")
 
+-- The aura store (Core/AuraCache.lua) is what the modules read; headlessly
+-- no UNIT_AURA fires, so every read invalidates first -- the mocks are the
+-- truth on every call, as UnitBuff/UnitDebuff were before the store.
+dofile("Core/AuraCache.lua")
+do
+  local AC = Nock.AuraCache
+  local inv = AC.Invalidate
+  for _, k in ipairs({ "Rev", "ForEach", "BySpell", "ByName", "Count" }) do
+    local f = AC[k]
+    AC[k] = function(...) inv(); return f(...) end
+  end
+end
+
 dofile("UI/Frame_ReactBuffs.lua")
 local RB = Nock.modules.ReactBuffs
 RB:OnInitialize()

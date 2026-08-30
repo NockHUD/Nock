@@ -10,6 +10,13 @@ local C = Nock.Constants
 
 local SEVERITY_RANK = { red = 3, amber = 2, blue = 1 }
 
+-- Cache flags written by handlers defined near the top of the file and read
+-- by the checks near the bottom: declared HERE so both see the same local
+-- (declared lower down, the handlers' writes went to globals and the caches
+-- never invalidated -- caught by a bytecode GSET scan, 2026-08-30).
+local _gateKnown = false     -- the shirt-gate direction is parsed (RebuildIdSets clears)
+local _garmentDirty = true   -- the garment slot needs a re-read (equipment / item info)
+
 local STEAM_TONK_ITEM        = C.STEAM_TONK_ITEM
 local SATURATION_EWS         = 0.7
 
@@ -75,6 +82,16 @@ local MANA_ITEMS = {
 local SAPPER_ITEMS = {
   { ids = C.SAPPER.ITEMS, label = "Sapper" },
 }
+
+-- Every cascade entry carries `ids` (pickCascade used to build a throwaway
+-- { entry.id } per single-id entry on every refresh below the mana/HP threshold).
+local function withIds(list)
+  for _, e in ipairs(list) do if not e.ids then e.ids = { e.id } end end
+  return list
+end
+withIds(HEALTH_ITEMS)
+withIds(MANA_ITEMS)
+withIds(SAPPER_ITEMS)
 
 local mendPetName
 local mendPetIcon
@@ -169,7 +186,7 @@ end
 local function pickCascade(items)
   local chosenReady, firstOwned
   for _, entry in ipairs(items) do
-    local ids = entry.ids or { entry.id }
+    local ids = entry.ids
     for _, id in ipairs(ids) do
       if getItemCount(id) > 0 then
         if not firstOwned then firstOwned = id end
@@ -259,15 +276,36 @@ end
 -- Pet buff scan by localized name, optionally also by raw spell ID (10th
 -- UnitBuff return) — the ID path covers single-rank buffs like Primal
 -- Instinct even if the name resolution came up empty at OnEnable.
+-- Aura reads go through Core/AuraCache.lua (every read allocates ~1.9 KB on
+-- this client; this file used to walk the pet, the player three times and
+-- the target on every refresh).
+local AC = Nock.AuraCache
+
+-- Warning records are POOLED by id: a check returns the same table each
+-- refresh with its fields rewritten (the view diffs by field, never by
+-- identity), so a warning that stays up allocates nothing at 10 Hz. Fields
+-- not passed are cleared -- `remaining` in particular must not linger.
+local POOL = {}
+local function warn(id, severity, icon, text, remaining)
+  local w = POOL[id]
+  if not w then w = { id = id }; POOL[id] = w end
+  w.severity, w.icon, w.text, w.remaining = severity, icon, text, remaining
+  return w
+end
+
+-- Refresh's helpers, module-level (they were two closures per refresh).
+local _list
+local function add(w)
+  if w then _list[#_list + 1] = w end
+end
+local function bySeverity(a, b)
+  return (SEVERITY_RANK[a.severity] or 0) > (SEVERITY_RANK[b.severity] or 0)
+end
+
 local function petHasAura(name, id)
-  if not UnitExists("pet") or not (name or id) then return false end
-  local i = 1
-  while true do
-    local found, _, _, _, _, _, _, _, _, spellId = UnitBuff("pet", i)
-    if not found then return false end
-    if found == name or (id and spellId == id) then return true end
-    i = i + 1
-  end
+  if not AC or not UnitExists("pet") or not (name or id) then return false end
+  if id and AC.BySpell("pet", id) then return true end
+  return name and AC.ByName("pet", name) ~= nil or false
 end
 
 local function checkSteamTonk(state)
@@ -280,12 +318,7 @@ local function checkSteamTonk(state)
   if pct >= threshold("steamTonkThreshold", 20) then return nil end
   if getItemCount(STEAM_TONK_ITEM) <= 0 then return nil end
   if getItemCdRemaining(STEAM_TONK_ITEM) > 0 then return nil end
-  return {
-    id = "steamtonk",
-    severity = "red",
-    text = "Steam Tonk",
-    icon = itemIcon(STEAM_TONK_ITEM),
-  }
+  return warn("steamtonk", "red", itemIcon(STEAM_TONK_ITEM), "Steam Tonk", nil)
 end
 
 -- A raid boss: an attackable, alive target that is classified "worldboss" or
@@ -317,12 +350,7 @@ local function checkSapperAoe(state)
   if not chosenId then return nil end
   if getItemCdRemaining(chosenId) > 0 then return nil end
 
-  return {
-    id = "sapperAoe",
-    severity = "amber",
-    text = "Sapper",
-    icon = itemIcon(chosenId) or 0,
-  }
+  return warn("sapperAoe", "amber", itemIcon(chosenId) or 0, "Sapper", nil)
 end
 
 local function checkMendPet(state)
@@ -334,12 +362,7 @@ local function checkMendPet(state)
   local pct = (hp / hpMax) * 100
   if pct >= threshold("mendPetThreshold", 50) then return nil end
   if petHasAura(mendPetName) then return nil end
-  return {
-    id = "mendpet",
-    severity = pct < threshold("steamTonkThreshold", 20) and "red" or "amber",
-    text = ("Pet %d%%"):format(pct),
-    icon = mendPetIcon or 132179,
-  }
+  return warn("mendpet", pct < threshold("steamTonkThreshold", 20) and "red" or "amber", mendPetIcon or 132179, ("Pet %d%%"):format(pct), nil)
 end
 
 -- Devilsaur Tooth (item 19992): on use, the pet's next attack is a guaranteed
@@ -358,12 +381,7 @@ local function checkDevilsaurTooth(state)
   if petHasAura(primalInstinctName, C.SpellID.PRIMAL_INSTINCT) then return nil end
   -- Latched, not resolved at OnEnable: item info may not be cached at login.
   devilsaurIcon = devilsaurIcon or itemIcon(C.DEVILSAUR_TOOTH_ITEM)
-  return {
-    id = "devilsaur",
-    severity = "amber",
-    text = "Devilsaur Tooth",
-    icon = devilsaurIcon or 134071,
-  }
+  return warn("devilsaur", "amber", devilsaurIcon or 134071, "Devilsaur Tooth", nil)
 end
 
 -- Quiver almost empty. Reads the arrows physically in the quiver/ammo pouch
@@ -379,12 +397,7 @@ local function checkQuiverLow(state)
   local n = a.quiver or 0
   if n >= threshold("quiverArrowThreshold", 400) then return nil end
   local icon = GetInventoryItemTexture and GetInventoryItemTexture("player", 0)
-  return {
-    id = "quiver",
-    severity = "red",
-    text = ("%d"):format(n),
-    icon = icon or "Interface\\Icons\\INV_Misc_Quiver_05",
-  }
+  return warn("quiver", "red", icon or "Interface\\Icons\\INV_Misc_Quiver_05", ("%d"):format(n), nil)
 end
 
 -- DO NOT RELEASE (the wipe-with-lust banner). Dead but not yet released, with
@@ -419,12 +432,7 @@ local function checkPetTraining(state)
   if type(total) ~= "number" or type(spent) ~= "number" then return nil end
   local unspent = total - spent
   if unspent <= threshold("petTrainingPointThreshold", 10) then return nil end
-  return {
-    id = "pettraining",
-    severity = "amber",
-    text = ("%d TP"):format(unspent),
-    icon = spellIcon(5149) or 132172,  -- Beast Training
-  }
+  return warn("pettraining", "amber", spellIcon(5149) or 132172, ("%d TP"):format(unspent), nil)   -- 5149 = Beast Training
 end
 
 local function checkMana(state)
@@ -450,12 +458,7 @@ local function checkMana(state)
     return nil
   end
 
-  return {
-    id = "mana",
-    severity = panicking and "red" or "blue",
-    text = ("Mana %d%%"):format(pct),
-    icon = iconTex,
-  }
+  return warn("mana", panicking and "red" or "blue", iconTex, ("Mana %d%%"):format(pct), nil)
 end
 
 -- Remaining Bloodlust/Heroism duration on the player, 0 if not present. Declared
@@ -463,18 +466,10 @@ end
 -- only in scope for code lexically after it, so a later declaration would read
 -- as a nil global here.
 local function lustRemaining()
-  if not UnitBuff then return 0 end
-  local now = GetTime()
-  local i = 1
-  while true do
-    local name, _, _, _, _, expirationTime, _, _, _, spellId = UnitBuff("player", i)
-    if not name then return 0 end
-    if spellId == C.SpellID.BLOODLUST or spellId == C.SpellID.HEROISM then
-      return math.max(0, (expirationTime or 0) - now)
-    end
-    i = i + 1
-  end
-  return 0
+  if not AC then return 0 end
+  local a = AC.BySpell("player", C.SpellID.BLOODLUST) or AC.BySpell("player", C.SpellID.HEROISM)
+  if not a then return 0 end
+  return math.max(0, (a.expirationTime or 0) - GetTime())
 end
 
 local function checkLustCds(state)
@@ -508,13 +503,7 @@ local function checkLustCds(state)
 
   if #actions == 0 then return nil end
   local rem = lustRemaining()
-  return {
-    id = "lustcds",
-    severity = "amber",
-    text = "Pop " .. table.concat(actions, "+"),
-    icon = bloodlustIcon or spellIcon(C.SpellID.BLOODLUST),
-    remaining = rem > 0 and rem or nil,
-  }
+  return warn("lustcds", "amber", bloodlustIcon or spellIcon(C.SpellID.BLOODLUST), "Pop " .. table.concat(actions, "+"), rem > 0 and rem or nil)
 end
 
 function Warnings:OnEnable()
@@ -527,7 +516,11 @@ function Warnings:OnEnable()
   self:RebuildUtilLookup()
   self:RebuildIdSets()
   self:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+  self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", "InvalidateGarment")
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "RebuildIdSets")
+  -- The weave-key dialog and the Grounded import rewrite the macro bodies
+  -- without an Options round-trip: the cached gate direction follows them.
+  self:RegisterMessage("NOCK_WEAVEBIND_CHANGED", "RebuildIdSets")
 
   -- Combat log listener for Feign Death resist detection.
   _playerGUID = UnitGUID and UnitGUID("player")
@@ -547,6 +540,7 @@ function Warnings:RebuildIdSets()
   -- otherwise stay frozen at whatever it said when they first touched it.
   for id in pairs(C.WRONG_TRINKET_IDS) do badTrinketSet[id] = true end
   enrageIdSet   = parseIdSet(p and p.warnTargetFrenzyIds)
+  _gateKnown = false   -- the shirt-gate direction re-reads the macro bodies
 end
 
 function Warnings:CachePlayerGUID()
@@ -573,6 +567,7 @@ end
 
 function Warnings:GET_ITEM_INFO_RECEIVED()
   self:RebuildUtilLookup()
+  _garmentDirty = true   -- a garment's INVTYPE may only now be readable
 end
 
 function Warnings:RebuildUtilLookup()
@@ -588,24 +583,16 @@ end
 
 local function collectUtilities(list)
   if not isEnabled("warnUtilitiesEnabled") then return end
-  if not utilLookup or not UnitBuff then return end
+  if not utilLookup or not AC then return end
   local now = GetTime()
-  local i = 1
-  while true do
-    local name, icon, _, _, _, expirationTime, _, _, _, spellId = UnitBuff("player", i)
-    if not name then return end
-    local entry = utilLookup[spellId]
-    if entry then
+  -- The lookup is a handful of use-effect ids: ask the store for each.
+  for spellId, entry in pairs(utilLookup) do
+    local a = AC.BySpell("player", spellId)
+    if a and not a.isHarmful then
+      local expirationTime, icon = a.expirationTime, a.icon
       local remaining = expirationTime and math.max(0, expirationTime - now) or 0
-      list[#list + 1] = {
-        id = "util_" .. entry.key,
-        severity = "blue",
-        text = entry.label,
-        icon = icon or 0,
-        remaining = remaining > 0 and remaining or nil,
-      }
+      list[#list + 1] = warn("util_" .. entry.key, "blue", icon or 0, entry.label, remaining > 0 and remaining or nil)
     end
-    i = i + 1
   end
 end
 
@@ -617,12 +604,7 @@ local function checkHealth(state)
   local chosenId = pickCascade(HEALTH_ITEMS)
   if not chosenId then return nil end
 
-  return {
-    id = "health",
-    severity = "red",
-    text = ("HP %d%%"):format(pct),
-    icon = itemIcon(chosenId) or 0,
-  }
+  return warn("health", "red", itemIcon(chosenId) or 0, ("HP %d%%"):format(pct), nil)
 end
 
 -- (checkWeaponStone retired — superseded by the sharpening-stone Helper.)
@@ -641,13 +623,7 @@ local function checkFDResist(state)
     _fdResistUntil = nil
     return nil
   end
-  return {
-    id        = "fdResist",
-    severity  = "red",
-    text      = "FD Resisted!",
-    icon      = spellIcon(C.SpellID.FEIGN_DEATH) or 132293,
-    remaining = math.max(0, _fdResistUntil - now),
-  }
+  return warn("fdResist", "red", spellIcon(C.SpellID.FEIGN_DEATH) or 132293, "FD Resisted!", math.max(0, _fdResistUntil - now))
 end
 
 -- Pet aggression stance. GetPetActionInfo's mode buttons carry STABLE token
@@ -682,12 +658,7 @@ local function checkPetPassive(state)
   if mode ~= "aggressive" and mode ~= "defensive" then return nil end
   -- Static icon: pet-bar mode-button textures aren't reliable icon sources
   -- here, so reuse the proven pet icon (same as the catalog entry).
-  return {
-    id       = "petPassive",
-    severity = "amber",
-    text     = "Pet " .. mode,
-    icon     = spellIcon(27046) or 132179,
-  }
+  return warn("petPassive", "amber", spellIcon(27046) or 132179, "Pet " .. mode, nil)
 end
 
 -- Growl autocast. Unlike the mode buttons (stable PET_MODE_* tokens), Growl is
@@ -723,12 +694,7 @@ local function checkPetGrowl(state)
   if not UnitExists("pet") then return nil end
   if UnitIsDead and UnitIsDead("pet") then return nil end
   if not petGrowlAutocastOn() then return nil end
-  return {
-    id       = "petGrowl",
-    severity = "amber",
-    text     = "Pet Growl",
-    icon     = spellIcon(C.SpellID.GROWL) or 132270,
-  }
+  return warn("petGrowl", "amber", spellIcon(C.SpellID.GROWL) or 132270, "Pet Growl", nil)
 end
 
 -- A Nock keybind has taken over a key that was already doing something. The
@@ -790,12 +756,7 @@ local function checkWrongTrinket(state)
   local t2 = GetInventoryItemID("player", 14)
   local badId = (t1 and badTrinketSet[t1] and t1) or (t2 and badTrinketSet[t2] and t2)
   if not badId then return nil end
-  return {
-    id       = "wrongTrinket",
-    severity = "amber",
-    text     = "Bad trinket",
-    icon     = itemIcon(badId) or 134486,
-  }
+  return warn("wrongTrinket", "amber", itemIcon(badId) or 134486, "Bad trinket", nil)
 end
 
 -- Shirt-gate check: the user's weave/consume macros carry [noequipped:Shirt]
@@ -812,17 +773,70 @@ end
 local GARMENT_SLOT = { shirt = INVSLOT_BODY or 4, tabard = INVSLOT_TABARD or 19 }
 local GARMENT_LOC  = { shirt = "INVTYPE_BODY",    tabard = "INVTYPE_TABARD" }
 
+-- Where the garment sits, cached: the answer moves with the equipment
+-- (PLAYER_EQUIPMENT_CHANGED) or when an item's info arrives, not per refresh
+-- -- and the miss path is a 24-slot GetInventoryItemLink + GetItemInfo sweep,
+-- which ran ten times a second for every boss fight with the shirt correctly
+-- off. `false` caches "not equipped".
+local _garmentSlot = {}
+
 local function garmentSlotIfEquipped(g)
   if not GetInventoryItemLink then return nil end
+  if _garmentDirty then
+    _garmentSlot.shirt, _garmentSlot.tabard = nil, nil
+    _garmentDirty = false
+  end
+  local hit = _garmentSlot[g]
+  if hit ~= nil then return hit or nil end
+  local found = false
   local slot = GARMENT_SLOT[g]
-  if slot and GetInventoryItemLink("player", slot) then return slot end
-  for s = 0, 23 do
-    local link = GetInventoryItemLink("player", s)
-    if link and GetItemInfo and select(9, GetItemInfo(link)) == GARMENT_LOC[g] then
-      return s
+  if slot and GetInventoryItemLink("player", slot) then
+    found = slot
+  else
+    for s = 0, 23 do
+      local link = GetInventoryItemLink("player", s)
+      if link and GetItemInfo and select(9, GetItemInfo(link)) == GARMENT_LOC[g] then
+        found = s
+        break
+      end
     end
   end
-  return nil
+  _garmentSlot[g] = found
+  return found or nil
+end
+
+function Warnings:InvalidateGarment()
+  _garmentDirty = true
+end
+
+-- Gate direction per garment off the two macro bodies (mirrors WeaveBind's
+-- gateGarment): "off" = [noequipped:...] lines, armed with the garment
+-- REMOVED (the shipped convention); "on" = [equipped:...] lines, armed with
+-- it WORN; nil = no conditional on that garment. Pure; the result is cached
+-- (RebuildIdSets) because the bodies only change through Options / the
+-- weave-key dialog, and computing it was a concat + lower + gsub of both
+-- bodies plus a closure and four pattern strings per refresh.
+function Warnings.GateDirs(down, up)
+  local mac = ((down or "") .. "\n" .. (up or "")):lower()
+  -- Stripping "noequipped" first leaves only the positive form findable.
+  local plain = mac:gsub("noequipped", "")
+  local function gateDir(g)
+    if mac:find("noequipped:%s*" .. g) then return "off" end
+    if plain:find("equipped:%s*" .. g) then return "on" end
+    return nil
+  end
+  return gateDir("shirt"), gateDir("tabard")
+end
+
+local _gateShirt, _gateTabard
+
+local function gateDirs()
+  if not _gateKnown then
+    local p2 = Nock.db and Nock.db.profile
+    _gateShirt, _gateTabard = Warnings.GateDirs(p2 and p2.weaveBindMacroDown, p2 and p2.weaveBindMacroUp)
+    _gateKnown = true
+  end
+  return _gateShirt, _gateTabard
 end
 
 local function checkShirtGate(state)
@@ -833,19 +847,7 @@ local function checkShirtGate(state)
   -- ([no]equipped:Shirt / :Tabard). With no garment conditional stored, the
   -- classic shirt check applies.
   local p2 = Nock.db and Nock.db.profile
-  local mac = ((p2 and p2.weaveBindMacroDown or "") .. "\n"
-            .. (p2 and p2.weaveBindMacroUp or "")):lower()
-  -- Gate direction per garment (mirrors WeaveBind's gateGarment):
-  -- "off" = [noequipped:...] lines, armed with the garment REMOVED (the
-  -- shipped convention); "on" = [equipped:...] lines, armed with it WORN.
-  -- Stripping "noequipped" first leaves only the positive form findable.
-  local plain = mac:gsub("noequipped", "")
-  local function gateDir(g)
-    if mac:find("noequipped:%s*" .. g) then return "off" end
-    if plain:find("equipped:%s*" .. g) then return "on" end
-    return nil
-  end
-  local shirtDir, tabardDir = gateDir("shirt"), gateDir("tabard")
+  local shirtDir, tabardDir = gateDirs()
   -- WeaveBind's garment autopilot owns the out-of-combat case when a real
   -- conditional is stored; the warning survives for in-combat (equipment is
   -- locked, the autopilot can't act) and for attempts that were blocked
@@ -887,12 +889,7 @@ local function checkShirtGate(state)
     end
   end
   if not label then return nil end
-  return {
-    id       = "shirtGate",
-    severity = "red",
-    icon     = icon,
-    text     = label,
-  }
+  return warn("shirtGate", "red", icon, label, nil)
 end
 
 -- Idiot check: in combat with anything other than Aspect of the Hawk up.
@@ -963,12 +960,7 @@ local function checkDazed(state)
     _dazedActive = true
     playWarnSound("warnDazedSound")
   end
-  return {
-    id       = "dazed",
-    severity = "amber",
-    text     = "Dazed",
-    icon     = d.icon or spellIcon(C.SpellID.DAZED) or DAZED_FALLBACK_ICON,
-  }
+  return warn("dazed", "amber", d.icon or spellIcon(C.SpellID.DAZED) or DAZED_FALLBACK_ICON, "Dazed", nil)
 end
 
 -- Raw "pet is sitting idle in combat" condition, shared by the visual warning
@@ -985,12 +977,7 @@ end
 local function checkPetNotAttacking(state)
   if not isEnabled("warnPetAttackEnabled") then return nil end
   if not petIsIdle(state) then return nil end
-  return {
-    id       = "petAttack",
-    severity = "amber",
-    text     = "Pet idle",
-    icon     = spellIcon(C.SpellID.KILL_COMMAND) or 132152,
-  }
+  return warn("petAttack", "amber", spellIcon(C.SpellID.KILL_COMMAND) or 132152, "Pet idle", nil)
 end
 
 -- "Boss encounter" detection. Prefers the real signals when the client exposes
@@ -1094,6 +1081,23 @@ end
 -- table above.
 local FRENZY_NAME_TOKENS = { "Frenzy", "Enrage" }
 
+-- The target's enrage: by id set, then by name token (module-level callback
+-- over the aura store; the first hit wins).
+local _frenzyHit, _frenzyName, _frenzyIcon, _frenzySpell
+local function onTargetAuraFrenzy(a)
+  if _frenzyHit or a.isHarmful then return end
+  local name, spellId = a.name, a.spellId
+  local hit = spellId and enrageIdSet[spellId] or false
+  if not hit and name then
+    for _, token in ipairs(FRENZY_NAME_TOKENS) do
+      if name:find(token, 1, true) then hit = true; break end
+    end
+  end
+  if hit then
+    _frenzyHit, _frenzyName, _frenzyIcon, _frenzySpell = true, name, a.icon, spellId
+  end
+end
+
 local function checkTargetFrenzy(state)
   if not isEnabled("warnTargetFrenzyEnabled") then return nil end
   if not UnitExists("target") then return nil end
@@ -1101,50 +1105,24 @@ local function checkTargetFrenzy(state)
   if UnitCanAttack and not UnitCanAttack("player", "target") then return nil end
   -- Don't nag when Tranq is unavailable — keeps the alert actionable.
   if getSpellCdRemaining(C.SpellID.TRANQ_SHOT) > 0 then return nil end
-  if not UnitBuff then return nil end
-  for i = 1, 40 do
-    local name, icon, _, _, _, _, _, _, _, spellId = UnitBuff("target", i)
-    if not name then break end
-    local hit = spellId and enrageIdSet[spellId] or false
-    if not hit then
-      for _, token in ipairs(FRENZY_NAME_TOKENS) do
-        if name:find(token, 1, true) then
-          hit = true
-          break
-        end
-      end
-    end
-    if hit then
-      return {
-        id       = "targetFrenzy",
-        severity = "amber",
-        text     = "Tranq!",
-        icon     = icon or spellIcon(C.SpellID.TRANQ_SHOT) or 132294,
-      }
-    end
+  if not AC then return nil end
+  _frenzyHit = nil
+  AC.ForEach("target", onTargetAuraFrenzy)
+  if _frenzyHit then
+    return warn("targetFrenzy", "amber", _frenzyIcon or spellIcon(C.SpellID.TRANQ_SHOT) or 132294, "Tranq!", nil)
   end
   return nil
 end
 
 local function checkDrums(state)
   if not isEnabled("warnDrumsEnabled") then return nil end
-  if not UnitBuff then return nil end
+  if not AC then return nil end
   local now = GetTime()
-  local i = 1
-  while true do
-    local name, icon, _, _, _, expirationTime, _, _, _, spellId = UnitBuff("player", i)
-    if not name then return nil end
-    if spellId == C.SpellID.DRUMS_OF_BATTLE then
-      local rem = expirationTime and math.max(0, expirationTime - now) or 0
-      return {
-        id = "drums",
-        severity = "blue",
-        text = "Drums",
-        icon = icon,
-        remaining = rem > 0 and rem or nil,
-      }
-    end
-    i = i + 1
+  local a = AC.BySpell("player", C.SpellID.DRUMS_OF_BATTLE)
+  if a then
+    local expirationTime, icon = a.expirationTime, a.icon
+    local rem = expirationTime and math.max(0, expirationTime - now) or 0
+    return warn("drums", "blue", icon, "Drums", rem > 0 and rem or nil)
   end
   return nil
 end
@@ -1208,9 +1186,7 @@ function Warnings:Refresh(state)
   end
   self._demoUntil = nil
 
-  local function add(w)
-    if w then list[#list + 1] = w end
-  end
+  _list = list
 
   add(checkHealth(state))
   add(checkFDResist(state))
@@ -1237,9 +1213,7 @@ function Warnings:Refresh(state)
   -- Weapon stone moved into the Helpers panel (see Modules/Helpers.lua).
   collectUtilities(list)
 
-  table.sort(list, function(a, b)
-    return (SEVERITY_RANK[a.severity] or 0) > (SEVERITY_RANK[b.severity] or 0)
-  end)
+  table.sort(list, bySeverity)
 end
 
 -- /nock norelease and the Options preview button — hold the DO NOT RELEASE

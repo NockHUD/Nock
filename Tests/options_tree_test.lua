@@ -551,7 +551,7 @@ local function onlyKeys(args, allowed, label, prefixes)
   end
 end
 onlyKeys(root.general.args,
-  { "intro", "lockState", "lockAll", "unlockAll", "editGridHeader", "editGridShow", "editGridSize", "editGridSnap", "editSnapBy", "minimapIcon", "runWizard", "resetPos", "scale",
+  { "intro", "lockState", "lockAll", "unlockAll", "editGridHeader", "editGridShow", "editGridSize", "editGridSnap", "editSnapBy", "minimapIcon", "perfPanel", "runWizard", "resetPos", "scale",
     "grpLook", "grpVisibility", "grpCastBar", "grpMedia", "grpSetup" },
   "general")
 onlyKeys(root.hud.args, { "intro", "hudMode", "classic", "react" }, "hud family")

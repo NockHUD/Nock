@@ -54,8 +54,12 @@ function ActionGlow:OnDisable()
   self:Apply()
 end
 
--- Debounced: one rebuild per burst of bar events.
+-- Debounced: one rebuild per burst of bar events. Off (the shipped default)
+-- the bar is not scanned at all -- a page flip or an aspect switch fired a
+-- 120-slot GetActionInfo walk and a ~420-name candidate table for nothing;
+-- Apply rescans once when the option comes on.
 function ActionGlow:Rescan()
+  if not enabled() then self._scanned = false; return end
   if self._rescanTimer then return end
   self._rescanTimer = self:ScheduleTimer(function()
     self._rescanTimer = nil
@@ -66,6 +70,7 @@ end
 function ActionGlow:DoRescan()
   local E = Nock.ActionGlowEngine
   if not E or not GetActionInfo then return end
+  self._scanned = true
   local slots = E.SlotsFor(GetActionInfo, self._spellIds, macroSpell)
   local cands = {}
   for _, name in ipairs(E.CandidateNames()) do
@@ -313,6 +318,7 @@ end
 function ActionGlow:Apply()
   local E = Nock.ActionGlowEngine
   if not E or not LCG or not LCG.ButtonGlow_Start then return end
+  if enabled() and not self._scanned then self:Rescan() end
   local want = E.Wanted(enabled() or self._forced, self._proc or self._forced, self._buttons or {})
   local start, stop = E.Diff(self._glowing, want)
   for _, f in ipairs(stop)  do pcall(LCG.ButtonGlow_Stop, f) end

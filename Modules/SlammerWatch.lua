@@ -108,23 +108,20 @@ end
 -- Scans both lists: a drink that burns you may well be filed as harmful.
 -- `match(name, id, exp)` returns true to stop; the first hit's expiry comes
 -- back, or nil.
-local function scanList(byIndexFn, legacyFn, match)
-  if byIndexFn then
-    for i = 1, 40 do
-      local data = byIndexFn("player", i)
-      if not data then return nil end
-      if match(data.name, data.spellId, data.expirationTime) then return data.expirationTime or 0 end
-    end
-    return nil
-  end
-  if legacyFn then
-    for i = 1, 40 do
-      local name, _, _, _, _, exp, _, _, _, spellId = legacyFn("player", i)
-      if not name then return nil end
-      if match(name, spellId, exp) then return exp or 0 end
-    end
-  end
-  return nil
+-- Aura reads go through Core/AuraCache.lua (every read allocates ~1.9 KB on
+-- this client). `match(name, spellId, exp)` over every record on the player,
+-- helpful or harmful (the drink's burn may be filed either way).
+local AC = Nock.AuraCache
+local sc_match, sc_hit
+local function onPlayerAura(a)
+  if sc_hit then return end
+  if sc_match(a.name, a.spellId, a.expirationTime) then sc_hit = a.expirationTime or 0 end
+end
+local function scanList(_, _, match)
+  if not AC then return nil end
+  sc_match, sc_hit = match, nil
+  AC.ForEach("player", onPlayerAura)
+  return sc_hit
 end
 
 local function matchSlammer(name, id) return isSlammerAura(id, name) end
@@ -177,7 +174,7 @@ function SlammerWatch:OnEnable()
   -- list this client files it under); the log's aura events are the fast
   -- path. Dirty-flagged and scanned on the slow lane, only while the button
   -- has a reason to be up.
-  self:RegisterEvent("UNIT_AURA", "OnUnitAura")
+  -- No UNIT_AURA here: the aura cache listens; Refresh reads its revision.
   -- Whether the Anniversary client fires these is the open question the dump
   -- answers; AceEvent hard-errors on an unknown event, hence the pcalls. The
   -- fallbacks (the boss seen in combat, the first Sleep) cover their absence.
@@ -186,9 +183,6 @@ function SlammerWatch:OnEnable()
   pcall(self.RegisterEvent, self, "INSTANCE_ENCOUNTER_ENGAGE_UNIT", "OnEngageUnit")
 end
 
-function SlammerWatch:OnUnitAura(_, unit)
-  if unit == "player" then _auraDirty = true end
-end
 
 function SlammerWatch:CachePlayerGUID()
   _playerGUID = UnitGUID and UnitGUID("player")
@@ -311,6 +305,10 @@ end
 -- Five subevents, three spells, one NPC — every other line returns on the
 -- first compare.
 function SlammerWatch:OnCombatLog()
+  -- Off (the shipped default): not a single compare more. Below this the
+  -- aura branch runs an item lookup on every aura/cast aimed at the player
+  -- while the drink's info is uncached -- forever, for anyone without one.
+  if not enabled() then return end
   local _, sub, _, srcGUID, srcName, _, _, dstGUID, _, _, _, spellId, spellName =
     CombatLogGetCurrentEventInfo()
   if sub == "UNIT_DIED" then
@@ -325,7 +323,6 @@ function SlammerWatch:OnCombatLog()
     return
   end
   if spellId == C.SpellID.SLEEP_ANETHERON then
-    if not enabled() then return end
     local now = GetTime()
     if sub == "SPELL_CAST_START" then
       _seen = true
@@ -359,6 +356,19 @@ function SlammerWatch:Refresh(state)
   local p = Nock.db and Nock.db.profile
   local on = enabled()
 
+  -- Off: the idle shape and nothing else -- no unit probes (InView is three
+  -- UnitGUID + GUID captures), no bag count, no aura scan. The button ships
+  -- off, so this is every zone for most users.
+  if not on then
+    _seen = false
+    s.visible, s.bossSeen = false, false
+    if s.state ~= "idle" then
+      s.state, s.label, s.value, s.remaining, s.verdict = "idle", "", nil, 0, nil
+    end
+    s.count = self.st.count
+    return
+  end
+
   -- The simulation owns the window while it runs (scaled to its interval);
   -- the profile's sliders take over again when it stops.
   if p and not _sim then
@@ -390,8 +400,10 @@ function SlammerWatch:Refresh(state)
     E.SetCount(self.st, slammerCount())
   end
 
-  if _auraDirty and on and (_preview or _seen or E.Active(self.st)) then
-    _auraDirty = false
+  -- The aura store's revision moves whenever an aura on you changes.
+  local rev = AC and AC.Rev("player") or 0
+  if (_auraDirty or rev ~= self._auraRev) and (_preview or _seen or E.Active(self.st)) then
+    _auraDirty, self._auraRev = false, rev
     E.SetBuff(self.st, scanBuff())
   end
 
@@ -404,16 +416,8 @@ function SlammerWatch:Refresh(state)
 
   -- The wish; the frame applies it out of combat. The unlock preview is the
   -- frame's own business.
-  s.visible  = on and (_preview or ((inView or fightOn) and not _dead)) or false
+  s.visible  = (_preview or ((inView or fightOn) and not _dead)) or false
   s.bossSeen = inView
-
-  if not on then
-    if s.state ~= "idle" then
-      s.state, s.label, s.value, s.remaining, s.verdict = "idle", "", nil, 0, nil
-    end
-    s.count = self.st.count
-    return
-  end
   E.Describe(self.st, now, s)
   if E.TakeWindowAlert(self.st, now) then playChime() end
 end

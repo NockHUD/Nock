@@ -74,12 +74,14 @@ end
 
 -- Returns expirationTime/duration/icon of the first buff whose name is in
 -- `set` (so the slot can show the actual active totem's icon).
+-- Aura reads go through Core/AuraCache.lua (every read allocates ~1.9 KB on
+-- this client); the sets are a handful of names, so ask for each.
+local AC = Nock.AuraCache
 local function unitBuffFromSet(unit, set)
-  if not (UnitExists and UnitExists(unit) and UnitBuff) then return nil end
-  for i = 1, 40 do
-    local n, icon, _, _, duration, expirationTime = UnitBuff(unit, i)
-    if not n then return nil end
-    if set[n] then return expirationTime or 0, duration or 0, icon end
+  if not (AC and UnitExists and UnitExists(unit)) then return nil end
+  for n in pairs(set) do
+    local a = AC.ByName(unit, n)
+    if a and not a.isHarmful then return a.expirationTime or 0, a.duration or 0, a.icon end
   end
   return nil
 end
@@ -154,6 +156,16 @@ function TotemTracker:Refresh(state)
     setSlot(windfury, true, now + rem, cyc, wfIcon) -- WF extra slot (animated swipe), on top
     setSlot(air,   true, 0, 0, graceIcon)          -- Grace of Air (core air slot, steady)
     setSlot(earth, true, 0, 0, nil)                -- Strength of Earth (steady; view default icon)
+    return
+  end
+
+  -- No shaman in the group (the common case for a pug hunter): nothing to
+  -- track, so no aura walks -- both slots read absent. HasShaman is roster-
+  -- driven and cheap; the sim path above forces it on.
+  if not self:HasShaman() then
+    if air.present or earth.present or windfury.present then
+      setSlot(air, false); setSlot(earth, false); setSlot(windfury, false)
+    end
     return
   end
 

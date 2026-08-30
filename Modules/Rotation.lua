@@ -48,20 +48,26 @@ local function trackedCdRemaining(state, key)
   return (cd and cd.remaining) or 0
 end
 
--- Direct API query for abilities not in TRACKED_COOLDOWNS (e.g., Raptor Strike).
--- Filters out GCD reads (duration <= 1.5s) so only the spell's real cooldown counts.
+-- Raptor Strike's cooldown. It is a tracked cooldown (TRACKED_COOLDOWNS key
+-- "Raptor", trackedOnly; the engine scans it on SPELL_UPDATE_COOLDOWN with
+-- the GCD filtered out, and Core:Tick derives `remaining` every frame), so
+-- this is a state read. It used to probe C_Spell.GetSpellCooldown here --
+-- a fresh table per call, twice per rendered frame. The API fallback only
+-- serves a state without the slot (headless tests).
 -- A state with `_raptorCdOverride` set takes precedence — used for foresight
 -- simulation where we want to pretend Raptor is on CD without touching the API.
 local function spellCdRemaining(spellID, state)
   if state and spellID == RAPTOR and state._raptorCdOverride ~= nil then
     return state._raptorCdOverride
   end
+  local cd = state and state.cooldowns and state.cooldowns.Raptor
+  if cd and spellID == RAPTOR then return cd.remaining or 0 end
   local start, duration
-  if C_Spell and C_Spell.GetSpellCooldown then
+  if GetSpellCooldown then
+    start, duration = GetSpellCooldown(spellID)
+  elseif C_Spell and C_Spell.GetSpellCooldown then
     local info = C_Spell.GetSpellCooldown(spellID)
     if info then start, duration = info.startTime, info.duration end
-  elseif GetSpellCooldown then
-    start, duration = GetSpellCooldown(spellID)
   end
   if not start or start == 0 then return 0 end
   if not duration or duration <= 1.5 then return 0 end

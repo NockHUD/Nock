@@ -1,5 +1,8 @@
 -- Tests/debuff_order_test.lua
 -- Standalone LuaJIT tests for Modules/DebuffTracker.lua's ordering and the
+-- (The engine caches its effective catalog until NOCK_VISUALS_CHANGED, which
+-- every option setter sends; the direct profile edits below invalidate it by
+-- hand the way that message would.)
 -- tri-state enable map: profile.debuffTrackerOrder is user data mutated by
 -- Up/Down executes (must survive permutations, stale keys, partial lists),
 -- and a catalog entry marked defaultOff is OFF until the user turns it on
@@ -37,9 +40,23 @@ dofile("Core/Constants.lua")
 dofile("Config/Defaults.lua")
 addon.db = { profile = {} }
 for k, v in pairs(addon.Defaults.profile) do addon.db.profile[k] = v end
+addon.db.profile.debuffTrackerEnabled = true   -- ships OFF; the engine builds nothing while off
 addon.db.profile.debuffTrackerDisabled = {}
 addon.db.profile.debuffTrackerOrder = {}
 addon.db.profile.debuffTrackerCustom = ""
+
+-- The aura store (Core/AuraCache.lua) is what the modules read; headlessly
+-- no UNIT_AURA fires, so every read invalidates first -- the mocks are the
+-- truth on every call, as UnitBuff/UnitDebuff were before the store.
+dofile("Core/AuraCache.lua")
+do
+  local AC = addon.AuraCache
+  local inv = AC.Invalidate
+  for _, k in ipairs({ "Rev", "ForEach", "BySpell", "ByName", "Count" }) do
+    local f = AC[k]
+    AC[k] = function(...) inv(); return f(...) end
+  end
+end
 
 dofile("Modules/DebuffTracker.lua")
 local DT = module
@@ -93,7 +110,7 @@ ok(eq(R("junk", elig), elig), "non-table stored -> eligible order")
 --------------------------------------------------------------------------------
 -- 3. Enabled state is tri-state; the published list honours it and the order.
 --------------------------------------------------------------------------------
-DT:Refresh(addon.state)
+DT:InvalidateCatalog(); DT:Refresh(addon.state)
 local pub = keysOf(addon.state.debufftracker)
 ok(#pub == #C.DEBUFF_CURATED - 2, "default: every preset but the two default-off ones is listed")
 local hasScorpid = false
@@ -101,14 +118,14 @@ for _, k in ipairs(pub) do if k == "scorpid" then hasScorpid = true end end
 ok(not hasScorpid, "scorpid not listed by default")
 
 addon.db.profile.debuffTrackerDisabled.scorpid = false   -- explicitly ON
-DT:Refresh(addon.state)
+DT:InvalidateCatalog(); DT:Refresh(addon.state)
 pub = keysOf(addon.state.debufftracker)
 ok(pub[#pub] == "scorpid" or (function()
   for _, k in ipairs(pub) do if k == "scorpid" then return true end end
 end)(), "scorpid = false (explicit on) -> listed")
 
 addon.db.profile.debuffTrackerDisabled.hmark = true
-DT:Refresh(addon.state)
+DT:InvalidateCatalog(); DT:Refresh(addon.state)
 pub = keysOf(addon.state.debufftracker)
 ok(pub[1] ~= "hmark", "hmark = true -> not listed")
 ok(DT.IsEntryEnabled("hmark") == false, "IsEntryEnabled(hmark) false")
@@ -120,7 +137,7 @@ addon.db.profile.debuffTrackerDisabled = {}
 -- Order: put ff first, custom entries ride along in the ordered list.
 addon.db.profile.debuffTrackerOrder = { "ff", "creck" }
 addon.db.profile.debuffTrackerCustom = "12345"
-DT:Refresh(addon.state)
+DT:InvalidateCatalog(); DT:Refresh(addon.state)
 pub = keysOf(addon.state.debufftracker)
 ok(pub[1] == "ff" and pub[2] == "creck", "stored order leads the published list")
 ok(pub[#pub] == "custom:12345", "custom entry appended after the presets")
@@ -130,7 +147,7 @@ end)())), "GetOrderedKeys = resolver over presets + customs (disabled ones inclu
 
 -- A custom entry can be moved ahead of a preset.
 addon.db.profile.debuffTrackerOrder = { "custom:12345" }
-DT:Refresh(addon.state)
+DT:InvalidateCatalog(); DT:Refresh(addon.state)
 pub = keysOf(addon.state.debufftracker)
 ok(pub[1] == "custom:12345", "a custom entry honours the stored order too")
 
@@ -141,7 +158,7 @@ addon.db.profile.debuffTrackerOrder = {}
 addon.db.profile.debuffTrackerCustom = ""
 addon.db.profile.debuffTrackerDisabled = { scorpid = false, iswarm = false }
 debuffs = { { name = "Scorpid Sting", spellId = 14277 }, { name = "Insect Swarm", spellId = 27013 } }
-DT:Refresh(addon.state)
+DT:InvalidateCatalog(); DT:Refresh(addon.state)
 local present = {}
 for _, e in ipairs(addon.state.debufftracker) do present[e.key] = e.present end
 ok(present.scorpid == true, "Scorpid Sting on the target -> present")

@@ -48,18 +48,26 @@ end
 --
 -- `cat.buffNames` is an opt-in safety net that only the food category sets —
 -- see the comment there for why that one case earns it.
+-- Aura reads go through Core/AuraCache.lua (every read allocates ~1.9 KB on
+-- this client; this panel used to walk the player and the pet ~12 times per
+-- refresh). One pass over the store with a module-level callback.
+local AC = Nock.AuraCache
+local sc_set, sc_names, sc_exp
+local function onAura(a)
+  if sc_exp or a.isHarmful then return end
+  local spellId, name = a.spellId, a.name
+  if (spellId and sc_set and sc_set[spellId]) or (sc_names and name and sc_names[name]) then
+    sc_exp = a.expirationTime or 0
+  end
+end
+
 local function findUnitBuffIn(unit, cat)
-  if not (cat and UnitExists and UnitExists(unit) and UnitBuff) then return nil end
+  if not (AC and cat and UnitExists and UnitExists(unit)) then return nil end
   local set, names = cat.buffs, cat.buffNames
   if not (set or names) then return nil end
-  for i = 1, 40 do
-    local name, _, _, _, _, expirationTime, _, _, _, spellId = UnitBuff(unit, i)
-    if not name then return nil end
-    if (spellId and set and set[spellId]) or (names and names[name]) then
-      return expirationTime
-    end
-  end
-  return nil
+  sc_set, sc_names, sc_exp = set, names, nil
+  AC.ForEach(unit, onAura)
+  return sc_exp
 end
 
 local function playerBuffExp(catKey)
@@ -379,6 +387,16 @@ local function detectHelperWA()
   return false
 end
 
+-- Slow lane (Core:Tick): the check battery below is ~12 full UnitBuff walks
+-- plus bag counts and item-icon lookups, and it ran every rendered frame in
+-- every trash gap of a raid. A pre-pull badge appearing 100 ms later is
+-- invisible; the view diffs against state.helpers regardless.
+Helpers.refreshInterval = 0.1
+
+-- The published rows are reused in place (a fresh 5-field table per badge
+-- per refresh was the other half of the cost). The view reads fields only.
+local ROWS = {}
+
 function Helpers:Refresh(state)
   local list = state.helpers
   for i = #list, 1, -1 do list[i] = nil end
@@ -421,13 +439,15 @@ function Helpers:Refresh(state)
         if surface == "missing" and entry.itemIds and not hasAnyItem(entry.itemIds) then
           label = entry.fallbackLabel or label
         end
-        list[#list + 1] = {
-          id        = entry.key,
-          status    = surface,
-          icon      = entry.iconFn and entry.iconFn() or nil,
-          remaining = remaining,
-          label     = label,
-        }
+        local n = #list + 1
+        local r = ROWS[n]
+        if not r then r = {}; ROWS[n] = r end
+        r.id        = entry.key
+        r.status    = surface
+        r.icon      = entry.iconFn and entry.iconFn() or nil
+        r.remaining = remaining
+        r.label     = label
+        list[n] = r
       end
     end
   end

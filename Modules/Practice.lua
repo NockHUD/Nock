@@ -1002,6 +1002,11 @@ function Practice:Teardown()
   st._raptorCdOverride = nil
   st.demo.hudForceShow = false
   self:ReleaseGrid()
+  -- The replay frames are the one large thing a session leaves behind (up to
+  -- REPLAY_FRAMES x a copied snapshot + plan: tens of MB after a long fight);
+  -- the replay is closed above, so nothing reads them until the next Start,
+  -- which rebuilds the record anyway. A raid should not carry them.
+  self._planRec, self._recRev, self._recSig = nil, nil, nil
   Nock:SendMessage("NOCK_VISUALS_CHANGED")
   Nock:SendMessage("NOCK_PRACTICE_CHANGED")
   self:Print("Practice OFF.")

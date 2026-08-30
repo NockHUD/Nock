@@ -99,17 +99,18 @@ end
 
 -- Refresh: only the cheap per-tick cosmetic flag. The roster itself is pushed
 -- by events (above), never wired here — secure buttons can't change in combat.
+-- Misdirection is a tracked cooldown (TRACKED_COOLDOWNS key "MD"): the engine
+-- scans it on SPELL_UPDATE_COOLDOWN and Core:Tick derives `remaining`, so
+-- this is a state read -- it used to probe C_Spell.GetSpellCooldown here, a
+-- fresh table per rendered frame.
 function MisdirectCast:Refresh(state)
   state.mdcast = state.mdcast or { tanks = {}, ready = true }
   state.mdcast.tanks = self._tanks
 
   local remaining = 0
-  if isEnabled() and C_Spell and C_Spell.GetSpellCooldown then
-    local info = C_Spell.GetSpellCooldown(MD_SPELL_ID)
-    if info and info.startTime and info.startTime > 0 and (info.duration or 0) > 1.5 then
-      remaining = (info.startTime + info.duration) - GetTime()
-      if remaining < 0 then remaining = 0 end
-    end
+  if isEnabled() then
+    local cd = state.cooldowns and state.cooldowns.MD
+    if cd then remaining = cd.remaining or 0 end
   end
   state.mdcast.ready = (remaining <= 0)
   state.mdcast.cdRemaining = remaining

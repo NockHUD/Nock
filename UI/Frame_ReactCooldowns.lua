@@ -269,7 +269,11 @@ function ReactCooldownsView:Refresh(state)
     end
     if mask ~= self._activeMask then
       self._activeMask = mask
-      self:SendMessage("NOCK_VISUALS_CHANGED")
+      -- Our own rows and the HUD's stacking only: NOCK_VISUALS_CHANGED here
+      -- put a potion press or a buff fading through the whole addon's media
+      -- re-apply mid-fight.
+      self:Rebuild()
+      self:SendMessage("NOCK_HUD_RELAYOUT")
       return
     end
   end

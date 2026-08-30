@@ -7,7 +7,7 @@
 -- Mirrors Modules/BuffTracker.lua (target debuffs instead of unit buffs).
 
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
-local DebuffTracker = Nock:NewModule("DebuffTracker")
+local DebuffTracker = Nock:NewModule("DebuffTracker", "AceEvent-3.0")
 local C = Nock.Constants
 
 DebuffTracker.Catalog = C.DEBUFF_CURATED  -- exposed for the options injector
@@ -21,26 +21,26 @@ local function spellIcon(id)
   return nil
 end
 
--- Scan target debuffs. Preset entries match by name list (rank-agnostic);
--- custom numeric entries match by spellId; custom text entries by name.
+-- Aura reads go through Core/AuraCache.lua (every read allocates ~1.9 KB on
+-- this client, and a raid boss carries the whole raid's debuffs): the store's
+-- lookups replace the walk. Preset entries match by name list (rank-agnostic);
+-- custom numeric entries by spellId; custom text entries by name. Returns
+-- found, icon, count, duration, exp -- values, not a table.
+local AC = Nock.AuraCache
+
 local function findDebuffForEntry(entry)
-  if not (UnitExists and UnitExists("target") and UnitDebuff) then return nil end
-  for i = 1, 40 do
-    local name, icon, count, _, duration, expirationTime, _, _, _, spellId = UnitDebuff("target", i)
-    if not name then return nil end
-    if entry.matchSpellId then
-      if spellId == entry.matchSpellId then
-        return { icon = icon, count = count or 0, duration = duration or 0, expirationTime = expirationTime or 0 }
-      end
-    elseif entry.names then
-      for _, want in ipairs(entry.names) do
-        if name == want then
-          return { icon = icon, count = count or 0, duration = duration or 0, expirationTime = expirationTime or 0 }
-        end
-      end
+  if not AC then return false end
+  local a
+  if entry.matchSpellId then
+    a = AC.BySpell("target", entry.matchSpellId)
+  elseif entry.names then
+    for _, want in ipairs(entry.names) do
+      a = AC.ByName("target", want)
+      if a then break end
     end
   end
-  return nil
+  if not a or not a.isHarmful then return false end
+  return true, a.icon, a.applications or 0, a.duration or 0, a.expirationTime or 0
 end
 
 -- Lazy icon resolution (GetSpellInfo may not be cached right at login).
@@ -59,11 +59,15 @@ end
 -- marked `defaultOff`, ON otherwise). "Restore preset defaults" wipes the map,
 -- which puts a default-off preset back OFF — the only way an opt-in entry
 -- stays opt-in across a reset. Custom entries have no default-off.
+local _defaultOff   -- key -> true, built once off the curated list
 local function entryDefaultOff(key)
-  for _, e in ipairs(C.DEBUFF_CURATED or {}) do
-    if e.key == key then return e.defaultOff == true end
+  if not _defaultOff then
+    _defaultOff = {}
+    for _, e in ipairs(C.DEBUFF_CURATED or {}) do
+      if e.defaultOff == true then _defaultOff[e.key] = true end
+    end
   end
-  return false
+  return _defaultOff[key] == true
 end
 
 function DebuffTracker.IsEntryEnabled(key)
@@ -148,14 +152,25 @@ function DebuffTracker:Describe(key)
   return e and (e.label or (e.names and e.names[1])) or key
 end
 
+-- Built once and dropped on NOCK_VISUALS_CHANGED (the only time the profile
+-- keys it reads can move): it used to allocate six scratch lists and re-parse
+-- the custom string ten times a second.
+local _catalog
+
 local function effectiveCatalog()
+  if _catalog then return _catalog end
   local p = Nock.db and Nock.db.profile
   local byKey, keys = allEntries()
   local list = {}
   for _, k in ipairs(DebuffTracker.ResolveOrder(p and p.debuffTrackerOrder, keys)) do
     if not isDisabled(k) then list[#list + 1] = byKey[k] end
   end
+  _catalog = list
   return list
+end
+
+function DebuffTracker:InvalidateCatalog()
+  _catalog = nil
 end
 
 -- Slow lane (Core:Tick) — see BuffTracker.lua. Target debuff depth is maximal
@@ -163,21 +178,40 @@ end
 -- framerate-sensitive of the set.
 DebuffTracker.refreshInterval = 0.1
 
+local function trackerEnabled()
+  local p = Nock.db and Nock.db.profile
+  return not (p and p.debuffTrackerEnabled == false)
+end
+
+function DebuffTracker:OnEnable()
+  if self.RegisterMessage then
+    self:RegisterMessage("NOCK_VISUALS_CHANGED", "InvalidateCatalog")
+  end
+end
+
+-- Rows reused in place (dest[i] keeps its table; rows past the count are
+-- dropped); off (the shipped default) nothing is scanned or built.
 function DebuffTracker:Refresh(state)
   local dest = state.debufftracker or {}
   state.debufftracker = dest
-  for k in pairs(dest) do dest[k] = nil end
-
-  for _, entry in ipairs(effectiveCatalog()) do
-    local info = findDebuffForEntry(entry)
-    dest[#dest + 1] = {
-      key            = entry.key,
-      label          = entry.label or (entry.names and entry.names[1]) or entry.key,
-      icon           = (info and info.icon) or resolveIcon(entry),
-      present        = info ~= nil,
-      count          = info and info.count or 0,
-      duration       = info and info.duration or 0,
-      expirationTime = info and info.expirationTime or 0,
-    }
+  if not trackerEnabled() then
+    for i = #dest, 1, -1 do dest[i] = nil end
+    return
   end
+
+  local n = 0
+  for _, entry in ipairs(effectiveCatalog()) do
+    local found, icon, count, duration, exp = findDebuffForEntry(entry)
+    n = n + 1
+    local r = dest[n]
+    if not r then r = {}; dest[n] = r end
+    r.key            = entry.key
+    r.label          = entry.label or (entry.names and entry.names[1]) or entry.key
+    r.icon           = (found and icon) or resolveIcon(entry)
+    r.present        = found
+    r.count          = found and count or 0
+    r.duration       = found and duration or 0
+    r.expirationTime = found and exp or 0
+  end
+  for i = #dest, n + 1, -1 do dest[i] = nil end
 end

@@ -45,7 +45,31 @@ function Nock:OnEnable()
   self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnCombatChanged")
   self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatChanged")
   self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnCombatChanged")
+  self:RegisterEvent("SPELL_UPDATE_COOLDOWN", "ProbeGcd")
   self:OnCombatChanged()
+  self:ProbeGcd()
+end
+
+-- Global cooldown probe. Steady Shot has no real cooldown, so whatever
+-- cooldown it reports IS the GCD (haste-scaled). Anything longer than the
+-- 1.5s base + slop isn't a GCD (e.g. the spell is genuinely on CD) and is
+-- ignored. Raw (start, duration) only; Tick derives remaining/active. Prefers
+-- the bare GetSpellCooldown (values) over C_Spell's table.
+function Nock:ProbeGcd()
+  local C = self.Constants
+  local gs, gd
+  if GetSpellCooldown then
+    gs, gd = GetSpellCooldown(C.SpellID.STEADY_SHOT)
+  elseif C_Spell and C_Spell.GetSpellCooldown then
+    local info = C_Spell.GetSpellCooldown(C.SpellID.STEADY_SHOT)
+    if info then gs, gd = info.startTime, info.duration end
+  end
+  local g = self.state.gcd
+  if gs and gs > 0 and gd and gd > 0 and gd <= (C.GCD_BASE or 1.5) + 0.05 then
+    g.probeStart, g.probeDuration = gs, gd
+  else
+    g.probeStart, g.probeDuration = 0, 0
+  end
 end
 
 function Nock:OnProfileSwitched()
@@ -149,6 +173,22 @@ function Nock:MigrateProfile()
   if stored and stored < lo then p.tonkCancelDelay = lo end
 end
 
+-- A unit-filtered event registration on a bare frame. AceEvent's RegisterEvent
+-- cannot filter, and an unfiltered UNIT_AURA / UNIT_HEALTH fires for every
+-- raid member, pet and nameplate in a 25-man -- hundreds of no-op handler
+-- calls a second per module. The handler is called as handler(event, unit);
+-- it must still check the unit, since the fallback below is unfiltered.
+-- Returns the frame, or nil when the client has no RegisterUnitEvent (the
+-- caller then registers through AceEvent as before).
+function Nock.RegisterUnitEvent(event, handler, unit1, unit2)
+  if not (CreateFrame and handler) then return nil end
+  local f = CreateFrame("Frame")
+  if not f.RegisterUnitEvent then return nil end
+  f:SetScript("OnEvent", function(_, ev, ...) handler(ev, ...) end)
+  f:RegisterUnitEvent(event, unit1, unit2)
+  return f
+end
+
 function Nock:OnCombatChanged()
   local inCombat = UnitAffectingCombat("player") and true or false
   if self.state.player.inCombat ~= inCombat then
@@ -218,6 +258,7 @@ function Nock:Tick()
   -- otherwise every reference below short-circuits on the nil check.
   local prof = self._prof
   local tickStart = prof and debugprofilestop()
+  local tickKb = prof and collectgarbage("count")
 
   local state = self.state
   local now = GetTime()
@@ -272,22 +313,18 @@ function Nock:Tick()
     end
   end
 
-  -- Global cooldown. Steady Shot has no real cooldown, so whatever cooldown it
-  -- reports IS the GCD (haste-scaled). Anything longer than the 1.5s base + slop
-  -- isn't a GCD (e.g. the spell is genuinely on CD) and is ignored. Single
-  -- source of truth: the rotation row and the GCD bar both read state.gcd.
+  -- Global cooldown. Single source of truth: the rotation row and the GCD bar
+  -- both read state.gcd. The API probe is event-driven (Nock:ProbeGcd on
+  -- SPELL_UPDATE_COOLDOWN); this only derives the remaining time from it.
   local C = self.Constants
   local g = state.gcd
   local gs, gd
   if state.sim.active then
     gs, gd = state.sim.gcd.start, state.sim.gcd.duration
-  elseif C_Spell and C_Spell.GetSpellCooldown then
-    local info = C_Spell.GetSpellCooldown(C.SpellID.STEADY_SHOT)
-    if info then gs, gd = info.startTime, info.duration end
-  elseif GetSpellCooldown then
-    gs, gd = GetSpellCooldown(C.SpellID.STEADY_SHOT)
+  else
+    gs, gd = g.probeStart, g.probeDuration
   end
-  if gs and gs > 0 and gd and gd > 0 and gd <= (C.GCD_BASE or 1.5) + 0.05 then
+  if gs and gs > 0 and gd and gd > 0 then
     g.start, g.duration = gs, gd
     g.remaining = math.max(0, gs + gd - now)
     g.active = g.remaining > 0
@@ -344,7 +381,7 @@ function Nock:Tick()
   -- per-tick state because the PLAYER was the mechanism; UI/Frame_TonkDial.lua
   -- reads state.player.tonk directly and lets the client animate the sweep.
 
-  if prof then prof:RecordCore(debugprofilestop() - tickStart) end
+  if prof then prof:RecordCore(debugprofilestop() - tickStart, collectgarbage("count") - tickKb) end
 
   -- Scan throttle. A module may declare `Module.refreshInterval = 0.1` to opt
   -- into the slow lane: it then refreshes at that cadence instead of once per
@@ -373,9 +410,15 @@ function Nock:Tick()
         end
       end
       if due then
+        -- Memory attribution rides the same hook: collectgarbage("count") is
+        -- the Lua heap in KB, so its delta across one Refresh is what that
+        -- module allocated (a GC step inside the window reads negative and is
+        -- clamped by Record). This is how a raid's memory climb is pinned on a
+        -- module instead of guessed at.
         local m0 = prof and debugprofilestop()
+        local k0 = prof and collectgarbage("count")
         local ok, err = pcall(mod.Refresh, mod, state)
-        if prof then prof:Record(mod:GetName(), debugprofilestop() - m0) end
+        if prof then prof:Record(mod:GetName(), debugprofilestop() - m0, collectgarbage("count") - k0) end
         if not ok and not mod._refreshErrored then
           mod._refreshErrored = true
           geterrorhandler()(err)
@@ -398,6 +441,9 @@ function Nock:HandleSlashCommand(input)
     self:OpenConfig()
   elseif input == "version" then
     self:Print(("v%s"):format(VERSION))
+  elseif input == "auraprobe" then
+    local au = self:GetModule("Auras", true)
+    if au and au.Probe then au:Probe() end
   elseif input == "lock" then
     self:SetLocked(true)
     self:Print("All Nock frames locked.")

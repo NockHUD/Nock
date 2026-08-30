@@ -1143,6 +1143,21 @@ local function buildOptionsTable()
             get = function() return Nock.IsMinimapShown and Nock:IsMinimapShown() or false end,
             set = function(_, v) if Nock.SetMinimapShown then Nock:SetMinimapShown(v) end end,
           },
+          perfPanel = {
+            type = "toggle",
+            name = "Performance panel",
+            desc = "A small draggable panel: memory (and, with the client's scriptProfile CVar on, CPU) for all addons and for Nock, plus a Capture button that records what Nock spends and allocates per module for up to 60 s and opens the report. Same as /nock profile show. Costs nothing while idle -- one timer per second.",
+            order = 30.15,
+            width = "full",
+            get = function()
+              local m = Nock:GetModule("Profiler", true)
+              return (m and m.overlay and m.overlay:IsShown()) or (Nock.db.profile.profilerOverlayShown == true)
+            end,
+            set = function(_, v)
+              local m = Nock:GetModule("Profiler", true)
+              if m and m.ShowOverlay then m:ShowOverlay(v) else Nock.db.profile.profilerOverlayShown = v and true or false end
+            end,
+          },
           runWizard = {
             type = "execute",
             name = "Run setup wizard",
@@ -2396,6 +2411,7 @@ local function buildOptionsTable()
               Nock.db.profile.buffTrackerDisabled     = {}
               Nock.db.profile.buffTrackerCustomPlayer  = ""
               Nock.db.profile.buffTrackerCustomPet     = ""
+              Nock:SendMessage("NOCK_VISUALS_CHANGED")
               local reg = LibStub("AceConfigRegistry-3.0", true)
               if reg then reg:NotifyChange("Nock") end
             end,
@@ -2410,7 +2426,10 @@ local function buildOptionsTable()
             width = "full",
             order = 280,
             get = function() return Nock.db.profile.buffTrackerCustomPlayer or "" end,
-            set = function(_, v) Nock.db.profile.buffTrackerCustomPlayer = v end,
+            set = function(_, v)
+              Nock.db.profile.buffTrackerCustomPlayer = v
+              Nock:SendMessage("NOCK_VISUALS_CHANGED")
+            end,
           },
           petBuffsHeader = { type = "header", name = "Pet buffs", order = 299 },
           -- per-entry pet toggles injected at order 300+ (buildOptionsTable)
@@ -2422,7 +2441,10 @@ local function buildOptionsTable()
             width = "full",
             order = 380,
             get = function() return Nock.db.profile.buffTrackerCustomPet or "" end,
-            set = function(_, v) Nock.db.profile.buffTrackerCustomPet = v end,
+            set = function(_, v)
+              Nock.db.profile.buffTrackerCustomPet = v
+              Nock:SendMessage("NOCK_VISUALS_CHANGED")
+            end,
           },
         },
       },
@@ -4897,6 +4919,7 @@ local function buildOptionsTable()
             local p = Nock.db.profile
             p.buffTrackerDisabled = p.buffTrackerDisabled or {}
             p.buffTrackerDisabled[which .. ":" .. cat.key] = (not v) or nil
+            Nock:SendMessage("NOCK_VISUALS_CHANGED")
           end,
         }
         order = order + 1

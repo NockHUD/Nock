@@ -148,5 +148,19 @@ ok(cat and cat.thresholds and cat.thresholds[1] and cat.thresholds[1].key == "qu
    "catalog exposes the threshold slider")
 ok(cat and cat.iconFn and cat.iconFn() ~= nil, "catalog iconFn never nil")
 
+--------------------------------------------------------------------------------
+-- 8. Warnings.GateDirs: the shirt-gate direction parser, pure (cached by the
+--    module; it used to concat + lower + gsub both macro bodies per refresh).
+--------------------------------------------------------------------------------
+local G = Warnings.GateDirs
+local sd, td = G("/use [noequipped:Shirt] Snowball\n/startattack", "/startattack [equipped:Shirt]")
+ok(sd == "off" and td == nil, "GateDirs: [noequipped:Shirt] -> shirt off, no tabard")
+sd, td = G("/use [equipped:Tabard] Snowball", "")
+ok(sd == nil and td == "on", "GateDirs: [equipped:Tabard] -> tabard on")
+sd, td = G("/use [noequipped: tabard] Snowball", "/cast [equipped:shirt] Raptor Strike")
+ok(sd == "on" and td == "off", "GateDirs: mixed garments, case and spacing tolerant")
+sd, td = G(nil, nil)
+ok(sd == nil and td == nil, "GateDirs: no bodies -> no gate")
+
 print(("quiver_warning_test: %d passed, %d failed"):format(pass, fail))
 if fail > 0 then os.exit(1) end

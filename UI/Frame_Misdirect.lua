@@ -206,8 +206,10 @@ end
 -- Layout math — single source of truth so tracker rows, divider, sub-header
 -- and (out-of-combat) tank rows all agree on their Y positions.
 -- ---------------------------------------------------------------------------
+local OFFSETS = {}   -- reused: this is computed every refresh
 local function layoutOffsets(trackerN, tankN, width, showHeader)
-  local o = { trackerN = trackerN, tankN = tankN, width = width }
+  local o = OFFSETS
+  o.trackerN, o.tankN, o.width = trackerN, tankN, width
   o.panelW = width + 2 * OUTER
 
   -- A hidden title (mdShowHeader off) gives its height back to the panel.
@@ -872,15 +874,23 @@ end
 -- ---------------------------------------------------------------------------
 -- Tracker sort (active first, then by CD, then recency, then name)
 -- ---------------------------------------------------------------------------
+-- One reused scratch list and a module-level comparator: this runs ten times
+-- a second for the whole raid night whenever another hunter is in the group.
+local SORTED = {}
+local function hunterLess(a, b)
+  if a.isActive ~= b.isActive then return a.isActive end
+  if (a.cdRemaining > 0) ~= (b.cdRemaining > 0) then return a.cdRemaining > 0 end
+  if (a.castTime or 0) ~= (b.castTime or 0) then return (a.castTime or 0) > (b.castTime or 0) end
+  return (a.name or "") < (b.name or "")
+end
 local function sortedHunters(hunters)
-  local list = {}
-  for _, h in pairs(hunters) do list[#list + 1] = h end
-  table.sort(list, function(a, b)
-    if a.isActive ~= b.isActive then return a.isActive end
-    if (a.cdRemaining > 0) ~= (b.cdRemaining > 0) then return a.cdRemaining > 0 end
-    if (a.castTime or 0) ~= (b.castTime or 0) then return (a.castTime or 0) > (b.castTime or 0) end
-    return (a.name or "") < (b.name or "")
-  end)
+  local list = SORTED
+  local n = 0
+  if hunters then
+    for _, h in pairs(hunters) do n = n + 1; list[n] = h end
+  end
+  for i = #list, n + 1, -1 do list[i] = nil end
+  table.sort(list, hunterLess)
   return list
 end
 
@@ -905,11 +915,11 @@ function MisdirectView:Refresh(state)
 
   local trackerOn = isTrackerEnabled()
   local hunters = trackerOn and state.misdirection and state.misdirection.hunters or nil
-  local hlist = hunters and sortedHunters(hunters) or {}
+  local hlist = sortedHunters(hunters)
   local trackerN = math.min(#hlist, MAX_TRACKER)
 
   local clickerOn = isClickerEnabled()
-  local tankN = clickerOn and math.min(#(self._tanks or {}), MAX_TANK) or 0
+  local tankN = clickerOn and self._tanks and math.min(#self._tanks, MAX_TANK) or 0
 
   -- The experimental sapper column changes the row anatomy. Catch it here as
   -- well as on NOCK_VISUALS_CHANGED so a profile switch can't leave the rows
@@ -970,10 +980,23 @@ function MisdirectView:Refresh(state)
         label = h.name
       end
       Nock.UI.SetBarFill(row.bar, fill)
-      row.bar.fill:SetVertexColor(unpack(tint))
-      row.bar.text:SetText(label)
-      row.bar.text:SetTextColor(unpack(color))
-      row.bar.timer:SetText((phase ~= "ready") and fmtCD(h.cdRemaining) or "")
+      if row._tint ~= tint then
+        row._tint = tint
+        row.bar.fill:SetVertexColor(tint[1], tint[2], tint[3], tint[4])
+      end
+      if row._label ~= label then
+        row._label = label
+        row.bar.text:SetText(label)
+      end
+      if row._color ~= color then
+        row._color = color
+        row.bar.text:SetTextColor(color[1], color[2], color[3], color[4])
+      end
+      local timer = (phase ~= "ready") and fmtCD(h.cdRemaining) or ""
+      if row._timer ~= timer then
+        row._timer = timer
+        row.bar.timer:SetText(timer)
+      end
       -- Charge count rides the icon only while active; h.charges is nil when
       -- the buff reports no count, and then nothing renders.
       local ch = (phase == "active") and h.charges or nil
@@ -1010,10 +1033,10 @@ function MisdirectView:Refresh(state)
   end
 
   -- Tank rows: reposition/re-wire only when the structural layout changes.
+  -- The signature is one number (no scratch table + string per refresh).
   self._trackerN = trackerN
-  local sig = table.concat(
-    { trackerN, tankN, width, isLocked() and 1 or 0, sapperOn and 1 or 0,
-      hdr and 1 or 0 }, ":")
+  local sig = trackerN + tankN * 100 + width * 10000
+    + (isLocked() and 1e8 or 0) + (sapperOn and 2e8 or 0) + (hdr and 4e8 or 0)
   if sig ~= self._sig then
     self._sig = sig
     self:ConfigureTankRows()

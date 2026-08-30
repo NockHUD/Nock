@@ -107,6 +107,8 @@ Nock.state = {
     duration  = 0,
     remaining = 0,
     active    = false,
+    probeStart    = 0,   -- raw API reading (Nock:ProbeGcd on SPELL_UPDATE_COOLDOWN)
+    probeDuration = 0,
   },
   cooldowns = {
     -- keyed by entry.key: { startTime, duration, remaining, ready, procActive, icon }

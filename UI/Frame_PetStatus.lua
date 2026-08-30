@@ -57,13 +57,13 @@ end
 
 -- Returns (expirationTime, duration) of the matching buff on the unit (or nil,
 -- nil if not found). Duration is needed to drive the radial cooldown swipe.
+-- Aura reads go through Core/AuraCache.lua (every read allocates ~1.9 KB on
+-- this client; this panel used to walk the pet and the player per refresh).
 local function unitBuffInfo(unit, name)
-  if not (UnitExists and UnitExists(unit) and UnitBuff) then return nil end
-  for i = 1, 40 do
-    local buffName, _, _, _, duration, expirationTime = UnitBuff(unit, i)
-    if not buffName then return nil end
-    if buffName == name then return expirationTime, duration end
-  end
+  local AC = Nock.AuraCache
+  if not (AC and name and UnitExists and UnitExists(unit)) then return nil end
+  local a = AC.ByName(unit, name)
+  if a and not a.isHarmful then return a.expirationTime, a.duration end
   return nil
 end
 
@@ -192,6 +192,44 @@ local function petGlue(panel)
   panel:SetPoint("BOTTOMRIGHT", Nock.parentFrame, "BOTTOMLEFT", 1, 0)
 end
 
+-- Scratch for Refresh: the active-slot list is reused (it was a fresh table
+-- per 10 Hz refresh for as long as a pet is out) and the slot helper is
+-- module-level rather than a closure per refresh.
+local ACTIVE = {}
+local _now = 0
+
+-- Drive a slot's cooldown swipe + fallback text together. Diff-guards
+-- SetCooldown so the animation doesn't re-start every tick, and the text so a
+-- string is only set when the shown value moves.
+local function applyBuffSlot(slot, list, expirationTime, duration)
+  local now = _now
+  if not (expirationTime and expirationTime > now) then
+    slot:Hide()
+    if slot.cooldown and (slot._lastCdStart or 0) ~= 0 then
+      slot.cooldown:Clear()
+      slot._lastCdStart = 0
+      slot._lastCdDur   = 0
+    end
+    return
+  end
+  local start = (duration and duration > 0) and (expirationTime - duration) or 0
+  if slot.cooldown and start > 0 and duration and duration > 0 then
+    if start ~= slot._lastCdStart or duration ~= slot._lastCdDur then
+      slot.cooldown:SetCooldown(start, duration)
+      slot._lastCdStart = start
+      slot._lastCdDur   = duration
+    end
+  end
+  if slot.text then
+    local txt = formatRemaining(expirationTime - now)
+    if txt ~= slot._lastText then
+      slot._lastText = txt
+      slot.text:SetText(txt)
+    end
+  end
+  list[#list + 1] = slot
+end
+
 function PetStatusView:Refresh(state)
   -- Position pass first, before any visibility early-out, so leaving free mode
   -- re-glues the panel even while it's hidden.
@@ -215,8 +253,10 @@ function PetStatusView:Refresh(state)
     return
   end
 
-  local active = {}
+  local active = ACTIVE
+  for i = #active, 1, -1 do active[i] = nil end
   local now    = GetTime()
+  _now = now
 
   -- Happiness — show only when below Happy. Update texcoord each tick because
   -- it can switch between Unhappy and Content. No timer text.
@@ -228,30 +268,6 @@ function PetStatusView:Refresh(state)
     active[#active + 1] = self.happiness
   else
     self.happiness:Hide()
-  end
-
-  -- Helper: drive a slot's cooldown swipe + fallback text together. Diff-
-  -- guards SetCooldown so the animation doesn't re-start every tick.
-  local function applyBuffSlot(slot, list, expirationTime, duration)
-    if not (expirationTime and expirationTime > now) then
-      slot:Hide()
-      if slot.cooldown and (slot._lastCdStart or 0) ~= 0 then
-        slot.cooldown:Clear()
-        slot._lastCdStart = 0
-        slot._lastCdDur   = 0
-      end
-      return
-    end
-    local start = (duration and duration > 0) and (expirationTime - duration) or 0
-    if slot.cooldown and start > 0 and duration and duration > 0 then
-      if start ~= slot._lastCdStart or duration ~= slot._lastCdDur then
-        slot.cooldown:SetCooldown(start, duration)
-        slot._lastCdStart = start
-        slot._lastCdDur   = duration
-      end
-    end
-    if slot.text then slot.text:SetText(formatRemaining(expirationTime - now)) end
-    list[#list + 1] = slot
   end
 
   -- React mode: Mend/Feed already render in the ReactBuffs utility row above

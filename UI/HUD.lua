@@ -15,8 +15,53 @@ function HUD:OnInitialize()
   self:RegisterMessage("NOCK_LOCK_CHANGED", "OnLockChanged")
   self:RegisterMessage("NOCK_POSITION_RESET", "ApplyPosition")
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "ApplyVisuals")
-  self:RegisterMessage("NOCK_COMBAT_CHANGED", "ApplyVisuals")
+  self:RegisterMessage("NOCK_COMBAT_CHANGED", "ApplyCombat")
   self:RegisterMessage("NOCK_PRACTICE_CHANGED", "ApplyVisuals")   -- hideOoc yields to practice
+  self:RegisterMessage("NOCK_HUD_RELAYOUT", "ApplyRowVisibility")  -- a row grew/shrank: re-stack only
+end
+
+-- The combat edge only moves two things: whether the box is hidden out of
+-- combat and which opacity applies. It used to run the whole ApplyVisuals --
+-- every registered font, bar texture, icon border and backdrop re-applied
+-- (RefreshMedia, ~400 fresh backdrop tables and a SetFont on every text)
+-- twice per pull. The shared tail below is what a combat flip needs.
+function HUD:ApplyCombat()
+  self:ApplyShown()
+end
+
+-- Master switch, hide-out-of-combat and opacity: the visibility tail of
+-- ApplyVisuals. Returns true when the box is shown.
+function HUD:ApplyShown()
+  local p = Nock.db.profile
+  -- Master switch. Checked before the preview override below: a user who has
+  -- turned the HUD off is meant to see it stay off, including in the wizard —
+  -- that absence IS the preview of their choice.
+  if p.hudEnabled == false then
+    self.frame:Hide()
+    return false
+  end
+
+  local inCombat = Nock.state.player.inCombat
+  -- demo.hudForceShow: the onboarding wizard previews the real HUD, so it must
+  -- stay on screen even for a user who normally hides it out of combat.
+  -- sim.active: practice mode drives the HUD out of combat by design (user,
+  -- 2026-08-27) — the practice tick re-applies visuals when it flips.
+  if Nock.HideOocApplies(p, inCombat, Nock.state) then
+    self.frame:Hide()
+    return false
+  end
+  self.frame:Show()
+
+  local alpha
+  if p.locked == false then
+    alpha = 1.0
+  elseif inCombat then
+    alpha = p.opacity or 1.0
+  else
+    alpha = p.opacityOoc or 1.0
+  end
+  self.frame:SetAlpha(alpha)
+  return true
 end
 
 function HUD:OnLockChanged()
@@ -100,35 +145,7 @@ function HUD:ApplyVisuals()
   self.frame:SetScale(p.scale or 1.0)
   if Nock.UI and Nock.UI.RefreshMedia then Nock.UI.RefreshMedia() end
   self:ApplyRowVisibility()
-
-  -- Master switch. Checked before the preview override below: a user who has
-  -- turned the HUD off is meant to see it stay off, including in the wizard —
-  -- that absence IS the preview of their choice.
-  if p.hudEnabled == false then
-    self.frame:Hide()
-    return
-  end
-
-  local inCombat = Nock.state.player.inCombat
-  -- demo.hudForceShow: the onboarding wizard previews the real HUD, so it must
-  -- stay on screen even for a user who normally hides it out of combat.
-  -- sim.active: practice mode drives the HUD out of combat by design (user,
-  -- 2026-08-27) — the practice tick re-applies visuals when it flips.
-  if Nock.HideOocApplies(p, inCombat, Nock.state) then
-    self.frame:Hide()
-    return
-  end
-  self.frame:Show()
-
-  local alpha
-  if p.locked == false then
-    alpha = 1.0
-  elseif inCombat then
-    alpha = p.opacity or 1.0
-  else
-    alpha = p.opacityOoc or 1.0
-  end
-  self.frame:SetAlpha(alpha)
+  if not self:ApplyShown() then return end
   self:ApplyBackground()
 end
 

@@ -60,11 +60,11 @@ local CD_KEY = {
 -- treated as not-a-real-cooldown and reported as (0, 0, 0).
 local function spellCdInfo(spellID)
   local start, duration
-  if C_Spell and C_Spell.GetSpellCooldown then
+  if GetSpellCooldown then
+    start, duration = GetSpellCooldown(spellID)
+  elseif C_Spell and C_Spell.GetSpellCooldown then
     local info = C_Spell.GetSpellCooldown(spellID)
     if info then start, duration = info.startTime, info.duration end
-  elseif GetSpellCooldown then
-    start, duration = GetSpellCooldown(spellID)
   end
   if not start or start == 0 then return 0, 0, 0 end
   if not duration or duration <= 1.5 then return 0, 0, 0 end
@@ -221,6 +221,9 @@ function RotationView:ApplyExternalCdAddon()
 end
 
 function RotationView:Refresh(state)
+  -- Hidden (React mode, bars mode, hideOoc, HUD off): nothing to paint. The
+  -- diffs below re-sync from the caches on the first visible tick.
+  if not self.frame:IsVisible() then return end
   for _, slot in ipairs(self.slots) do
     local kind = slot._def.kind
     if kind == "aspect" then
@@ -287,8 +290,16 @@ function RotationView:RefreshAbility(slot, state)
     if cd then
       cdStart, cdDuration, cdRemaining = cd.startTime or 0, cd.duration or 0, cd.remaining or 0
     end
-  elseif def.spellId == 27014 then  -- Raptor Strike (6s CD, not in TRACKED_COOLDOWNS)
-    cdStart, cdDuration, cdRemaining = spellCdInfo(27014)
+  elseif def.spellId == 27014 then
+    -- Raptor Strike: a tracked cooldown too (key "Raptor", trackedOnly), so
+    -- the same state read; the API probe (a table per rendered frame on this
+    -- client) is only the fallback for a state without the slot.
+    local cd = state.cooldowns and state.cooldowns.Raptor
+    if cd then
+      cdStart, cdDuration, cdRemaining = cd.startTime or 0, cd.duration or 0, cd.remaining or 0
+    else
+      cdStart, cdDuration, cdRemaining = spellCdInfo(27014)
+    end
   end
 
   if cdRemaining > 0 then

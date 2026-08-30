@@ -227,6 +227,8 @@ function CooldownsView:ApplyExternalCdAddon()
 end
 
 function CooldownsView:Refresh(state)
+  -- Hidden (React mode, showCooldowns off, hideOoc): nothing to paint.
+  if not self.frame:IsVisible() then return end
   for _, slot in ipairs(self.slots) do
     local entry = slot._entry
     if entry then

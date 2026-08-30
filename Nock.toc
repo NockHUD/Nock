@@ -12,6 +12,7 @@ embeds.xml
 Core\Core.lua
 Core\Constants.lua
 Core\State.lua
+Core\AuraCache.lua
 Core\WeaveMacro.lua
 Core\Minimap.lua
 Core\PracticeModel.lua

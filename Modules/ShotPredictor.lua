@@ -190,14 +190,12 @@ local function refreshRap()
     local base, pos, neg = UnitRangedAttackPower("player")
     rap = (base or 0) + (pos or 0) - (neg or 0)
   end
-  -- Hunter's Mark / Expose Weakness on the current target boost RAP.
-  if UnitExists and UnitExists("target") and UnitDebuff then
-    for i = 1, 40 do
-      local name = UnitDebuff("target", i)
-      if not name then break end
-      if name == "Hunter's Mark" then rap = rap + 110
-      elseif name == "Expose Weakness" then rap = rap + 300 end
-    end
+  -- Hunter's Mark / Expose Weakness on the current target boost RAP. Read off
+  -- the aura store (Core/AuraCache.lua): a 40-slot walk here cost ~80 KB.
+  local AC = Nock.AuraCache
+  if AC and UnitExists and UnitExists("target") then
+    if AC.ByName("target", "Hunter's Mark")   then rap = rap + 110 end
+    if AC.ByName("target", "Expose Weakness") then rap = rap + 300 end
   end
   S.rap = rap
 end
@@ -326,12 +324,17 @@ local function raptorCdRemaining()
   -- identical hook), so the melee weave lane follows the simulated cooldown.
   local o = Nock.state._raptorCdOverride
   if o ~= nil then return o end
+  -- Raptor is a tracked cooldown (key "Raptor"): the engine scans it on
+  -- SPELL_UPDATE_COOLDOWN and Core:Tick derives `remaining` -- no per-frame
+  -- API probe (C_Spell's form allocates a table per call).
+  local cd = Nock.state.cooldowns and Nock.state.cooldowns.Raptor
+  if cd then return cd.remaining or 0 end
   local start, duration
-  if C_Spell and C_Spell.GetSpellCooldown then
+  if GetSpellCooldown then
+    start, duration = GetSpellCooldown(C.SpellID.RAPTOR_STRIKE)
+  elseif C_Spell and C_Spell.GetSpellCooldown then
     local info = C_Spell.GetSpellCooldown(C.SpellID.RAPTOR_STRIKE)
     if info then start = info.startTime or 0; duration = info.duration or 0 end
-  elseif GetSpellCooldown then
-    start, duration = GetSpellCooldown(C.SpellID.RAPTOR_STRIKE)
   end
   if not start or start == 0 then return 0 end
   if not duration or duration <= 1.5 then return 0 end
@@ -597,24 +600,37 @@ function ShotPredictor:OnEnable()
   self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", "Recompute")
   self:RegisterEvent("UNIT_INVENTORY_CHANGED", "OnUnitEvent")
   self:RegisterEvent("UNIT_RANGEDDAMAGE", "OnUnitEvent")
-  self:RegisterEvent("PLAYER_TARGET_CHANGED", "Recompute")
-  self:RegisterEvent("UNIT_AURA", "OnAura")
+  self:RegisterEvent("PLAYER_TARGET_CHANGED", "OnTargetChanged")
+  if not (Nock.RegisterUnitEvent and Nock.RegisterUnitEvent("UNIT_AURA",
+       function(ev, unit) ShotPredictor:OnAura(ev, unit) end, "player", "target")) then
+    self:RegisterEvent("UNIT_AURA", "OnAura")
+  end
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "OnVisualsChanged")
   self._lastAura = 0
 end
 
+-- The damage model only feeds the shot bars: with bars off every recompute
+-- (a 40-slot target-debuff walk, weapon links, the haste ladder) is wasted --
+-- and UNIT_AURA saturates the throttle for a whole raid fight. The gate is
+-- checked at the event, not just in Refresh; switching bars ON recomputes
+-- through OnVisualsChanged.
 function ShotPredictor:OnUnitEvent(_, unit)
-  if unit == "player" then self:Recompute() end
+  if unit == "player" and barsMode() then self:Recompute() end
 end
 
 -- UNIT_AURA fires very often; throttle to one recompute per 100ms and only
 -- for player/target (HM, Expose Weakness, RAP buffs).
 function ShotPredictor:OnAura(_, unit)
   if unit ~= "player" and unit ~= "target" then return end
+  if not barsMode() then return end
   local now = GetTime()
   if now - (self._lastAura or 0) < 0.1 then return end
   self._lastAura = now
   self:Recompute()
+end
+
+function ShotPredictor:OnTargetChanged()
+  if barsMode() then self:Recompute() end
 end
 
 function ShotPredictor:OnVisualsChanged()

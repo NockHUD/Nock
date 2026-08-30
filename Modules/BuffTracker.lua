@@ -6,7 +6,7 @@
 -- Writes active/missing + remaining time into state.bufftracker.
 
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
-local BuffTracker = Nock:NewModule("BuffTracker")
+local BuffTracker = Nock:NewModule("BuffTracker", "AceEvent-3.0")
 
 local function spellIcon(id)
   if GetSpellInfo then
@@ -29,60 +29,39 @@ local function spellName(id)
   return nil
 end
 
--- One indexed pass over a unit's buffs, shared by every catalog entry below.
--- Each entry used to run its own full UnitBuff walk, so a 10-entry catalog
--- against a raid-buffed player cost ~300 UnitBuff calls per unit per refresh —
--- and scan depth grows with the raid's buff stack, which is why it detonated on
--- a boss pull. Scratch indices are module-level and cleared in place, never
--- reallocated (they hold buff indices, not tables).
-local _idxByName, _idxBySpell = {}, {}
+-- Aura reads go through Core/AuraCache.lua (every read allocates ~1.9 KB on
+-- this client): the store's lookups replace the per-unit index this module
+-- used to build with its own walk. "First applied wins" is the store's rule.
+local AC = Nock.AuraCache
 
-local function scanUnitBuffs(unit)
-  for k in pairs(_idxByName)  do _idxByName[k]  = nil end
-  for k in pairs(_idxBySpell) do _idxBySpell[k] = nil end
-  if not (UnitExists and UnitExists(unit) and UnitBuff) then return end
-  for i = 1, 40 do
-    local name, _, _, _, _, _, _, _, _, spellId = UnitBuff(unit, i)
-    if not name then break end
-    -- First occurrence wins, matching the old first-match-in-scan-order result.
-    if _idxByName[name] == nil then _idxByName[name] = i end
-    if spellId and _idxBySpell[spellId] == nil then _idxBySpell[spellId] = i end
-  end
-end
-
--- Index of the first buff matching the entry + whether to use that buff's own
--- icon. Name-matched preset entries keep falling back to the catalog's resolved
+-- The first buff matching the entry + whether to use that buff's own icon.
+-- Name-matched preset entries keep falling back to the catalog's resolved
 -- icon (rank-agnostic), exactly as before; spellId matches use the live icon.
-local function matchIndex(entry)
+local function matchRecord(unit, entry)
+  if not AC then return nil, false end
   if entry.matchSpellIds then
     for _, want in ipairs(entry.matchSpellIds) do
-      local i = _idxBySpell[want]
-      if i then return i, true end
+      local a = AC.BySpell(unit, want)
+      if a and not a.isHarmful then return a, true end
     end
   elseif entry.matchSpellId then
-    local i = _idxBySpell[entry.matchSpellId]
-    if i then return i, true end
+    local a = AC.BySpell(unit, entry.matchSpellId)
+    if a and not a.isHarmful then return a, true end
   elseif entry.names then
     for _, want in ipairs(entry.names) do
-      local i = _idxByName[want]
-      if i then return i, false end
+      local a = AC.ByName(unit, want)
+      if a and not a.isHarmful then return a, false end
     end
   end
   return nil, false
 end
 
--- Returns { icon, count, duration, exp } or nil — same shape as before.
--- Requires scanUnitBuffs(unit) to have run for this unit first.
+-- Returns found, icon, count, duration, exp -- values, not a table (a table
+-- per present buff per refresh was ~15 of them ten times a second).
 local function findBuffForEntry(unit, entry)
-  local idx, useIcon = matchIndex(entry)
-  if not idx then return nil end
-  local _, icon, count, _, duration, expirationTime = UnitBuff(unit, idx)
-  return {
-    icon           = useIcon and icon or nil,
-    count          = count or 0,
-    duration       = duration or 0,
-    expirationTime = expirationTime or 0,
-  }
+  local a, useIcon = matchRecord(unit, entry)
+  if not a then return false end
+  return true, useIcon and a.icon or nil, a.applications or 0, a.duration or 0, a.expirationTime or 0
 end
 
 local function isParseMode()
@@ -177,7 +156,15 @@ local function parseCustom(str)
   return out
 end
 
+-- The effective catalog only changes with the profile (an entry toggled, a
+-- custom id typed), so it is built once per side and dropped on
+-- NOCK_VISUALS_CHANGED -- not rebuilt (two lists, the custom parse and a
+-- GetSpellInfo per custom id) ten times a second.
+local _catalog = {}
+
 local function effectiveCatalog(which, catalog)
+  local cached = _catalog[which]
+  if cached then return cached end
   local p = Nock.db and Nock.db.profile
   local list = {}
   for _, entry in ipairs(catalog) do
@@ -189,29 +176,42 @@ local function effectiveCatalog(which, catalog)
   for _, e in ipairs(parseCustom(customStr)) do
     list[#list + 1] = e
   end
+  _catalog[which] = list
   return list
 end
 
+function BuffTracker:InvalidateCatalog()
+  _catalog.player, _catalog.pet = nil, nil
+end
+
+-- The published rows are reused in place: dest[i] keeps its table across
+-- refreshes and only the fields are rewritten; rows past the new count are
+-- dropped. The view reads fields, never identity.
 local function buildList(which, catalog, unit, dest, allowParse)
-  for k in pairs(dest) do dest[k] = nil end
-  scanUnitBuffs(unit)   -- one pass; every entry below matches against the index
+  local n = 0
+  if not (UnitExists and UnitExists(unit)) then
+    for i = #dest, 1, -1 do dest[i] = nil end
+    return
+  end
   for _, entry in ipairs(effectiveCatalog(which, catalog)) do
     if entry.parseOnly and not allowParse then
       -- skip parse-only entry when parse mode is off
     else
-      local info = findBuffForEntry(unit, entry)
-      dest[#dest + 1] = {
-        key            = entry.key,
-        label          = entry.label or entry.key,
-        selfApplied    = entry.selfApplied and true or false,
-        icon           = (info and info.icon) or resolveIcon(entry),
-        present        = info ~= nil,
-        count          = info and info.count or 0,
-        duration       = info and info.duration or 0,
-        expirationTime = info and info.expirationTime or 0,
-      }
+      local found, icon, count, duration, exp = findBuffForEntry(unit, entry)
+      n = n + 1
+      local r = dest[n]
+      if not r then r = {}; dest[n] = r end
+      r.key            = entry.key
+      r.label          = entry.label or entry.key
+      r.selfApplied    = entry.selfApplied and true or false
+      r.icon           = icon or resolveIcon(entry)
+      r.present        = found
+      r.count          = found and count or 0
+      r.duration       = found and duration or 0
+      r.expirationTime = found and exp or 0
     end
   end
+  for i = #dest, n + 1, -1 do dest[i] = nil end
 end
 
 -- Slow lane (Core:Tick): the rebuild below is O(entries x buff-depth) and ran
@@ -219,9 +219,28 @@ end
 -- the view diffs against state.bufftracker, so nothing flickers.
 BuffTracker.refreshInterval = 0.1
 
+local function trackerEnabled()
+  local p = Nock.db and Nock.db.profile
+  return not (p and p.buffTrackerEnabled == false)
+end
+
+function BuffTracker:OnEnable()
+  if self.RegisterMessage then
+    self:RegisterMessage("NOCK_VISUALS_CHANGED", "InvalidateCatalog")
+  end
+end
+
 function BuffTracker:Refresh(state)
   state.bufftracker = state.bufftracker or { player = {}, pet = {} }
+  local bt = state.bufftracker
+  -- Off (the shipped default): nothing is scanned or built. The view hides on
+  -- the flag and on an empty list alike.
+  if not trackerEnabled() then
+    if bt.player[1] then for i = #bt.player, 1, -1 do bt.player[i] = nil end end
+    if bt.pet[1]    then for i = #bt.pet,    1, -1 do bt.pet[i]    = nil end end
+    return
+  end
   local parse = isParseMode()
-  buildList("player", BuffTracker.PlayerCatalog, "player", state.bufftracker.player, parse)
-  buildList("pet",    BuffTracker.PetCatalog,    "pet",    state.bufftracker.pet,    parse)
+  buildList("player", BuffTracker.PlayerCatalog, "player", bt.player, parse)
+  buildList("pet",    BuffTracker.PetCatalog,    "pet",    bt.pet,    parse)
 end

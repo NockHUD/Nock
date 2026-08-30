@@ -292,6 +292,35 @@ function SwingTimers:ApplyLayout()
   self._fillRevGcd    = nil
 end
 
+-- Place a clip tick at the moving edge's position when remaining == threshold.
+-- Module-level (it was a closure built inside PositionTicks every rendered
+-- frame): the edge value at that moment is (sd-threshold)/sd when filling
+-- (elapsed) or threshold/sd when draining (remaining); a right-anchored bar
+-- mirrors it (1-v). x is always measured from the bar's LEFT, so this covers
+-- all four modes.
+local EMPTY = {}
+local function placeTick(bar, tick, threshold, devWidth, sd, isFill, reverse, ps)
+  if threshold <= 0 then
+    tick:Hide()
+    return
+  end
+  -- A threshold past the whole swing means the cast never fits this cycle.
+  -- Pin it to the cycle start rather than hiding: a missing tick reads as
+  -- "no clip risk", which is the opposite of what's true. Reachable at high
+  -- haste now that the wind-up is part of the threshold.
+  if threshold > sd then threshold = sd end
+  local v = isFill and ((sd - threshold) / sd) or (threshold / sd)
+  local frac = reverse and (1 - v) or v
+  -- Snapped to whole device pixels: an unsnapped centre splits the quad
+  -- across two columns at half brightness, so the tick renders dimmer and
+  -- narrower than its configured width and changes character whenever the
+  -- threshold moves (haste, latency, a measured wind-up replacing the seed).
+  local x = Nock.UI.PixelSnapCenter(frac * bar.maxWidth + 1, ps, devWidth)
+  tick:ClearAllPoints()
+  tick:SetPoint("CENTER", bar, "LEFT", x, 0)
+  tick:Show()
+end
+
 function SwingTimers:PositionTicks(state)
   local bar = self.ranged
   local sd = state.ranged.swingDuration
@@ -316,30 +345,9 @@ function SwingTimers:PositionTicks(state)
   -- off the fill edge whenever the ranged bar overrides it.
   local isFill, reverse = fillMode("swingFillDirectionRanged")
   local ps   = self._pixelScale
-  local devW = self._tickDevW or {}
-  local function place(tick, threshold, wKey)
-    if threshold <= 0 then
-      tick:Hide()
-      return
-    end
-    -- A threshold past the whole swing means the cast never fits this cycle.
-    -- Pin it to the cycle start rather than hiding: a missing tick reads as
-    -- "no clip risk", which is the opposite of what's true. Reachable at high
-    -- haste now that the wind-up is part of the threshold.
-    if threshold > sd then threshold = sd end
-    local v = isFill and ((sd - threshold) / sd) or (threshold / sd)
-    local frac = reverse and (1 - v) or v
-    -- Snapped to whole device pixels: an unsnapped centre splits the quad
-    -- across two columns at half brightness, so the tick renders dimmer and
-    -- narrower than its configured width and changes character whenever the
-    -- threshold moves (haste, latency, a measured wind-up replacing the seed).
-    local x = Nock.UI.PixelSnapCenter(frac * bar.maxWidth + 1, ps, devW[wKey])
-    tick:ClearAllPoints()
-    tick:SetPoint("CENTER", bar, "LEFT", x, 0)
-    tick:Show()
-  end
-  place(bar.tickSteady, steadyClip, "clipTickSteadyWidth")
-  place(bar.tickMulti,  multiClip,  "clipTickMultiWidth")
+  local devW = self._tickDevW or EMPTY
+  placeTick(bar, bar.tickSteady, steadyClip, devW.clipTickSteadyWidth, sd, isFill, reverse, ps)
+  placeTick(bar, bar.tickMulti,  multiClip,  devW.clipTickMultiWidth,  sd, isFill, reverse, ps)
   -- The moment the next Auto Shot commits: its wind-up begins here, not at the
   -- bar's 100%. Without this landmark the Auto Shot cast bar looks like it fires
   -- "early" — it doesn't, the bar just runs one wind-up past the commit point.
@@ -348,7 +356,8 @@ function SwingTimers:PositionTicks(state)
   if Nock.db and Nock.db.profile and Nock.db.profile.showWindupMark == false then
     bar.tickWindup:Hide()
   else
-    place(bar.tickWindup, state.ranged.windup or C.AUTO_SHOT_CAST, "clipTickWindupWidth")
+    placeTick(bar, bar.tickWindup, state.ranged.windup or C.AUTO_SHOT_CAST,
+              devW.clipTickWindupWidth, sd, isFill, reverse, ps)
   end
 end
 

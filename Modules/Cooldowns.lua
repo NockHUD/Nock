@@ -3,11 +3,15 @@
 -- and proc auras → mutates Nock.state.cooldowns.
 
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
-local Cooldowns = Nock:NewModule("Cooldowns", "AceEvent-3.0", "AceTimer-3.0")
+local Cooldowns = Nock:NewModule("Cooldowns", "AceEvent-3.0")
 local C = Nock.Constants
 
-local AURA_THROTTLE = 0.1
 local GCD_TOLERANCE = 1.5
+
+-- The aura scan runs on the tick's slow lane off a dirty flag UNIT_AURA sets
+-- (the same 10 Hz the old ScheduleTimer gave, minus a closure + timer object
+-- per window). Cooldown scans stay event-driven (SPELL_UPDATE_COOLDOWN).
+Cooldowns.refreshInterval = 0.1
 
 -- IsUsableSpell for the entries whose "proc" IS usability (Kill Command:
 -- the reference WA glows it on spellUsable AND not onCooldown; the proc aura
@@ -35,12 +39,15 @@ local function setProc(entry, s, active)
   end
 end
 
+-- Bare GetSpellCooldown first: it returns values, where C_Spell's form
+-- returns a table per call -- 14 of them per SPELL_UPDATE_COOLDOWN, which
+-- fires on every cast in a raid.
 local function getSpellCD(spellID)
+  if GetSpellCooldown then return GetSpellCooldown(spellID) end
   if C_Spell and C_Spell.GetSpellCooldown then
     local info = C_Spell.GetSpellCooldown(spellID)
     if info then return info.startTime, info.duration end
   end
-  if GetSpellCooldown then return GetSpellCooldown(spellID) end
   return 0, 0
 end
 
@@ -245,27 +252,9 @@ local function resolveIcon(entry)
   return nil
 end
 
-local function iterateBuffs(unit, callback)
-  if C_UnitAuras and C_UnitAuras.GetBuffDataByIndex then
-    local i = 1
-    while true do
-      local data = C_UnitAuras.GetBuffDataByIndex(unit, i)
-      if not data then break end
-      callback(data.name, data.spellId, data.expirationTime, data.duration, data.icon)
-      i = i + 1
-    end
-    return
-  end
-  if UnitBuff then
-    local i = 1
-    while true do
-      local name, icon, _, _, duration, expirationTime, _, _, _, spellId = UnitBuff(unit, i)
-      if not name then break end
-      callback(name, spellId, expirationTime, duration, icon)
-      i = i + 1
-    end
-  end
-end
+-- Aura reads go through Core/AuraCache.lua (every read allocates ~1.9 KB on
+-- this client; the store is fed incrementally by UNIT_AURA).
+local AC = Nock.AuraCache
 
 ----------------------------------------------------------------------------
 -- Shared list builder. The grid is profile-configurable, but several systems
@@ -441,7 +430,7 @@ function Cooldowns:OnEnable()
   pcall(self.RegisterEvent, self, "UNIT_HEALTH")
   self:RegisterEvent("BAG_UPDATE_COOLDOWN")
   self:RegisterEvent("BAG_UPDATE_DELAYED")
-  self:RegisterEvent("UNIT_AURA")
+  -- No UNIT_AURA here: the aura cache listens; Refresh reads its revision.
   self:RegisterEvent("PLAYER_TALENT_UPDATE")
   self:RegisterEvent("CHARACTER_POINTS_CHANGED")
   self:RegisterEvent("SPELLS_CHANGED")
@@ -506,14 +495,14 @@ function Cooldowns:BAG_UPDATE_DELAYED()
   self:ScanCooldowns()
 end
 
-function Cooldowns:UNIT_AURA(event, unit)
-  if unit ~= "player" then return end
-  if self._auraScheduled then return end
-  self._auraScheduled = true
-  self:ScheduleTimer(function()
-    self._auraScheduled = false
-    self:ScanAuras()
-  end, AURA_THROTTLE)
+-- Slow lane: one aura scan whenever the cache's player revision moved (an
+-- aura came, went or changed); a clean tick is one compare.
+function Cooldowns:Refresh()
+  if not AC then return end
+  local rev = AC.Rev("player")
+  if rev == self._auraRev then return end
+  self._auraRev = rev
+  self:ScanAuras()
 end
 
 -- Re-resolve the per-slot facts that only change when gear/bags/talents do:
@@ -567,6 +556,9 @@ local SIM_OWNED = { MS = true, Arc = true, Raptor = true,
                     Drums = true, Haste = true, KC = true }
 
 function Cooldowns:ScanCooldowns()
+  local prof = Nock._prof
+  local t0, k0
+  if prof then t0, k0 = prof:Mark() end
   local now = GetTime()
   for _, entry in ipairs(self:GetTracked()) do
     local s = Nock.state.cooldowns[entry.key]
@@ -584,24 +576,20 @@ function Cooldowns:ScanCooldowns()
       elseif entry.type == "inventory" then
         start, duration = GetInventoryItemCooldown("player", entry.slot)
         s.count = nil
-      elseif entry.type == "specSpell" then
-        local id = resolveSpecSpell(entry)
+      elseif entry.type == "specSpell" or entry.type == "raceSpell" then
+        local id = (entry.type == "specSpell") and resolveSpecSpell(entry) or resolveRaceSpell(entry)
         if id then
-          s.icon = getSpellIcon(id)
+          -- The icon only moves with the id (respec / never for a race), so
+          -- it is re-resolved on that edge, not on every cooldown event.
+          if s._iconForId ~= id or not s.icon then
+            s.icon = getSpellIcon(id)
+            s._iconForId = id
+          end
           s.spellId = id
           start, duration = getSpellCD(id)
         else
           s.icon = nil
-        end
-        s.count = nil
-      elseif entry.type == "raceSpell" then
-        local id = resolveRaceSpell(entry)
-        if id then
-          s.icon = getSpellIcon(id)
-          s.spellId = id
-          start, duration = getSpellCD(id)
-        else
-          s.icon = nil
+          s._iconForId = nil
         end
         s.count = nil
       elseif entry.type == "altItem" then
@@ -620,6 +608,7 @@ function Cooldowns:ScanCooldowns()
     end
   end
   self:ScanUsable()
+  if prof then prof:Done("Cooldowns.cdscan", t0, k0) end
 end
 
 local function buffForItemId(itemId)
@@ -628,19 +617,33 @@ local function buffForItemId(itemId)
   return map and map[itemId] or nil
 end
 
+-- Scan scratch: three flat maps keyed by spell id (no table per buff -- the
+-- old { expirationTime, duration, icon } record per buff per scan was ~30
+-- tables ten times a second in a raid) and a module-level callback (no
+-- closure per scan).
+local _active, _buffExp, _buffDur, _buffIcon = {}, {}, {}, {}
+
+local function onPlayerAura(a)
+  local spellId = a.spellId
+  if spellId and not a.isHarmful and not _active[spellId] then
+    _active[spellId]   = true
+    _buffExp[spellId]  = a.expirationTime
+    _buffDur[spellId]  = a.duration
+    _buffIcon[spellId] = a.icon
+  end
+end
+
 function Cooldowns:ScanAuras()
-  local active = self._activeBuffs or {}
-  local data   = self._buffData    or {}
-  for k in pairs(active) do active[k] = nil end
-  for k in pairs(data)   do data[k]   = nil end
-  iterateBuffs("player", function(_, spellId, expirationTime, duration, icon)
-    if spellId then
-      active[spellId] = true
-      data[spellId] = { expirationTime = expirationTime, duration = duration, icon = icon }
-    end
-  end)
+  local prof = Nock._prof
+  local t0, k0
+  if prof then t0, k0 = prof:Mark() end
+  local active = _active
+  for k in pairs(active)    do active[k]    = nil end
+  for k in pairs(_buffExp)  do _buffExp[k]  = nil end
+  for k in pairs(_buffDur)  do _buffDur[k]  = nil end
+  for k in pairs(_buffIcon) do _buffIcon[k] = nil end
+  if AC then AC.ForEach("player", onPlayerAura) end
   self._activeBuffs = active
-  self._buffData    = data
 
   for _, entry in ipairs(self:GetTracked()) do
     local s = Nock.state.cooldowns[entry.key]
@@ -670,12 +673,11 @@ function Cooldowns:ScanAuras()
       local isActive = buffId and (active[buffId] == true)
       setProc(entry, s, isActive)
 
-      if isActive and data[buffId] then
-        local d = data[buffId]
-        s.buffIcon     = d.icon
-        s.buffDuration = d.duration or 0
-        s.buffStartTime = (d.expirationTime and d.duration and d.duration > 0)
-                           and (d.expirationTime - d.duration) or 0
+      if isActive then
+        local exp, dur = _buffExp[buffId], _buffDur[buffId]
+        s.buffIcon     = _buffIcon[buffId]
+        s.buffDuration = dur or 0
+        s.buffStartTime = (exp and dur and dur > 0) and (exp - dur) or 0
       else
         s.buffIcon      = nil
         s.buffDuration  = 0
@@ -684,6 +686,7 @@ function Cooldowns:ScanAuras()
       end
     end
   end
+  if prof then prof:Done("Cooldowns.aurascan", t0, k0) end
 end
 
 -- procActive for the usability-driven entries: usable AND off cooldown
