@@ -2,6 +2,31 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
+## 1.1.4
+
+- **Raid memory fixed.** Nock could climb to ~100 MB in a 25-man (Black
+  Temple report — thank you!). The cause: on this client every aura read
+  allocates ~2 KB whatever the API, and a dozen modules were walking your
+  buffs, your pet's and the boss's debuffs ten times a second. Auras now
+  live in one shared store that updates only when something actually
+  changes, and every module reads it — measured idle churn dropped ~40x
+  and a full raid night sits at a few MB instead of a hundred.
+- **Less busywork everywhere.** Cooldown probes that allocated every frame
+  are event-driven or read from tracked state; the buff/debuff trackers do
+  nothing while switched off; the pre-pull Helpers panel and several
+  warning checks stopped re-scanning things that hadn't changed; entering
+  or leaving combat no longer re-applies every font and texture.
+- **A performance panel.** `/nock profile show` (or Options → General →
+  *Performance panel*): a small draggable readout of all addons' vs Nock's
+  CPU and memory, with a **Capture** button that records what Nock spends
+  and allocates per module for up to 60 s and opens the report in a
+  copyable window. `/nock profile cpu on` (plus a `/reload`) enables the
+  client's per-addon CPU accounting for the CPU cells.
+- **Credit where due:** the Movement Pad backpedal and shirt/tabard
+  swapping techniques that Weave Bind implements were discovered by
+  **Joosy** of the Hunter Discord (Joosiest @ Dreamscythe) — now credited
+  in the Weave Bind panel and ATTRIBUTION.md.
+
 ## 1.1.3
 
 - **Edit-mode grid.** `/nock unlock` now draws a raster behind every frame
