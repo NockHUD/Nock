@@ -3074,6 +3074,12 @@ local function buildOptionsTable()
               .. "|cffffd200Key edges|r — both fire natively via the |cffffd200useOnKeyDown|r attribute, so the macros need no |cffffd200/console|r lines and your other action bars are unaffected while the key is held. Old |cffffd200/console ActionButtonUseKeyDown|r lines keep working, and Nock restores the CVar if a release is ever swallowed.\n\n"
               .. "|cffffd200Coach|r — while the bind is enabled the Range Finder bar walks you through the cycle: green |cff00ff66GO IN|r (window open), amber |cffffa500HOLD|r (waiting for the hit), blue |cff4da6ffBACK OUT|r (hit landed — move out but KEEP HOLDING), cyan |cff00e6e6RELEASE|r (Auto Shot is in range — let go). Releasing during BACK OUT is the classic mistake: the release macro's !Auto Shot fails with 'target too close' and you stand there doing nothing.\n",
           },
+          howCredit = {
+            type = "description",
+            order = 51.5,   -- directly under the "How it works" header, above the intro
+            fontSize = "medium",
+            name = "|cff909090The technique this implements — the |cffffd200Movement Pad|r|cff909090 backpedal and the |cffffd200shirt/tabard swapping|r|cff909090 gates — was discovered by |cffffd200Joosy|r|cff909090 from the Hunter Discord (Joosiest @ Dreamscythe).|r\n",
+          },
           -- The whole "Weave coach" section is withdrawn from the GUI: the header
           -- and the five sound-cue entries all carry `hidden`, and the coach's own
           -- explanation moved up into "How it works" (it documents the Range Finder

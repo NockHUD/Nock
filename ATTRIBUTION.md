@@ -22,6 +22,9 @@ the people and projects whose ideas, techniques and components it builds on.
 
 ## Credits
 
+- **Joosy** (Hunter Discord; Joosiest @ Dreamscythe) — discovered the
+  Movement Pad backpedal and shirt/tabard-swapping techniques that Nock's
+  Weave Bind implements.
 - **Big Chungus** (Classic Hunter Discord) — for working out that the Steam Tonk
   transform is exited by dismissing the charmed creature (`PetDismiss`) rather
   than by cancelling the aura, which is what makes Nock's Steam Tonk guard work
