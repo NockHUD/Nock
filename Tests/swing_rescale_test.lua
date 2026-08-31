@@ -99,5 +99,34 @@ ok(Nock.AutoShotCastEnd(103, 102.6, 102.5, 102.7) == 103,  "bar end: release bef
 ok(Nock.AutoShotCastEnd(103, 102.6, nil, 102.7) == 103,    "bar end: nil release keeps current")
 ok(Nock.AutoShotCastEnd(103, 102.6, 103, 102.7) == 103,    "bar end: unchanged release keeps current")
 
+-- ---------------------------------------------------------------------------
+-- 9. The wind-up span floor (the 1.1.5 weave regression: "insta 100% into
+-- fade"). The wind-up always runs its full haste-scaled length from its
+-- CAST_START; a predicted release closer than ~that is a stale grid (weave
+-- re-arm held to the next grid tick, delayed shot, a reanchored prediction a
+-- few ms ahead) — never a faster shot. Nock.AutoShotWindupEnd is the ONE
+-- definition of the bar's end at CAST_START: the release anchor when
+-- plausible, else now + windup.
+ok(Nock.WINDUP_SPAN_FLOOR == 0.75, "span floor constant published")
+ok(Nock.AutoShotWindupEnd(100.365, 100, 0.365) == 100.365,
+   "windup end: on-time wind-up keeps the release anchor")
+ok(Nock.AutoShotWindupEnd(100.30, 100, 0.365) == 100.30,
+   "windup end: an anchor within the floor keeps its precision")
+ok(near(Nock.AutoShotWindupEnd(100.005, 100, 0.365), 100.365),
+   "windup end: a razor-thin anchor (held re-arm) falls back to the full wind-up")
+ok(near(Nock.AutoShotWindupEnd(99.8, 100, 0.365), 100.365),
+   "windup end: an overdue release falls back to the full wind-up")
+ok(near(Nock.AutoShotWindupEnd(nil, 100, 0.365), 100.365),
+   "windup end: no grid tracked falls back to the full wind-up")
+
+-- The Refresh re-pin honors the same floor: a live release that would shrink
+-- the bar below the wind-up's physical length is a stale grid, keep the bar.
+ok(Nock.AutoShotCastEnd(100.365, 100, 100.05, 100.02, 0.365) == 100.365,
+   "bar end: a re-pin below the span floor is refused")
+ok(Nock.AutoShotCastEnd(100.365, 100, 100.32, 100.02, 0.365) == 100.32,
+   "bar end: a re-pin above the span floor is adopted")
+ok(Nock.AutoShotCastEnd(103, 102.6, 102.9, 102.7) == 102.9,
+   "bar end: nil windup keeps the old semantics")
+
 print(string.format("swing_rescale_test: %d passed, %d failed", pass, fail))
 if fail > 0 then os.exit(1) end

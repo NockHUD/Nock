@@ -91,6 +91,7 @@ local function applyFromUnitCastingInfo(out, wantSpellId)
   out.startTime = startTime / 1000
   out.endTime = endTime / 1000
   out.isChannel = false
+  out._recheck = nil
   return true
 end
 
@@ -116,14 +117,19 @@ local function applyManual(out, spellId, spellName)
     -- (measured). So predict the release and let the bar run to it — the bar
     -- reaches 0.0 as the arrow leaves, which is the timing the player wants.
     local r = Nock.state.ranged
+    local release
     if r.swingStart > 0 and r.swingDuration > 0 then
-      endTime = r.swingStart + r.swingDuration
+      release = r.swingStart + r.swingDuration
     end
-    -- Cold start (first shot of a session, or a delayed shot whose predicted
-    -- release has already passed): fall back to the measured wind-up.
-    if not endTime or endTime <= now then
-      endTime = now + (r.windup or Nock.Constants.AUTO_SHOT_CAST)
-    end
+    -- Anchor to the release only when it is plausible: a weave re-arm is held
+    -- to the client's grid tick, so its CAST_START fires with the predicted
+    -- release just ms ahead — anchoring there births the bar at 100% (the
+    -- 1.1.5 weave report). The wind-up always runs its full haste-scaled
+    -- length from its start, so anything shorter falls back to the
+    -- measurement. One definition, shared with Refresh's re-pin.
+    local w = r.windup
+    if not w or w <= 0 then w = Nock.Constants.AUTO_SHOT_CAST end
+    endTime = Nock.AutoShotWindupEnd(release, now, w)
   else
     if not castTime or castTime <= 0 then return false end
     -- No quiver term: the quiver speeds up the auto-shot SWING (already captured
@@ -142,6 +148,7 @@ local function applyManual(out, spellId, spellName)
   out.startTime = now
   out.endTime = endTime
   out.isChannel = false
+  out._recheck = nil
   return true
 end
 
@@ -158,6 +165,14 @@ local function stillCasting(c)
   if not name or spellId ~= c.spellId then return false end
   c.startTime = startTime / 1000
   c.endTime = endTime / 1000
+  -- The read above cannot tell a failed re-press from a genuine cancel whose
+  -- client state hasn't updated yet: CLEU is same-frame on this client, and a
+  -- movement-cancel (the weave step-in) can log SPELL_CAST_FAILED before
+  -- UnitCastingInfo drops the cast — the swallowed clear then left a dead
+  -- record masking the wind-up bar for its remaining time (1.1.5 report: "the
+  -- cast bar doesn't show after weaves"). Mark the record so Refresh
+  -- re-verifies on the next tick, when the two cases have separated.
+  c._recheck = true
   return true
 end
 
@@ -344,6 +359,7 @@ function CastBar:UNIT_SPELLCAST_CHANNEL_START(event, unit)
   info.startTime = startTime / 1000
   info.endTime = endTime / 1000
   info.isChannel = true
+  info._recheck = nil
   Nock.state.player.casting = info
 end
 
@@ -377,6 +393,18 @@ function CastBar:Refresh(state)
     c = nil
   end
 
+  -- A swallowed FAILED/STOP (see stillCasting) is re-verified here, a tick
+  -- later: a spam press still reports the cast (kept, times resynced); a
+  -- genuine cancel has dropped UnitCastingInfo by now (bar cleared). This is
+  -- what removes the same-frame ordering assumption — the event handler only
+  -- ever defers the decision, it never makes it alone.
+  if c and c._recheck and not Nock.state.sim.active then
+    if not stillCasting(c) then
+      state.player.casting = nil
+      c = nil
+    end
+  end
+
   -- Same safety net for the wind-up. Its normal teardown is the CLEU
   -- SPELL_CAST_SUCCESS for spell 75 (confirmed to fire on this client), but a
   -- cancelled shot — stepping out of range, losing the target — has no such
@@ -390,7 +418,8 @@ function CastBar:Refresh(state)
     -- practice — the sim owns its own cast record.
     local r = state.ranged
     if r.swingStart > 0 and r.swingDuration > 0 then
-      a.endTime = Nock.AutoShotCastEnd(a.endTime, a.startTime, r.swingStart + r.swingDuration, now)
+      a.endTime = Nock.AutoShotCastEnd(a.endTime, a.startTime,
+                                       r.swingStart + r.swingDuration, now, r.windup)
     end
   end
   if a and now > a.endTime + 0.5 then

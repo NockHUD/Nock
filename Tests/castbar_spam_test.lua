@@ -141,5 +141,88 @@ cleu("SPELL_CAST_FAILED", 1978)  -- Serpent Sting pressed too early
 ok(state.player.casting and state.player.casting.spellId == STEADY,
    "FAILED for another spell leaves the bar alone")
 
+--------------------------------------------------------------------------------
+-- 5. The weave regression (1.1.5 report: "the cast bar doesn't show after
+--    weaves"). A movement-cancel's CLEU SPELL_CAST_FAILED can land in the SAME
+--    FRAME, BEFORE UnitCastingInfo drops the cast — the swallow guard then
+--    keeps a dead record in state.player.casting, and CastBarSource lets it
+--    mask the Auto Shot wind-up for its remaining time + 0.5s. The event may
+--    be swallowed on its own frame, but the next tick's Refresh must notice
+--    the cast is gone and take the bar down.
+--------------------------------------------------------------------------------
+now = 600
+castingInfo = { name = "Steady Shot", spellId = STEADY, startMs = 600000, endMs = 601500 }
+cleu("SPELL_CAST_START", STEADY)
+now = 600.4
+cleu("SPELL_CAST_FAILED", STEADY)    -- step-in cancel; client state not yet updated
+ok(state.player.casting ~= nil, "same-frame cancel: the event itself is swallowed")
+castingInfo = nil                    -- ...and one frame later the client agrees it's gone
+now = 600.43
+CB:Refresh(state)
+ok(state.player.casting == nil,
+   "a swallowed genuine cancel is cleared on the next tick (weave regression)")
+
+-- The spam press survives the recheck: the cast is still live next tick.
+now = 700
+castingInfo = { name = "Steady Shot", spellId = STEADY, startMs = 700000, endMs = 701500 }
+cleu("SPELL_CAST_START", STEADY)
+now = 700.5
+cleu("SPELL_CAST_FAILED", STEADY)    -- failed re-press; cast keeps running
+now = 700.53
+CB:Refresh(state)
+ok(state.player.casting ~= nil and state.player.casting.spellId == STEADY,
+   "a spam press still keeps the bar through the next-tick recheck")
+castingInfo = nil
+cleu("SPELL_CAST_FAILED", STEADY)
+
+-- Same race on the mount (UNIT_SPELLCAST) path.
+now = 800
+castingInfo = { name = "Swift Tiger", spellId = MOUNT, startMs = 800000, endMs = 803000 }
+CB:UNIT_SPELLCAST_START("UNIT_SPELLCAST_START", "player")
+now = 800.4
+CB:UNIT_SPELLCAST_INTERRUPTED("UNIT_SPELLCAST_INTERRUPTED", "player")
+castingInfo = nil
+now = 800.43
+CB:Refresh(state)
+ok(state.player.casting == nil,
+   "a swallowed mount cancel is cleared on the next tick")
+
+--------------------------------------------------------------------------------
+-- 6. Wind-up span floor (the "insta 100% into fade" weave report). A weave
+--    re-arm is held to the client's grid tick, so its CAST_START(75) fires
+--    with the predicted release (swingStart + swingDuration) only a few ms
+--    ahead — the release-anchored record then spans ~0 and the bar is born
+--    full. The wind-up always runs its full haste-scaled length from its
+--    start, so the record must span at least ~the measured wind-up.
+--------------------------------------------------------------------------------
+local AUTO = addon.Constants.SpellID.AUTO_SHOT
+now = 900
+state.ranged.swingStart = 900.05 - 2.174   -- predicted release 50ms ahead
+state.ranged.swingDuration = 2.174
+state.ranged.windup = 0.365
+cleu("SPELL_CAST_START", AUTO)
+local a = state.player.autoShotCast
+ok(a ~= nil, "wind-up CAST_START raises the wind-up record")
+ok(a and (a.endTime - a.startTime) > 0.3,
+   "a razor-thin release anchor still spans the measured wind-up (weave re-arm)")
+
+-- An on-time wind-up keeps the release anchor's precision.
+now = 910
+state.ranged.swingStart = 910.360 - 2.174  -- release 360ms ahead == the wind-up
+cleu("SPELL_CAST_START", AUTO)
+a = state.player.autoShotCast
+ok(a and math.abs(a.endTime - 910.360) < 1e-6,
+   "an on-time wind-up still anchors to the predicted release")
+
+-- The Refresh re-pin must not shrink a healthy bar into the floor either.
+now = 910.1
+state.ranged.swingStart = 910.15 - 2.174   -- grid drifted: release now 50ms ahead
+CB:Refresh(state)
+a = state.player.autoShotCast
+ok(a and (a.endTime - a.startTime) > 0.3,
+   "the per-tick re-pin refuses a release that would shrink the bar below the wind-up")
+state.player.autoShotCast = nil
+state.ranged.swingStart, state.ranged.swingDuration, state.ranged.windup = 0, 0, 0
+
 print(string.format("castbar_spam_test: %d passed, %d failed", pass, fail))
 if fail > 0 then os.exit(1) end

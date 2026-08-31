@@ -613,8 +613,34 @@ end
 -- live release whenever it is still a sane target: ahead of now (a grid stuck
 -- in the past means the shot is delayed — keep the seeded end) and after the
 -- bar's own start. Pure; returns the end time to draw against.
-function Nock.AutoShotCastEnd(curEnd, startTime, release, now)
-  if release and release > now and release > startTime then return release end
+-- The wind-up always runs its full haste-scaled length from its CAST_START
+-- (locked-shot gate round 3: an edge landing once the wind-up has begun is
+-- fully locked). A predicted release closer than ~that after the wind-up began
+-- is therefore a STALE GRID — a weave re-arm held to the client's grid tick, a
+-- delayed shot, a reanchored prediction a few ms ahead — never a faster shot.
+-- Both wind-up bar writers honor this floor; without it the bar is born full
+-- and just fades (the 1.1.5 weave report).
+Nock.WINDUP_SPAN_FLOOR = 0.75
+
+-- The ONE definition of the wind-up bar's end at CAST_START: the predicted
+-- release when it is plausible (at least the floor's worth of wind-up ahead),
+-- else the full measured wind-up from now. `windup` must be > 0.
+function Nock.AutoShotWindupEnd(release, now, windup)
+  if release and release >= now + windup * Nock.WINDUP_SPAN_FLOOR then
+    return release
+  end
+  return now + windup
+end
+
+-- `windup` (optional): when given, a live release that would shrink the bar
+-- below the floor is refused — the same stale-grid argument as above.
+function Nock.AutoShotCastEnd(curEnd, startTime, release, now, windup)
+  if release and release > now and release > startTime then
+    if not windup or windup <= 0
+       or release >= startTime + windup * Nock.WINDUP_SPAN_FLOOR then
+      return release
+    end
+  end
   return curEnd
 end
 
