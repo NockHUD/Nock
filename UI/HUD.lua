@@ -124,8 +124,12 @@ function HUD:ApplyRowVisibility()
   -- backgroundEnabled, rowAlign and medallionEnabled. freeLayout is NOT —
   -- React always grids (see Nock.FreeLayoutActive): free placement would split
   -- the cluster/grid seam and scatter the React rows to stale UIParent spots.
-  local react = (p.hudMode == "react")
-  if react then
+  -- FluffyHUD replaces the classic rows the same way; its element visibility
+  -- lives on the fluffyShow* keys (FluffyHUD tab; consumed by
+  -- FluffyCluster:Geometry). Same honored/ignored key contract as React.
+  local react  = Nock.HudIsReact()
+  local fluffy = Nock.HudMode() == "fluffy"
+  if react or fluffy then
     setShown("RotationView",    false)
     setShown("ShotBars",        false)
     setShown("SwingTimers",     false)
@@ -136,6 +140,10 @@ function HUD:ApplyRowVisibility()
   end
   setShown("ReactCluster",       react)
   setShown("ReactCooldownsView", react and (p.reactShowGrid ~= false))
+  setShown("FluffyCluster",      fluffy)
+  -- The fluffy CD row is the cluster's welded child (grows downward, no
+  -- cascade height). Opt-in (ships OFF), hence == true rather than ~= false.
+  setShown("FluffyCooldownsView", fluffy and p.fluffyShowGrid == true)
 
   self:LayoutChildren()
 end
@@ -185,11 +193,11 @@ function HUD:ApplyBackground()
     f:SetBackdropBorderColor(unpack(C.COLORS.BORDER_UNLOCK))
     return
   end
-  -- Background off, React mode (fixed skin: bars/icons float with no box —
+  -- Background off, a cluster mode (fixed skin: bars/icons float with no box —
   -- backgroundEnabled is ignored), or the box is empty (every row hidden) →
   -- paint nothing, so a collapsed HUD doesn't leave a thin residual bar on
   -- screen. (Unlocked already returned above with a grabbable box.)
-  if p.hudMode == "react" or p.backgroundEnabled == false or self._hasVisibleRows == false then
+  if not Nock.HudIsClassic() or p.backgroundEnabled == false or self._hasVisibleRows == false then
     f:SetBackdropColor(0, 0, 0, 0)
     f:SetBackdropBorderColor(0, 0, 0, 0)
     return
@@ -262,6 +270,11 @@ local function reactCooldownsH()
   if m and m.ContentHeight then return m:ContentHeight() end
   return 1
 end
+local function fluffyClusterH()
+  local m = Nock:GetModule("FluffyCluster", true)
+  if m and m.ContentHeight then return m:ContentHeight() end
+  return 1
+end
 local function cooldownsH()
   local m = Nock:GetModule("Cooldowns", true)
   local rows = (Nock.db and Nock.db.profile and Nock.db.profile.cooldownRows)
@@ -284,6 +297,7 @@ local LAYOUT = {
   { module = "ShotBars",        anchor = "TOP",     height = shotBarsH                                  },
   { module = "SwingTimers",     anchor = "TOPLEFT", height = swingsH                                    },
   { module = "ReactCluster",    anchor = "TOP",     height = reactClusterH                              },
+  { module = "FluffyCluster",   anchor = "TOP",     height = fluffyClusterH                             },
   { module = "ManaBarView",     anchor = "TOP",     height = manaBarH                                   },
   { module = "RangeFinderView", anchor = "TOP",     height = rangeFinderH                               },
   { module = "CooldownsView",   anchor = "TOP",     height = cooldownsH                                 },
@@ -302,6 +316,8 @@ local ROW_SCALE_KEY = {
   -- Both React rows share one scale so the cluster and grid stay proportioned.
   ReactCluster       = "reactScale",
   ReactCooldownsView = "reactScale",
+  -- The fluffy CD row is the cluster's welded child, so it inherits this.
+  FluffyCluster      = "fluffyScale",
 }
 
 function HUD:RowScale(moduleName)
@@ -378,8 +394,10 @@ function HUD:LayoutGridPass()
   -- React mode floors at the (narrower) cluster width instead, so the box hugs
   -- the React stack; the glued side panels follow the edges automatically.
   local floorW = C.DIM.HUD_WIDTH
-  if p.hudMode == "react" then
+  if Nock.HudIsReact() then
     floorW = (tonumber(p.reactWidth) or 220) + 2 * OUTER
+  elseif Nock.HudMode() == "fluffy" then
+    floorW = (tonumber(p.fluffyWidth) or 320) + 2 * OUTER
   end
   self.frame:SetWidth(math.max(floorW, 2 * OUTER + maxRowW))
 end
@@ -428,6 +446,7 @@ local ROW_LABEL = {
   RangeFinderView    = "Range Finder",
   CooldownsView      = "Cooldown Grid",
   ReactCooldownsView = "React Cooldown Grid",
+  FluffyCluster      = "Fluffy Cluster",
   InfoRow            = "Info Row",
 }
 
@@ -521,7 +540,7 @@ function HUD:LayoutChildrenFree()
   -- and to re-weld to when free placement ends. (The react branch is only a
   -- belt: FreeLayoutActive is false in React mode, so this pass never runs
   -- there — but keep the width right if that ever changes.)
-  if p.hudMode == "react" then
+  if Nock.HudIsReact() then
     self.frame:SetWidth((tonumber(p.reactWidth) or 220) + 2 * C.DIM.OUTER_PAD)
   else
     self.frame:SetWidth(C.DIM.HUD_WIDTH)

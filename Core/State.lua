@@ -634,18 +634,40 @@ function Nock.CastBarSource(showAutoShot)
   return nil
 end
 
+-- THE one reading of the HUD mode string. Every branch on the mode resolves
+-- through these three, never through a raw `p.hudMode == "react"` compare —
+-- half of those historically meant "classic" and half meant "not the React
+-- cluster", and a third mode value would silently fall into the wrong bucket
+-- at each one (project rule; see Tests/hud_mode_predicate_test.lua for the
+-- full site audit). HudIsClassic gates the classic-only surfaces (classic cast
+-- bar, side panels, free placement, backdrop box); HudIsReact gates the React
+-- cluster's own frames. A mode that is neither is a cluster look without
+-- React's frames.
+function Nock.HudMode()
+  local p = Nock.db and Nock.db.profile
+  return (p and p.hudMode) or "classic"
+end
+
+function Nock.HudIsClassic()
+  return Nock.HudMode() == "classic"
+end
+
+function Nock.HudIsReact()
+  return Nock.HudMode() == "react"
+end
+
 -- Whether free placement governs layout right now. THE single gate every
 -- consumer of profile.freeLayout resolves through (HUD layout/background/drag
 -- state, the free-row nudge gates, the totem tracker's unglue, the cast bar's
--- free position). freeLayout is a Classic-look setting: the React look always
--- grids — its cluster and grid rows share a -1px seam that free placement would
--- tear into two UIParent-anchored pieces — so a flag left on from a Classic
--- session is ignored while hudMode == "react", not consumed. The saved
--- elementPositions survive untouched for when the user switches back.
+-- free position). freeLayout is a Classic-look setting: the cluster looks
+-- (React, FluffyHUD) always grid — a cluster and its grid row share a -1px
+-- seam that free placement would tear into two UIParent-anchored pieces — so a
+-- flag left on from a Classic session is ignored there, not consumed. The
+-- saved elementPositions survive untouched for when the user switches back.
 function Nock.FreeLayoutActive()
   local p = Nock.db and Nock.db.profile
   if not p then return false end
-  if (p.hudMode or "classic") == "react" then return false end
+  if not Nock.HudIsClassic() then return false end
   return p.freeLayout == true
 end
 

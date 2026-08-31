@@ -270,10 +270,10 @@ function PetStatusView:Refresh(state)
     self.happiness:Hide()
   end
 
-  -- React mode: Mend/Feed already render in the ReactBuffs utility row above
+  -- Cluster modes: Mend/Feed already render in the ReactBuffs utility row above
   -- the HUD — suppress the duplicate slots here. The happiness nag (which the
-  -- React rows do NOT cover) keeps the panel alive.
-  local react = prof and prof.hudMode == "react"
+  -- buff rows do NOT cover) keeps the panel alive.
+  local react = prof and not Nock.HudIsClassic()
 
   -- Mend Pet — buff on the pet (name-based scan, locale-aware).
   do

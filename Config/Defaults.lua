@@ -622,7 +622,7 @@ Nock.Defaults = {
     -- The React frames ignore barTexture/LSM; everything configurable lives
     -- on the React HUD options tab (the react* keys below). Toggle with
     -- /nock react.
-    hudMode              = "classic",   -- "classic" | "react"
+    hudMode              = "classic",   -- "classic" | "react" | "fluffy"
     reactWidth           = 240,         -- React cluster/grid width in px (160..280)
     reactScale           = 1.0,         -- shared per-row scale for both React rows
     reactCooldownDisabled = {},         -- ["<key>"] = true → hide that React grid slot
@@ -752,6 +752,71 @@ Nock.Defaults = {
     reactShowGcdDivider     = false,
     reactGcdDividerWidth    = 1,                            -- GCD divider width, device px
     reactColorGcdDivider    = { 0.62, 0.35, 0.98, 1.00 },   -- GCD divider (purple)
+    -- FluffyHUD (hudMode = "fluffy", UI/Frame_FluffyCluster.lua): the third
+    -- look — a compact cluster of thin flat bars: a transient cast bar
+    -- welded above (hidden while nothing casts), the React-style converge
+    -- Auto Shot bar with breakpoint ticks, the fluffy shot windows as two
+    -- rows (ranged + melee), the range finder, and an optional cooldown
+    -- icon row welded below (grows downward).
+    -- Same skin channel idea as React: a fixed reference skin (the FLUFFY
+    -- table in the frame file), every color/height overridable here, media
+    -- via its own two keys; the classic LSM registries do not apply. The
+    -- classic show*/shotBars*/rotationMode keys are ignored in this mode —
+    -- element visibility lives on the fluffyShow* keys. Toggle: /nock fluffy.
+    fluffyWidth          = 320,         -- cluster/grid width in px (wider than React by design)
+    fluffyScale          = 1.0,         -- shared per-row scale (cluster + CD row)
+    fluffyCastH          = 14,          -- transient cast bar height px
+    fluffySwingH         = 12,          -- Auto Shot bar height px
+    fluffyRangedH        = 18,          -- ranged shot-window lane height px
+    fluffyMeleeH         = 8,           -- melee weave lane height px
+    fluffyRangeH         = 12,          -- range finder height px
+    fluffyShotWindow     = 6.0,         -- shot-lane lookahead seconds
+    fluffyShowCast       = true,        -- the transient cast bar above the cluster
+    fluffyShowAutoShotCast = true,      -- wind-up drawn as a cast (render-edge gate)
+    fluffyShowSwing      = true,
+    fluffyShowRanged     = true,
+    fluffyShowMelee      = true,
+    fluffyShowRange      = true,        -- bottom of the stack, above the CD row
+    fluffyShowGrid       = false,       -- the 6-icon cooldown row (opt-in)
+    -- Auto Shot bar extras (FluffyHUD → Auto Shot Bar; React's exact set).
+    -- The wind-up commit mark follows the shared showWindupMark key.
+    fluffyShowNotation   = true,        -- rotation notation on the bar's right edge
+    fluffyShowClipTicks  = true,        -- the vertical Steady/Multi clip tick pairs
+    fluffyShowDelay      = false,       -- the +x.xx late-shot readout (opt-in)
+    fluffyShowBrackets   = false,       -- eWS rotation-bracket marks (opt-in)
+    fluffyShowGcdDivider = false,       -- moving GCD divider (opt-in)
+    fluffyDirAuto        = "converge",  -- "converge" | "ltr" | "rtl"
+    fluffyBuffRows       = true,        -- the procs row (ReactBuffs' fluffy host)
+    fluffyBuffRowPos     = false,       -- false = weld above the cluster; else saved point
+    fluffyCdKeys         = false,       -- false = seeded row {KC,Arc,MS,Raptor,Spec,RF}
+    fluffyCooldownDisabled = {},        -- ["<key>"] = true → hide that CD slot
+    fluffyBarTexture     = "",          -- "" = reference flat fill
+    fluffyFont           = "",          -- "" = reference font
+    fluffyFontSize       = 9,
+    -- Colors default to the reference constants exactly (FLUFFY table in
+    -- Frame_FluffyCluster), so exposing them changes nothing until touched.
+    -- The lane palette mirrors shotBarsColor*, the rest React's channel.
+    fluffyColorCastFill   = { 0.40, 0.70, 1.00, 1.00 },
+    fluffyColorSwingFill  = { 1.00, 0.84, 0.00, 1.00 },
+    fluffyColorTickSteady = { 1.00, 0.10, 0.10, 1.00 },
+    fluffyColorTickMulti  = { 1.00, 0.65, 0.10, 1.00 },
+    fluffyColorTickWindup = { 0.85, 0.85, 0.85, 0.80 },
+    fluffyColorGcdDivider = { 0.62, 0.35, 0.98, 1.00 },     -- moving GCD divider (purple)
+    fluffyColorBracket    = { 1.00, 1.00, 1.00, 0.35 },     -- eWS bracket marks
+    fluffyColorSteady     = { 0.988, 0.596, 0.012, 0.85 },  -- safe Steady window (orange)
+    fluffyColorQueue      = { 0.988, 0.596, 0.012, 0.38 },  -- wind-up queue window (dim)
+    fluffyColorQueueLive  = { 0.20, 0.90, 0.35, 0.90 },     -- queue open NOW (green)
+    fluffyColorMulti      = { 0.012, 0.525, 0.996, 0.85 },  -- Multi in the clip zone (blue)
+    fluffyColorArcane     = { 0.686, 0.478, 0.773, 0.85 },  -- Arcane (purple)
+    fluffyColorDanger     = { 0.851, 0.118, 0.118, 0.50 },  -- clip band (red)
+    fluffyColorRaptor     = { 0.153, 0.682, 0.376, 0.85 },  -- Raptor-ready weave (green)
+    fluffyColorWeaveAuto  = { 1.00, 1.00, 1.00, 0.70 },     -- auto-only weave (white)
+    fluffyColorSpark      = { 1.00, 1.00, 1.00, 1.00 },     -- Auto Shot spark
+    fluffyColorRangeDeadzone = { 0.68, 0.18, 0.20, 1.00 },  -- MELEE band (red)
+    fluffyColorRangeSweet    = { 0.85, 0.66, 0.00, 1.00 },
+    fluffyColorRangePerfect  = { 0.17, 0.78, 0.11, 1.00 },  -- past PERFECT_AT (green)
+    fluffyColorRangeClose    = { 0.00, 0.83, 0.75, 1.00 },
+    fluffyColorRangeResync   = { 1.00, 0.58, 0.10, 1.00 },
     -- Weave rotation notation: when ON, the rotation label auto-switches to the
     -- weave pattern (e.g. "6:9:1:1 3w") while you're in weaving range with a 2H,
     -- and back to the turret pattern at range. OFF = turret notation always.

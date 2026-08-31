@@ -121,7 +121,7 @@ function ReactCorners:SetupMove(slot, posKey, toggleKey, label)
     label   = label,
     active  = function()
       local p = profile()
-      return p.hudMode == "react" and p[toggleKey] == true
+      return Nock.HudIsReact() and p[toggleKey] == true
     end,
     get     = function() return Nock.db.profile[posKey] end,
     set     = function(pos)
@@ -219,7 +219,7 @@ ReactCorners.refreshInterval = 0.1
 
 function ReactCorners:Refresh(state)
   local p = Nock.db and Nock.db.profile
-  local react = (p and p.hudMode == "react") or false
+  local react = Nock.HudIsReact()
 
   -- Aspect: full colour for whatever is up, desaturated Hawk when none.
   -- exp/dur are forced to 0 -- an aspect is a steady aura and a countdown on it

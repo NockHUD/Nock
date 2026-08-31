@@ -554,7 +554,7 @@ onlyKeys(root.general.args,
   { "intro", "lockState", "lockAll", "unlockAll", "editGridHeader", "editGridShow", "editGridSize", "editGridSnap", "editSnapBy", "minimapIcon", "perfPanel", "runWizard", "resetPos", "scale",
     "grpLook", "grpVisibility", "grpCastBar", "grpMedia", "grpSetup" },
   "general")
-onlyKeys(root.hud.args, { "intro", "hudMode", "classic", "react" }, "hud family")
+onlyKeys(root.hud.args, { "intro", "hudMode", "classic", "react", "fluffy" }, "hud family")
 onlyKeys(root.experimental.args, { "intro", "grpMedallion", "grpSapper", "grpZoom", "grpRelease" }, "experimental")
 onlyKeys(wa, { "masterToggle", "intro", "settings" }, "warnings", { "cat_" })
 onlyKeys(wa.settings and wa.settings.args or {},
@@ -619,6 +619,78 @@ onlyKeys(raSkin, { "skinHeader", "skinNote", "reactBarTexture", "reactFont", "re
   "reactTickMultiWidth", "reactColorTickMulti", "reactTickWindupWidth",
   "reactColorTickWindup", "reactBracketWidth", "reactColorBracket",
   "resetSkin" }, "react tabSkin")
+
+-- FluffyHUD branch (the third look, 2026-08-31): four subtabs, its own key
+-- family, the shared grid-look keys mirrored from the React grid tab.
+local fnode = child("hud", "fluffy")
+ok(fnode ~= nil, "hud family holds the fluffy branch")
+local fa = fnode and fnode.args or {}
+ok(type(fnode.name) == "function", "fluffy branch name is a function (active badge)")
+Nock.db.profile.hudMode = "fluffy"
+ok(fnode.name():find("active", 1, true)
+   and not child("hud", "react").name():find("active", 1, true)
+   and not child("hud", "classic").name():find("active", 1, true),
+   "fluffy mode badges only the fluffy branch")
+Nock.db.profile.hudMode = nil
+onlyKeys(fa, { "intro", "hudMode", "tabSize", "tabBars", "tabGrid", "tabBuff", "tabSkin" }, "fluffy root")
+local faSize = fa.tabSize and fa.tabSize.args or {}
+local faBars = fa.tabBars and fa.tabBars.args or {}
+local faGrid = fa.tabGrid and fa.tabGrid.args or {}
+local faBuff = fa.tabBuff and fa.tabBuff.args or {}
+local faSkin = fa.tabSkin and fa.tabSkin.args or {}
+onlyKeys(faSize, { "sizeHeader", "fluffyWidth", "fluffyScale",
+  "elementsHeader", "elementsNote", "fluffyShowCast", "fluffyShowAutoShotCast",
+  "fluffyShowSwing", "fluffyShowRanged", "fluffyShowMelee", "fluffyShowRange",
+  "timingHeader", "fluffyShotWindow", "castBarNonCombatCasts" }, "fluffy tabSize")
+onlyKeys(faBars, { "autoHeader", "fluffyShowNotation", "fluffyShowClipTicks",
+  "showWindupMark", "fluffyShowDelay",
+  "fluffyShowBrackets", "fluffyShowGcdDivider", "dirHeader", "fluffyDirAuto",
+  "grpEngine" }, "fluffy tabBars")
+-- The weave engine mirror reaches the fluffy Bars tab too (same stored keys).
+local fEng = faBars.grpEngine
+ok(fEng and fEng.inline and fEng.args and fEng.args.rotRaptorWeaveHeadroom,
+   "fluffy tabBars: inline weave engine box")
+if fEng then pcall(fEng.args.rotRaptorWeaveHeadroom.set, nil, 1.35) end
+ok(r.grpEngine.args.rotRaptorWeaveHeadroom.get() == 1.35,
+   "weave engine set through Fluffy reads back through Classic")
+onlyKeys(faGrid, { "gridHeader", "gridNote", "fluffyShowGrid",
+  "lookHeader", "lookNote", "reactKcProcGlow", "reactRangeTint", "reactTileDim", "reactManaTint" },
+  "fluffy tabGrid", { "fcd_en_" })
+onlyKeys(faBuff, { "buffHeader", "sharedNote", "fluffyBuffRows", "reactBuffPositional",
+  "reactBuffFrenzyMode", "customHeader", "customNote", "addBuffId", "addBuffBtn" },
+  "fluffy tabBuff", { "rb_en_", "rbc_" })
+onlyKeys(faSkin, { "skinHeader", "skinNote", "fluffyBarTexture", "fluffyFont", "fluffyFontSize",
+  "fluffyCastH", "fluffySwingH", "fluffyRangedH", "fluffyMeleeH", "fluffyRangeH",
+  "fluffyColorCastFill", "fluffyColorSwingFill",
+  "fluffyColorTickSteady", "fluffyColorTickMulti", "fluffyColorTickWindup",
+  "fluffyColorGcdDivider", "fluffyColorBracket",
+  "fluffyColorSteady", "fluffyColorQueue", "fluffyColorQueueLive", "fluffyColorMulti",
+  "fluffyColorArcane", "fluffyColorDanger", "fluffyColorRaptor", "fluffyColorWeaveAuto",
+  "fluffyColorSpark", "fluffyColorRangeDeadzone", "fluffyColorRangeSweet",
+  "fluffyColorRangePerfect", "fluffyColorRangeClose", "fluffyColorRangeResync",
+  "resetSkin" }, "fluffy tabSkin")
+
+-- The HUD look picker offers all three values on every home, and a set on
+-- the fluffy landing reads back through the others.
+ok(fa.hudMode and fa.hudMode.values and fa.hudMode.values.fluffy
+   and ra.hudMode.values.fluffy and root.hud.args.hudMode.values.fluffy,
+   "the HUD look picker offers FluffyHUD on every home")
+pcall(fa.hudMode.set, nil, "fluffy")
+ok(root.hud.args.hudMode.get() == "fluffy", "hudMode set on the fluffy landing reads back")
+pcall(root.hud.args.hudMode.set, nil, "classic")
+
+-- The fluffy buff-row master writes its own key and never the other modes'.
+pcall(faBuff.fluffyBuffRows.set, nil, false)
+ok(Nock.db.profile.fluffyBuffRows == false
+   and Nock.db.profile.showBuffRow ~= false and Nock.db.profile.reactBuffRows ~= false,
+   "fluffy buff-row master writes fluffyBuffRows only")
+Nock.db.profile.fluffyBuffRows = nil
+
+-- Grid-look mirrors are the SAME keys as the React grid tab (shared flags).
+pcall(faGrid.reactKcProcGlow.set, nil, true)
+ok(Nock.db.profile.reactKcProcGlow == true and raGrid.reactKcProcGlow ~= nil,
+   "KC glow set on the fluffy grid writes the shared key the React grid reads")
+Nock.db.profile.reactKcProcGlow = nil
 
 -- Lock controls: the ONLY interactive lock controls in the tree are the two
 -- pairs that drive the one global lock — General (lockAll/unlockAll) and

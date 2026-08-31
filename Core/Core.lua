@@ -684,6 +684,13 @@ function Nock:HandleSlashCommand(input)
     p.hudMode = (p.hudMode == "react") and "classic" or "react"
     self:SendMessage("NOCK_VISUALS_CHANGED")
     self:Print(("React HUD mode: %s"):format(p.hudMode == "react" and "ON" or "OFF — classic look"))
+  elseif input == "fluffy" then
+    -- FluffyHUD mode: the compact third look (cast slot, swing, fluffy shot
+    -- lanes, range finder). Swaps the whole classic bar cluster.
+    local p = self.db.profile
+    p.hudMode = (p.hudMode == "fluffy") and "classic" or "fluffy"
+    self:SendMessage("NOCK_VISUALS_CHANGED")
+    self:Print(("FluffyHUD mode: %s"):format(p.hudMode == "fluffy" and "ON" or "OFF — classic look"))
   elseif input == "weavelog" or input:match("^weavelog%s") then
     -- Weave diagnostics. Plain: only the weave-delay metrics (ability→weave /
     -- weave→ability / total, aerthax weave-delay definitions) with a divider

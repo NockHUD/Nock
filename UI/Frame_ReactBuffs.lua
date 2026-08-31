@@ -120,16 +120,29 @@ end
 -- 2026-08-27; a first cut as a cascade row put it inside the box). The scan
 -- and the paint are the same code either way — that is what keeps the two
 -- looks identical.
-function ReactBuffs:IsClassicHost()
-  local p = Nock.db and Nock.db.profile
-  return (p and p.hudMode or "classic") ~= "react"
+-- Which HUD look hosts the row right now: "classic" | "react" | "fluffy".
+-- ONE frame, three hosts — everything host-dependent (parent, master switch,
+-- position store, weld lift, scale) resolves through this and the three
+-- accessors below; an unknown future mode files as classic, matching
+-- Nock.HudIsClassic's bucket.
+function ReactBuffs:Host()
+  local m = Nock.HudMode()
+  if m == "react" or m == "fluffy" then return m end
+  return "classic"
 end
 
--- The mode's own master switch: reactBuffRows in React, showBuffRow in Classic.
+function ReactBuffs:IsClassicHost()
+  return self:Host() == "classic"
+end
+
+-- The mode's own master switch: reactBuffRows in React, fluffyBuffRows in
+-- Fluffy, showBuffRow in Classic.
 function ReactBuffs:IsEnabled()
   local p = Nock.db and Nock.db.profile
   if not p then return false end
-  if self:IsClassicHost() then return p.showBuffRow ~= false end
+  local host = self:Host()
+  if host == "classic" then return p.showBuffRow ~= false end
+  if host == "fluffy" then return p.fluffyBuffRows ~= false end
   return p.reactBuffRows ~= false
 end
 
@@ -138,16 +151,25 @@ function ReactBuffs:ContentHeight()
   return REACT.ICON
 end
 
--- The frame the row hangs from in the current mode: the cluster in React,
--- the HUD frame in Classic.
+-- The frame the row hangs from in the current mode: the React cluster in
+-- React, the fluffy cluster in Fluffy, the HUD frame in Classic. The fluffy
+-- cluster is resolved live (its module loads after this one in the TOC).
 function ReactBuffs:HostFrame()
-  if self:IsClassicHost() then return Nock.parentFrame end
+  local host = self:Host()
+  if host == "classic" then return Nock.parentFrame end
+  if host == "fluffy" then
+    local m = Nock:GetModule("FluffyCluster", true)
+    return (m and m.frame) or Nock.parentFrame
+  end
   return self._parent or Nock.parentFrame
 end
 
 -- The profile key holding the mode's free position (false = welded default).
 function ReactBuffs:PosKey()
-  return self:IsClassicHost() and "classicBuffRowPos" or "reactBuffRowPos"
+  local host = self:Host()
+  if host == "classic" then return "classicBuffRowPos" end
+  if host == "fluffy" then return "fluffyBuffRowPos" end
+  return "reactBuffRowPos"
 end
 
 -- The Classic weld's lift: clear of the classic cast bar, which sits on the
@@ -257,8 +279,14 @@ function ReactBuffs:ApplyLayout()
     panel:SetPoint(pos.point, parent, pos.relPoint or pos.point, pos.x or 0, pos.y or 0)
   else
     local lift
-    if classic then
+    local host = self:Host()
+    if host == "classic" then
       lift = self:ClassicLift()
+    elseif host == "fluffy" then
+      -- The fluffy cast bar is a transient strip welded above the cluster —
+      -- keep 4px above whatever height it occupies when it appears.
+      local castH = p and tonumber(p.fluffyCastH) or 14
+      lift = math.max(18, castH + 4)
     else
       local castH = p and tonumber(p.reactCastH) or 16
       lift = math.max(REACT.LIFT, castH + 4)

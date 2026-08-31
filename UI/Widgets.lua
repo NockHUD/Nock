@@ -114,6 +114,33 @@ function Nock.UI.GetReactFontDelta()
   return v - 9
 end
 
+-- Fluffy-scoped media (FluffyHUD tab → Skin): the React trio's exact shape on
+-- the fluffy keys. "" = the fixed reference skin, so these return nil and
+-- each caller `or`s in its hardcoded reference value (WHITE8X8 fills /
+-- C.FONT.PATH text). See UI/Frame_FluffyCluster.lua.
+function Nock.UI.GetFluffyBarTexture()
+  local name = profile("fluffyBarTexture", "")
+  if name and name ~= "" and LSM then
+    local path = LSM:Fetch("statusbar", name)
+    if path then return path end
+  end
+  return nil
+end
+
+function Nock.UI.GetFluffyFont()
+  local name = profile("fluffyFont", "")
+  if name and name ~= "" and LSM then
+    local path = LSM:Fetch("font", name)
+    if path then return path end
+  end
+  return nil
+end
+
+function Nock.UI.GetFluffyFontDelta()
+  local v = tonumber(profile("fluffyFontSize", 9)) or 9
+  return v - 9
+end
+
 -- Resolve the icon-slot border from the active profile + LSM. "None" (or an
 -- unregistered name) maps to a 1px solid line — the original Nock look. LSM
 -- borders are typically 16x16 textures that need edgeSize ~8 to render

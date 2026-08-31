@@ -191,11 +191,13 @@ end
 --------------------------------------------------------------------------------
 local p = freshProfile()
 local hud = pageByKey("hudstyle")
-ok(#hud.options == 3, "three HUD choices: classic, react, none")
-ok(hud.options[3].value == "none", "the third is No HUD")
+ok(#hud.options == 4, "four HUD choices: classic, react, fluffy, none")
+ok(hud.options[3].value == "fluffy", "the third is FluffyHUD")
+ok(hud.options[4].value == "none", "the fourth is No HUD")
 ok(hud.options[1].isSelected(p), "classic selected by default")
 ok(not hud.options[2].isSelected(p), "react not selected by default")
-ok(not hud.options[3].isSelected(p), "no-HUD not selected by default")
+ok(not hud.options[3].isSelected(p), "fluffy not selected by default")
+ok(not hud.options[4].isSelected(p), "no-HUD not selected by default")
 O:SelectCard(hud, hud.options[2])
 ok(p.hudMode == "react", "picking React writes hudMode")
 ok(hud.options[2].isSelected(p) and not hud.options[1].isSelected(p), "selection follows the profile")
@@ -204,16 +206,17 @@ ok(sentMessages[#sentMessages] == "NOCK_VISUALS_CHANGED", "a card selection broa
 -- No HUD turns the frame off and takes the free-floating medallion with it.
 p = freshProfile()
 p.medallionEnabled = true
-O:SelectCard(hud, hud.options[3])
+O:SelectCard(hud, hud.options[4])
 ok(p.hudEnabled == false, "No HUD clears hudEnabled")
 ok(p.medallionEnabled == false, "No HUD also drops the medallion")
-ok(hud.options[3].isSelected(p), "No HUD reads as selected")
-ok(not hud.options[1].isSelected(p) and not hud.options[2].isSelected(p),
-   "No HUD deselects both HUD looks")
+ok(hud.options[4].isSelected(p), "No HUD reads as selected")
+ok(not hud.options[1].isSelected(p) and not hud.options[2].isSelected(p)
+   and not hud.options[3].isSelected(p),
+   "No HUD deselects all three HUD looks")
 -- Reversible: picking a look back turns the HUD on again.
 O:SelectCard(hud, hud.options[1])
 ok(p.hudEnabled == true and p.hudMode == "classic", "Classic switches the HUD back on")
-O:SelectCard(hud, hud.options[3])
+O:SelectCard(hud, hud.options[4])
 O:SelectCard(hud, hud.options[2])
 ok(p.hudEnabled == true and p.hudMode == "react", "React switches the HUD back on")
 
@@ -772,6 +775,28 @@ ok(recapValue(O:BuildRecap(), "Corner icons") == "aspect, Hunter's Mark",
    "react recap names both")
 ok(recapValue(O:BuildRecap(), "Shot display") == nil,
    "react recap still omits the classic shot display row")
+
+--------------------------------------------------------------------------------
+-- FluffyHUD card (the third look, 2026-08-31).
+--------------------------------------------------------------------------------
+local fluffyCard
+for _, opt in ipairs(pageByKey("hudstyle").options) do
+  if opt.value == "fluffy" then fluffyCard = opt end
+end
+ok(fluffyCard ~= nil, "hudstyle offers a FluffyHUD card")
+p = freshProfile()
+fluffyCard.apply(p)
+ok(p.hudEnabled == true and p.hudMode == "fluffy", "fluffy card applies hudMode=fluffy")
+ok(fluffyCard.isSelected(p) == true, "fluffy card selected after apply")
+for _, opt in ipairs(pageByKey("hudstyle").options) do
+  if opt ~= fluffyCard then
+    ok(not opt.isSelected(p), "fluffy selected: card '" .. tostring(opt.value) .. "' is not")
+  end
+end
+ok(recapValue(O:BuildRecap(), "HUD style") == "FluffyHUD", "recap names FluffyHUD")
+ok(not O:IsPageVisible(pageByKey("rotation")), "fluffy skips the classic shot-display page")
+ok(not O:IsPageVisible(pageByKey("reactcorners")), "fluffy skips the React corner-icons page")
+ok(recapValue(O:BuildRecap(), "Shot display") == nil, "fluffy recap omits the shot display row")
 
 print(("%d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

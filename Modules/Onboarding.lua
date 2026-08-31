@@ -114,7 +114,7 @@ Onboarding.Pages = {
         value = "classic", label = "Classic", recommended = true,
         desc  = "The full toolkit: swing bars, shot timeline, cooldown grid.",
         icon  = function() return spellIcon(C.SpellID.AUTO_SHOT) end,
-        isSelected = function(p) return p.hudEnabled ~= false and p.hudMode ~= "react" end,
+        isSelected = function(p) return p.hudEnabled ~= false and (p.hudMode or "classic") == "classic" end,
         apply      = function(p) p.hudEnabled = true; p.hudMode = "classic" end,
       },
       {
@@ -123,6 +123,13 @@ Onboarding.Pages = {
         icon  = function() return spellIcon(C.SpellID.RAPID_FIRE) end,
         isSelected = function(p) return p.hudEnabled ~= false and p.hudMode == "react" end,
         apply      = function(p) p.hudEnabled = true; p.hudMode = "react" end,
+      },
+      {
+        value = "fluffy", label = "FluffyHUD",
+        desc  = "Simple and clean: cast, swing, shot-timing lanes and range in one flat stack.",
+        icon  = function() return spellIcon(C.SpellID.STEADY_SHOT) end,
+        isSelected = function(p) return p.hudEnabled ~= false and p.hudMode == "fluffy" end,
+        apply      = function(p) p.hudEnabled = true; p.hudMode = "fluffy" end,
       },
       {
         value = "none", label = "No HUD",
@@ -162,7 +169,7 @@ Onboarding.Pages = {
     -- Classic-with-a-HUD only. React carries its own fixed shot display and
     -- ignores rotationMode / the Shot Bars keys entirely (see UI/HUD.lua), and
     -- with the HUD off there is nothing for any of the three to draw on.
-    visible = function(p) return p.hudEnabled ~= false and p.hudMode ~= "react" end,
+    visible = function(p) return p.hudEnabled ~= false and (p.hudMode or "classic") == "classic" end,
     onEnter = function(self) Nock.state.demo.rotationSample = true end,
     onLeave = function(self) Nock.state.demo.rotationSample = false end,
     options = {
@@ -516,12 +523,13 @@ function Onboarding:BuildRecap()
   local style
   if p.hudEnabled == false then style = "Off"
   elseif p.hudMode == "react" then style = "React"
+  elseif p.hudMode == "fluffy" then style = "FluffyHUD"
   else style = "Classic" end
 
   local rows = { { "HUD style", style } }
   -- Each row below reports a question this run actually asked, so the recap
   -- never claims a setting the user was never shown.
-  if p.hudEnabled ~= false and p.hudMode ~= "react" then
+  if p.hudEnabled ~= false and (p.hudMode or "classic") == "classic" then
     local shots
     if p.medallionEnabled then shots = "Medallion"
     elseif p.rotationMode == "helper" then shots = "Helper icons"

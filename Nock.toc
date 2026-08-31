@@ -95,6 +95,8 @@ UI\Frame_ReactCastBar.lua
 UI\Frame_ReactCooldowns.lua
 UI\Frame_ReactBuffs.lua
 UI\Frame_ReactCorners.lua
+UI\Frame_FluffyCluster.lua
+UI\Frame_FluffyCooldowns.lua
 UI\Frame_InfoRow.lua
 UI\Frame_PetStatus.lua
 UI\Frame_Warnings.lua

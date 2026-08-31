@@ -126,7 +126,7 @@ function ReleaseBar:ApplyLayout()
   local p = (Nock.db and Nock.db.profile) or {}
   local h = tonumber(p.releaseBarHeight) or 14
   self.frame:SetHeight(h + 2)
-  if p.hudMode == "react" then
+  if not Nock.HudIsClassic() then
     Nock.UI.ApplyBackdrop(self.frame, REACT_BAR_BG, REACT_BORDER)
   else
     Nock.UI.ApplyBackdrop(self.frame)

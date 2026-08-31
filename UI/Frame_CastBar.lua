@@ -189,9 +189,10 @@ function CastBarView:OnVisualsChanged()
 end
 
 function CastBarView:Refresh(state)
-  -- React mode has its own glued cast bar (UI/Frame_ReactCastBar.lua).
+  -- The cluster modes carry their own glued cast bars (UI/Frame_ReactCastBar.lua,
+  -- the FluffyCluster's cast slot) — this bar is Classic's.
   local p = Nock.db and Nock.db.profile
-  if p and p.hudMode == "react" then
+  if p and not Nock.HudIsClassic() then
     if self.frame:IsShown() then self.frame:Hide() end
     return
   end

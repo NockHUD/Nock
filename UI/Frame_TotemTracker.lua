@@ -182,7 +182,7 @@ function TotemTrackerView:Refresh(state)
   -- React mode replaces this panel with the ReactBuffs rows (which read the
   -- same state.totems the TotemTracker engine keeps publishing).
   local showTotem = isEnabled()
-                    and (Nock.db.profile.hudMode ~= "react")
+                    and Nock.HudIsClassic()
                     and (forceShaman() or (mod and mod.HasShaman and mod:HasShaman()))
 
   if not showTotem then
@@ -196,7 +196,7 @@ function TotemTrackerView:Refresh(state)
     -- where it will sit. Free placement: draggable itself (edit border via
     -- ApplyFreePanelPosition above).
     if not Nock.IsLocked() and isEnabled()
-       and (Nock.db.profile.hudMode or "classic") ~= "react" then
+       and Nock.HudIsClassic() then
       local sz, OUTER, INNER = self._iconSz, self._OUTER, self._INNER
       self.windfurySlot:Hide()
       self.earthSlot:ClearAllPoints()

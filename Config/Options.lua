@@ -810,11 +810,11 @@ local function buildOptionsTable()
     return {
       type = "select",
       name = "HUD look",
-      desc = "\"Classic\" = the configurable row stack. \"React\" = the fixed-skin replica."
+      desc = "\"Classic\" = the configurable row stack. \"React\" = the fixed-skin replica. \"FluffyHUD\" = the compact bars-first cluster."
         .. (homeNote and ("\n\n" .. homeNote) or ""),
       order = order,
-      values = { classic = "Classic", react = "React" },
-      sorting = { "classic", "react" },
+      values = { classic = "Classic", react = "React", fluffy = "FluffyHUD" },
+      sorting = { "classic", "react", "fluffy" },
       dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
       get = function() return Nock.db.profile.hudMode or "classic" end,
       set = function(_, v)
@@ -5751,16 +5751,24 @@ local function buildOptionsTable()
     -- the note naming the other page. The row itself is one module
     -- (UI/Frame_ReactBuffs.lua) hosted by the cluster in React and by the
     -- HUD cascade in Classic — placement and scale are the per-mode part.
-    local notClassic = function() return not notReact() end
+    -- Three looks now: notReact above predates the third mode and still means
+    -- literally "hudMode is not react"; classic/fluffy get exact tests.
+    local notClassic = function() return not Nock.HudIsClassic() end
+    local notFluffy  = function() return Nock.HudMode() ~= "fluffy" end
     local buffCustomRebuilds = {}
     local function rebuildAllBuffCustom()
       for i = 1, #buffCustomRebuilds do buffCustomRebuilds[i]() end
     end
     local function fillBuffArgs(args, side)
       local react     = (side == "react")
-      local notMode   = react and notReact or notClassic
-      local masterKey = react and "reactBuffRows" or "showBuffRow"
-      local other     = react and "Classic HUD → Buff Row" or "React HUD → Buff Row"
+      local fluffy    = (side == "fluffy")
+      local notMode   = react and notReact or fluffy and notFluffy or notClassic
+      local masterKey = react and "reactBuffRows"
+                        or fluffy and "fluffyBuffRows"
+                        or "showBuffRow"
+      local other     = react and "Classic HUD → Buff Row / FluffyHUD → Buff Row"
+                        or fluffy and "Classic HUD → Buff Row / React HUD → Buff Row"
+                        or "React HUD → Buff Row / FluffyHUD → Buff Row"
 
       args.buffHeader = { type = "header", name = "Buff row", order = 70 }
       args.sharedNote = {
@@ -5772,6 +5780,8 @@ local function buildOptionsTable()
         name = "Buff row (procs + utility)",
         desc = react
           and "One icon row centered above the HUD, growing from the center: haste/burst procs (Bloodlust, Drums, Rapid Fire, Quick Shots, The Beast Within, Haste Potion, racials, trinket procs) plus utility buffs (Feign Death, Misdirection, Mend/Feed Pet, Intimidation, Windfury enchant, Leader of the Pack / Grace of Air range, the pet's Frenzy, the MOVE IN alert). While on, it replaces the classic Buff Tracker and Totem panels.\n\nThe row is movable: unlock the HUD (/nock unlock) and drag it anywhere — below the HUD, off to one side — or use its nudge pad for exact placement. The position is relative to the HUD, so it follows scale and drags. The pad's reset button puts it back above."
+          or fluffy
+          and "The proc row welded above the FluffyHUD cluster: haste/burst procs (Bloodlust, Drums, Rapid Fire, Quick Shots, The Beast Within, Haste Potion, racials, trinket procs) plus utility buffs (Feign Death, Misdirection, Mend/Feed Pet, Intimidation, Windfury enchant, Leader of the Pack / Grace of Air range, the pet's Frenzy, the MOVE IN alert). While on, it replaces the classic Buff Tracker and Totem panels.\n\nThe row is movable: unlock the HUD (/nock unlock) and drag it anywhere, or use its nudge pad for exact placement. The position is relative to the cluster, so it follows scale and drags; the pad's reset puts it back above the cluster."
           or  "The React HUD's proc row above the Classic HUD, in the React look: haste/burst procs (Bloodlust, Drums, Rapid Fire, Quick Shots, The Beast Within, Haste Potion, racials, trinket procs) plus utility buffs (Feign Death, Misdirection, Mend/Feed Pet, Intimidation, Windfury enchant, Leader of the Pack / Grace of Air range, the pet's Frenzy, the MOVE IN alert).\n\nIt floats just above the cast bar by default. Unlock the HUD (/nock unlock) and drag it anywhere, or use its nudge pad; the position is relative to the HUD, so it follows scale and drags, and the pad's reset puts it back above the cast bar. Its own scale is under Layout → Per-element scaling. Same switch as Layout → HUD elements → Buff row.",
         order = 70.5,
         width = "full",
@@ -6124,6 +6134,374 @@ local function buildOptionsTable()
         tabSkin  = { type = "group", name = "Skin",            order = 60, args = skinArgs },
       },
     }
+
+    --------------------------------------------------------------------------
+    -- FluffyHUD branch (hudMode = "fluffy"). Built inside this block on
+    -- purpose: it shares the helpers (hudModeSelect, fillBuffArgs, describe,
+    -- the LSM sentinels, the generic get/getColor/setColor handlers) and the
+    -- same one-args-table-per-subtab shape. Element visibility lives on the
+    -- fluffyShow* keys; the classic show*/shotBars* keys are ignored in this
+    -- mode (UI/HUD.lua contract).
+    --------------------------------------------------------------------------
+    local fSizeArgs, fBarsArgs, fGridArgs, fBuffArgs, fSkinArgs = {}, {}, {}, {}, {}
+
+    -- Default-ON toggle gated on fluffy mode (reactToggle's shape).
+    local function fluffyToggle(key, name, desc, order, extraDep)
+      return {
+        type = "toggle", name = name, desc = desc, order = order, width = "full",
+        disabled = extraDep or notFluffy,
+        get = function() return Nock.db.profile[key] ~= false end,
+        set = function(_, v) visualsSet(_, key, v) end,
+      }
+    end
+
+    fSizeArgs.sizeHeader = { type = "header", name = "Size", order = 10 }
+    fSizeArgs.fluffyWidth = {
+      type = "range",
+      name = "Width",
+      desc = "Width of the fluffy bar cluster and cooldown row, in pixels.",
+      min = 160, max = 480, step = 2,
+      order = 11,
+      disabled = notFluffy,
+      get = function() return Nock.db.profile.fluffyWidth or 320 end,
+      set = function(_, v) visualsSet(_, "fluffyWidth", v) end,
+    }
+    fSizeArgs.fluffyScale = {
+      type = "range",
+      name = "Scale",
+      desc = "Row scale for the whole fluffy stack (cluster + cooldown row), on top of the global HUD scale.",
+      min = 0.5, max = 2.0, step = 0.05,
+      order = 12,
+      disabled = notFluffy,
+      get = function() return Nock.db.profile.fluffyScale or 1.0 end,
+      set = function(_, v) visualsSet(_, "fluffyScale", v) end,
+    }
+    fSizeArgs.elementsHeader = { type = "header", name = "Elements", order = 20 }
+    fSizeArgs.elementsNote = {
+      type = "description", fontSize = "medium", order = 20.1,
+      name = "Each bar of the stack, top to bottom. A hidden bar costs no height. The cast bar floats above the stack and only appears while something casts, so it never moves the other bars.\n",
+    }
+    fSizeArgs.fluffyShowCast = fluffyToggle("fluffyShowCast", "Cast bar (appears while casting)",
+      "A strip above the cluster, hidden whenever nothing casts: cast fill with name and remaining time.", 21)
+    fSizeArgs.fluffyShowAutoShotCast = fluffyToggle("fluffyShowAutoShotCast", "Show the Auto Shot wind-up as a cast",
+      "Draws the ~0.35s wind-up before each Auto Shot in the cast bar. Purely visual — the wind-up is the free press-queue window, not a lockout.", 22,
+      function() return notFluffy() or Nock.db.profile.fluffyShowCast == false end)
+    fSizeArgs.fluffyShowSwing = fluffyToggle("fluffyShowSwing", "Auto Shot bar",
+      "The React-style converge bar: two gold halves meeting at the fire moment, with the Steady/Multi clip ticks, the wind-up commit mark and the late-shot readout.", 23)
+    fSizeArgs.fluffyShowRanged = fluffyToggle("fluffyShowRanged", "Shot windows (ranged)",
+      "The Fluffy timeline lane: Steady windows, the queue window, Multi/Arcane slots and the clip band, with Auto Shot sparks.", 24)
+    fSizeArgs.fluffyShowMelee = fluffyToggle("fluffyShowMelee", "Weave lane (melee)",
+      "The melee weave lane under the shot windows: green while Raptor Strike is ready, white for an auto-only weave, red where no weave fits.", 25)
+    fSizeArgs.fluffyShowRange = fluffyToggle("fluffyShowRange", "Range finder",
+      "The weave range bar at the bottom of the stack, above the cooldown row: finding ladder at long range, then the glide fill toward the sweet spot. Style options are shared with the classic bar (Classic HUD → Range Finder).", 26)
+    fSizeArgs.timingHeader = { type = "header", name = "Timing", order = 30 }
+    fSizeArgs.fluffyShotWindow = {
+      type = "range",
+      name = "Shot lane lookahead (seconds)",
+      desc = "How far ahead the shot-window lanes project. FluffyHUD's own key — the classic Shot Bars' lookahead does not apply here.",
+      min = 2, max = 10, step = 0.5,
+      order = 31,
+      disabled = notFluffy,
+      get = function() return Nock.db.profile.fluffyShotWindow or 6.0 end,
+      set = function(_, v) visualsSet(_, "fluffyShotWindow", v) end,
+    }
+    fSizeArgs.castBarNonCombatCasts =
+      castBarSharedArgs("(same setting as General → Cast bar)").castBarNonCombatCasts
+    fSizeArgs.castBarNonCombatCasts.order = 32
+
+    -- Auto Shot Bar tab: React's exact knob set on the fluffy keys (the
+    -- wind-up mark follows the SHARED showWindupMark, same as React).
+    fBarsArgs.autoHeader = { type = "header", name = "Auto Shot bar", order = 10 }
+    fBarsArgs.fluffyShowNotation = fluffyToggle("fluffyShowNotation", "Rotation notation",
+      "The rotation notation (e.g. \"1:1\", \"6:9:1:1 3w\") right-aligned on the Auto Shot bar.", 11)
+    fBarsArgs.fluffyShowClipTicks = fluffyToggle("fluffyShowClipTicks", "Clip ticks",
+      "The vertical Steady (red) and Multi (orange) clip-threshold tick pairs on the Auto Shot bar.", 11.3)
+    fBarsArgs.showWindupMark = {
+      type = "toggle",
+      name = "Wind-up commit mark",
+      desc = "The neutral vertical mark where the next Auto Shot commits (wind-up start). Shared with the classic swing bar and the React Auto Shot bar — one setting for all three.",
+      order = 11.6,
+      width = "full",
+      disabled = notFluffy,
+      get = function() return Nock.db.profile.showWindupMark ~= false end,
+      set = function(_, v) visualsSet(_, "showWindupMark", v) end,
+    }
+    fBarsArgs.fluffyShowDelay = {
+      type = "toggle",
+      name = "Auto Shot delay readout",
+      desc = "Show the +x.xx late-shot readout centered on the Auto Shot bar. Hidden by default.",
+      order = 12,
+      width = "full",
+      disabled = notFluffy,
+      get = get,
+      set = function(_, v) visualsSet(_, "fluffyShowDelay", v) end,
+    }
+    fBarsArgs.fluffyShowBrackets = {
+      type = "toggle",
+      name = "eWS bracket marks",
+      desc = "Mark the eWS rotation-bracket bounds (where the notation changes) on the Auto Shot bar. Hidden by default — the red/orange clip ticks are always shown.",
+      order = 13,
+      width = "full",
+      disabled = notFluffy,
+      get = get,
+      set = function(_, v) visualsSet(_, "fluffyShowBrackets", v) end,
+    }
+    fBarsArgs.fluffyShowGcdDivider = {
+      type = "toggle",
+      name = "GCD divider",
+      desc = "Draw the global cooldown on the Auto Shot bar as a moving purple divider. Unlike the clip ticks it is not a fixed threshold — it runs the GCD's own progress across the bar the way the gold fill runs the swing, and follows the fill direction: Converge puts one line in from each edge, left/right a single line from the fill's origin edge. Nothing is drawn while you are off the GCD.",
+      order = 14,
+      width = "full",
+      disabled = notFluffy,
+      get = get,
+      set = function(_, v) visualsSet(_, "fluffyShowGcdDivider", v) end,
+    }
+    fBarsArgs.dirHeader = { type = "header", name = "Fill direction", order = 20 }
+    fBarsArgs.fluffyDirAuto = {
+      type = "select",
+      name = "Auto Shot bar",
+      desc = "Converge (reference): both halves close on the center at the fire moment. Left/right: a single fill across the bar; the clip ticks and eWS marks follow the fill's origin edge.",
+      order = 21,
+      values = { converge = "Converge to center (reference)", ltr = "Left to right", rtl = "Right to left" },
+      sorting = { "converge", "ltr", "rtl" },
+      dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
+      disabled = notFluffy,
+      get = function() return Nock.db.profile.fluffyDirAuto or "converge" end,
+      set = function(_, v) visualsSet(_, "fluffyDirAuto", v) end,
+    }
+    fBarsArgs.grpEngine = {
+      type = "group",
+      inline = true,
+      name = "Weave engine (same settings as Classic → Shot Bars)",
+      order = 30,
+      args = weaveEngineArgs(),
+    }
+
+    fGridArgs.gridHeader = { type = "header", name = "Cooldown row", order = 10 }
+    fGridArgs.gridNote = {
+      type = "description", fontSize = "medium", order = 10.1,
+      name = "One React-style icon row under the cluster: Kill Command, Arcane Shot, Multi-Shot, Raptor Strike, your spec spell and Rapid Fire. Off by default.\n",
+    }
+    fGridArgs.fluffyShowGrid = {
+      type = "toggle", name = "Cooldown icon row", order = 11, width = "full",
+      desc = "Show the 6-icon cooldown row under the fluffy cluster.",
+      disabled = notFluffy,
+      get = get,
+      set = function(_, v) visualsSet(_, "fluffyShowGrid", v) end,
+    }
+    do
+      local gridDep = function()
+        return notFluffy() or Nock.db.profile.fluffyShowGrid ~= true
+      end
+      local o = 12
+      for i, key in ipairs(CN.FLUFFY_CD_KEYS) do
+        local k = key
+        o = o + 0.01
+        fGridArgs["fcd_en_" .. i] = {
+          type = "toggle", order = o, width = 1.4,
+          name = describe(k),
+          desc = "Untick to hide the slot without removing it from the row.",
+          disabled = gridDep,
+          get = function()
+            local d = Nock.db.profile.fluffyCooldownDisabled
+            return not (d and d[k] == true)
+          end,
+          set = function(_, v)
+            local d = Nock.db.profile.fluffyCooldownDisabled or {}
+            d[k] = (not v) or nil
+            Nock.db.profile.fluffyCooldownDisabled = d
+            Nock:SendMessage("NOCK_VISUALS_CHANGED")
+          end,
+        }
+      end
+    end
+    fGridArgs.lookHeader = { type = "header", name = "Glows & tints", order = 20 }
+    fGridArgs.lookNote = {
+      type = "description", fontSize = "medium", order = 20.1,
+      name = "Shared with |cffffd200React HUD → Cooldown Grid|r: the same settings drive both grids.\n",
+    }
+    fGridArgs.reactKcProcGlow = {
+      type = "toggle", name = "Kill Command proc glow", order = 21, width = "full",
+      desc = "The action-button glow on the Kill Command slot while it is pressable (usable and off cooldown).",
+      disabled = notFluffy,
+      get = function() return Nock.db.profile.reactKcProcGlow == true end,
+      set = function(_, v) visualsSet(_, "reactKcProcGlow", v) end,
+    }
+    fGridArgs.reactRangeTint = {
+      type = "select", name = "Out-of-range tint", order = 22, width = 1.6,
+      desc = "Tint a slot whose spell is out of range on the current target.",
+      values = { off = "Off", red = "Red", grey = "Grey" },
+      sorting = { "off", "red", "grey" },
+      dialogControl = lsmWidget(nil, "plain"),
+      disabled = notFluffy,
+      get = function() return Nock.db.profile.reactRangeTint or "off" end,
+      set = function(_, v) visualsSet(_, "reactRangeTint", v) end,
+    }
+    fGridArgs.reactTileDim = {
+      type = "toggle", name = "Dim while on cooldown", order = 23, width = "full",
+      desc = "Desaturate and fade a slot while its spell is on cooldown or unusable.",
+      disabled = notFluffy,
+      get = function() return Nock.db.profile.reactTileDim == true end,
+      set = function(_, v) visualsSet(_, "reactTileDim", v) end,
+    }
+    fGridArgs.reactManaTint = {
+      type = "toggle", name = "No-mana tint", order = 24, width = "full",
+      desc = "Blue-grey a slot whose spell you can't currently afford.",
+      disabled = notFluffy,
+      get = function() return Nock.db.profile.reactManaTint == true end,
+      set = function(_, v) visualsSet(_, "reactManaTint", v) end,
+    }
+
+    fillBuffArgs(fBuffArgs, "fluffy")
+
+    -- Curated skin overrides. Reference values are WRITTEN BACK by the reset
+    -- (same reasoning as the React SKIN_REFERENCE above).
+    local FLUFFY_SKIN_REFERENCE = {
+      fluffyCastH = 14, fluffySwingH = 12, fluffyRangedH = 18, fluffyMeleeH = 8, fluffyRangeH = 12,
+      fluffyBarTexture = "", fluffyFont = "", fluffyFontSize = 9,
+      fluffyColorCastFill   = { 0.40, 0.70, 1.00, 1.00 },
+      fluffyColorSwingFill  = { 1.00, 0.84, 0.00, 1.00 },
+      fluffyColorTickSteady = { 1.00, 0.10, 0.10, 1.00 },
+      fluffyColorTickMulti  = { 1.00, 0.65, 0.10, 1.00 },
+      fluffyColorTickWindup = { 0.85, 0.85, 0.85, 0.80 },
+      fluffyColorGcdDivider = { 0.62, 0.35, 0.98, 1.00 },
+      fluffyColorBracket    = { 1.00, 1.00, 1.00, 0.35 },
+      fluffyColorSteady     = { 0.988, 0.596, 0.012, 0.85 },
+      fluffyColorQueue      = { 0.988, 0.596, 0.012, 0.38 },
+      fluffyColorQueueLive  = { 0.20, 0.90, 0.35, 0.90 },
+      fluffyColorMulti      = { 0.012, 0.525, 0.996, 0.85 },
+      fluffyColorArcane     = { 0.686, 0.478, 0.773, 0.85 },
+      fluffyColorDanger     = { 0.851, 0.118, 0.118, 0.50 },
+      fluffyColorRaptor     = { 0.153, 0.682, 0.376, 0.85 },
+      fluffyColorWeaveAuto  = { 1.00, 1.00, 1.00, 0.70 },
+      fluffyColorSpark      = { 1.00, 1.00, 1.00, 1.00 },
+      fluffyColorRangeDeadzone = { 0.68, 0.18, 0.20, 1.00 },
+      fluffyColorRangeSweet    = { 0.85, 0.66, 0.00, 1.00 },
+      fluffyColorRangePerfect  = { 0.17, 0.78, 0.11, 1.00 },
+      fluffyColorRangeClose    = { 0.00, 0.83, 0.75, 1.00 },
+      fluffyColorRangeResync   = { 1.00, 0.58, 0.10, 1.00 },
+    }
+    fSkinArgs.skinHeader = { type = "header", name = "Skin", order = 10 }
+    fSkinArgs.skinNote = {
+      type = "description", fontSize = "medium", order = 10.1,
+      name = "Defaults are the reference FluffyHUD look, so an untouched profile is the reference skin. Only these curated knobs are exposed — the seams and the stack order stay fixed.\n",
+    }
+    fSkinArgs.fluffyBarTexture = {
+      type = "select",
+      name = "Bar texture",
+      desc = "Status bar texture for the fluffy fills (cast, swing, range). 'Reference (built-in)' keeps the flat reference look. Separate from the classic HUD's global Bar texture.",
+      order = 11,
+      dialogControl = lsmWidget(nil, "statusbar"),
+      values = lsmSentinelValues("statusbar", "Reference (built-in)"),
+      disabled = notFluffy,
+      get = lsmSentinelGet("fluffyBarTexture", "Reference (built-in)"),
+      set = lsmSentinelSet("fluffyBarTexture", "Reference (built-in)"),
+    }
+    fSkinArgs.fluffyFont = {
+      type = "select",
+      name = "Font",
+      desc = "Font for the fluffy text (cast name/time, delay readout, range label). 'Reference (built-in)' keeps the reference look. Separate from the classic HUD's global Font.",
+      order = 12,
+      dialogControl = lsmWidget(nil, "font"),
+      values = lsmSentinelValues("font", "Reference (built-in)"),
+      disabled = notFluffy,
+      get = lsmSentinelGet("fluffyFont", "Reference (built-in)"),
+      set = lsmSentinelSet("fluffyFont", "Reference (built-in)"),
+    }
+    fSkinArgs.fluffyFontSize = {
+      type = "range",
+      name = "Font size",
+      desc = "Base size of the fluffy text (reference is 9). Everything shifts together.",
+      min = 6, max = 16, step = 1,
+      order = 13,
+      disabled = notFluffy,
+      get = function() return Nock.db.profile.fluffyFontSize or 9 end,
+      set = function(_, v) visualsSet(_, "fluffyFontSize", v) end,
+    }
+    local function fSkinRange(key, name, order, minV, maxV)
+      return {
+        type = "range", name = name, min = minV or 4, max = maxV or 40, step = 1, order = order,
+        disabled = notFluffy,
+        get = get,
+        set = function(_, v) visualsSet(_, key, v) end,
+      }
+    end
+    fSkinArgs.fluffyCastH   = fSkinRange("fluffyCastH",   "Cast bar height",       21, 8, 28)
+    fSkinArgs.fluffySwingH  = fSkinRange("fluffySwingH",  "Auto Shot bar height",  22, 6, 28)
+    fSkinArgs.fluffyRangedH = fSkinRange("fluffyRangedH", "Shot lane height",   23, 10, 40)
+    fSkinArgs.fluffyMeleeH  = fSkinRange("fluffyMeleeH",  "Weave lane height",  24, 4, 20)
+    fSkinArgs.fluffyRangeH  = fSkinRange("fluffyRangeH",  "Range bar height",   25, 6, 28)
+    local function fSkinColor(name, desc, order)
+      return {
+        type = "color", name = name, desc = desc, hasAlpha = true, order = order,
+        disabled = notFluffy,
+        get = getColor, set = setColor,
+      }
+    end
+    fSkinArgs.fluffyColorCastFill   = fSkinColor("Cast fill", nil, 31)
+    fSkinArgs.fluffyColorSwingFill  = fSkinColor("Auto Shot fill", "The converging gold halves.", 32)
+    fSkinArgs.fluffyColorTickSteady = fSkinColor("Auto: Steady tick", "The tick marking where a Steady Shot cast would clip the next Auto Shot.", 32.5)
+    fSkinArgs.fluffyColorTickMulti  = fSkinColor("Auto: Multi tick", "The tick marking where a Multi-Shot cast would clip the next Auto Shot.", 32.7)
+    fSkinArgs.fluffyColorTickWindup = fSkinColor("Auto: wind-up mark", "The neutral landmark where the next Auto Shot commits (wind-up start).", 33)
+    fSkinArgs.fluffyColorGcdDivider = fSkinColor("Auto: GCD divider", "The moving GCD line (off by default, under Auto Shot Bar).", 33.3)
+    fSkinArgs.fluffyColorBracket    = fSkinColor("Auto: eWS brackets", "The eWS rotation-bracket bounds (off by default, under Auto Shot Bar).", 33.6)
+    fSkinArgs.fluffyColorSteady     = fSkinColor("Lane: Steady window", "Safe Steady Shot windows.", 34)
+    fSkinArgs.fluffyColorQueue      = fSkinColor("Lane: queue window", "The wind-up press-queue window (projection).", 35)
+    fSkinArgs.fluffyColorQueueLive  = fSkinColor("Lane: queue LIVE", "The queue window once it is open right now.", 36)
+    fSkinArgs.fluffyColorMulti      = fSkinColor("Lane: Multi-Shot", nil, 37)
+    fSkinArgs.fluffyColorArcane     = fSkinColor("Lane: Arcane Shot", nil, 38)
+    fSkinArgs.fluffyColorDanger     = fSkinColor("Lane: clip band", "Where a cast would clip the next Auto Shot; also the no-weave fill.", 39)
+    fSkinArgs.fluffyColorRaptor     = fSkinColor("Weave: Raptor ready", nil, 40)
+    fSkinArgs.fluffyColorWeaveAuto  = fSkinColor("Weave: auto-only", "Weave window while Raptor Strike is on cooldown.", 41)
+    fSkinArgs.fluffyColorSpark      = fSkinColor("Auto Shot spark", nil, 42)
+    fSkinArgs.fluffyColorRangeDeadzone = fSkinColor("Range: deadzone", "In melee (can't shoot).", 43)
+    fSkinArgs.fluffyColorRangeSweet    = fSkinColor("Range: sweet", "Inside the weave ring.", 44)
+    fSkinArgs.fluffyColorRangePerfect  = fSkinColor("Range: perfect", "At the melee edge (best weave spot).", 45)
+    fSkinArgs.fluffyColorRangeClose    = fSkinColor("Range: close", "Closing on the weave ring; also the finding drain fill.", 46)
+    fSkinArgs.fluffyColorRangeResync   = fSkinColor("Range: resync", "Estimate degraded.", 47)
+    fSkinArgs.resetSkin = {
+      type = "execute",
+      name = "Reset skin to reference",
+      desc = "Put every FluffyHUD skin setting back to the reference look.",
+      order = 60,
+      disabled = notFluffy,
+      func = function()
+        local prof = Nock.db.profile
+        for k, v in pairs(FLUFFY_SKIN_REFERENCE) do
+          if type(v) == "table" then
+            prof[k] = { v[1], v[2], v[3], v[4] }
+          else
+            prof[k] = v
+          end
+        end
+        Nock:SendMessage("NOCK_VISUALS_CHANGED")
+        notify()
+      end,
+    }
+
+    options.args.fluffy = {
+      type  = "group",
+      name  = function()
+        local active = (Nock.db.profile.hudMode or "classic") == "fluffy"
+        return active and "FluffyHUD |cff9dc46e(active)|r" or "FluffyHUD"
+      end,
+      order = 1.8,
+      childGroups = "tree",
+      args  = {
+        intro = {
+          type = "description",
+          fontSize = "medium",
+          order = 1,
+          name = "The compact third look: a cast bar that only appears while casting, the React-style converge Auto Shot bar with its breakpoint ticks, the Fluffy shot-window lanes (ranged + melee), the range finder, the proc row above and an optional 6-icon cooldown row welded below (it grows downward, never moving the stack). Element visibility lives on this page's own keys; the classic rows' settings don't apply. Toggle quickly with |cffffd200/nock fluffy|r.\n",
+        },
+        hudMode  = hudModeSelect(2, "(same setting as General → HUD look)"),
+        tabSize  = { type = "group", name = "Size & Elements", order = 10, args = fSizeArgs },
+        tabBars  = { type = "group", name = "Auto Shot Bar",   order = 15, args = fBarsArgs },
+        tabGrid  = { type = "group", name = "Cooldown Row",    order = 20, args = fGridArgs },
+        tabBuff  = { type = "group", name = "Buff Row",        order = 30, args = fBuffArgs },
+        tabSkin  = { type = "group", name = "Skin",            order = 40, args = fSkinArgs },
+      },
+    }
   end
 
   -- ---------------------------------------------------------------------------
@@ -6297,7 +6675,7 @@ local function buildOptionsTable()
     local classic = {
       type = "group",
       name = function()
-        local active = (Nock.db.profile.hudMode or "classic") ~= "react"
+        local active = (Nock.db.profile.hudMode or "classic") == "classic"
         return active and "Classic HUD |cff9dc46e(active)|r" or "Classic HUD"
       end,
       order = 1,
@@ -6411,8 +6789,8 @@ local function buildOptionsTable()
 
   local FAMILIES = {
     { key = "hud", name = "HUD & Bars", order = 2,
-      desc = "Everything drawn as part of the HUD cluster, split by look: the Classic row stack and the fixed-skin React replica. The active look is marked in the list.",
-      children = { "classic", "react" } },
+      desc = "Everything drawn as part of the HUD cluster, split by look: the Classic row stack, the fixed-skin React replica and the compact FluffyHUD. The active look is marked in the list.",
+      children = { "classic", "react", "fluffy" } },
     { key = "alerts", name = "Alerts", order = 3,
       desc = "Things that shout at you: full-screen warnings and the consumable/buff helper row.",
       children = { "warnings", "helpers" } },

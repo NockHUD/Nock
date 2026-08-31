@@ -46,6 +46,12 @@ local function profile(key, fallback)
 end
 
 local function barsMode()
+  -- Classic shot-bars mode, or the FluffyHUD cluster — whose fluffy bars read
+  -- state.shotpredict whatever rotationMode says. THE one engine gate: Refresh
+  -- and all four event recomputes route through here, so widening it here is
+  -- what lets a third HUD mode see spans at all (showing a frame is not
+  -- enough; the engine would silently never Recompute).
+  if Nock.HudMode() == "fluffy" then return true end
   return profile("rotationMode", "helper") == "bars"
 end
 
@@ -361,7 +367,10 @@ function ShotPredictor:Refresh(state)
   local sp = state.shotpredict
   -- Skip projection when not in bars mode OR the rotation display is globally
   -- disabled (showRotation) — no point computing for a hidden ShotBars.
-  if not barsMode() or not profile("showRotation", true) then
+  -- showRotation is a Classic Layout flag; FluffyHUD's element visibility
+  -- lives on its own fluffyShow* keys, so it must not blank the fluffy bars.
+  if not barsMode()
+     or (Nock.HudMode() ~= "fluffy" and not profile("showRotation", true)) then
     if sp.active then sp.active = false end
     return
   end
@@ -369,7 +378,16 @@ function ShotPredictor:Refresh(state)
   local now = GetTime()
   local r = state.ranged
   local sd = liveSwingDuration()
-  local windowSec = profile("shotBarsWindow", 3.4)
+  -- The lookahead horizon: the classic Shot Bars key, or FluffyHUD's own —
+  -- fluffy ignores the shotBars* keys wholesale (its element keys replace
+  -- them), so its window must too, or one HUD's slider would stretch the
+  -- other's lanes.
+  local windowSec
+  if Nock.HudMode() == "fluffy" then
+    windowSec = profile("fluffyShotWindow", 6.0)
+  else
+    windowSec = profile("shotBarsWindow", 3.4)
+  end
   sp.windowSec  = windowSec
   -- Publish the timestamp the spans/sparks below are anchored to. ShotBars
   -- renders against THIS, not a second GetTime() — otherwise the small, varying

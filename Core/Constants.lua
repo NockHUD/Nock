@@ -571,6 +571,12 @@ Nock.Constants = {
     { h = 24, w = 32, keys = { "Haste", "ManaPot" }, whenActive = true },
   },
 
+  -- FluffyHUD's single cooldown icon row (UI/Frame_FluffyCooldowns.lua,
+  -- fluffyShowGrid, ships OFF): the React grid's row 1, seeded. Membership is
+  -- user-overridable via profile.fluffyCdKeys (a flat key list; false = this
+  -- seed) and per-key fluffyCooldownDisabled.
+  FLUFFY_CD_KEYS = { "KC", "Arc", "MS", "Raptor", "Spec", "RF" },
+
   -- Projectile-maker items (arrow + bullet equivalents). The info row sums,
   -- per maker, GetItemCount(id,false,true) * multiplier and adds it to the
   -- ammo count. GetItemCount's "include charges" mode returns the true total

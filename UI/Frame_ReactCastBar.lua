@@ -105,7 +105,7 @@ function ReactCastBar:Refresh(state)
   -- On by default here — the glued cast bar is expected to show it — where the
   -- classic HUD leaves it opt-in.
   local c = Nock.CastBarSource(p and p.reactShowAutoShotCast ~= false)
-  local show = p and p.hudMode == "react" and p.reactShowCastBar ~= false and c
+  local show = p and Nock.HudIsReact() and p.reactShowCastBar ~= false and c
   if not show then
     if self.frame:IsShown() then self.frame:Hide() end
     return

@@ -262,5 +262,61 @@ locked = true
 RB:ApplyLock()
 ok(panel._mouse == false, "locked -> never")
 
+--------------------------------------------------------------------------------
+-- 5. FluffyHUD: the third host. Same frame, the fluffy cluster as parent, its
+-- own store (fluffyBuffRowPos) and master switch (fluffyBuffRows); the weld
+-- lifts clear of the transient cast bar welded above the cluster.
+--------------------------------------------------------------------------------
+local fcluster = Nock:NewModule("FluffyCluster")
+fcluster.frame = Stub.CreateFrame("Frame", "NockFluffyClusterStub", hudFrame)
+fcluster.frame:SetWidth(240)
+
+ok(Nock.Defaults.profile.fluffyBuffRows == true, "fluffyBuffRows ships ON")
+ok(Nock.Defaults.profile.fluffyBuffRowPos == false, "fluffyBuffRowPos ships welded (false)")
+
+p.hudMode = "fluffy"
+ok(RB:Host() == "fluffy", "fluffy mode -> the fluffy host")
+ok(RB:IsClassicHost() == false, "fluffy is not the classic host")
+ok(RB:PosKey() == "fluffyBuffRowPos", "fluffy position key")
+ok(RB:IsEnabled() == true, "fluffy: enabled by fluffyBuffRows")
+p.fluffyBuffRows = false
+ok(RB:IsEnabled() == false, "fluffy: fluffyBuffRows=false disables")
+ok(p.showBuffRow == true and p.reactBuffRows == true,
+   "... without touching the other modes' switches")
+p.fluffyBuffRows = true
+
+RB:ApplyLayout()
+ok(panel:GetParent() == fcluster.frame, "fluffy: the row is the fluffy cluster's child")
+ok(#points == 2 and points[1].rel == fcluster.frame
+   and points[1].rp == "TOPLEFT" and points[2].rp == "TOPRIGHT",
+   "fluffy: welded across the fluffy cluster's top edge")
+ok(points[1].y == math.max(18, (p.fluffyCastH or 14) + 4),
+   "fluffy: lifted clear of the transient cast bar")
+ok(panel:GetScale() == 1, "fluffy: scale 1 (fluffyScale is the cluster's)")
+
+-- Drag writes ONLY the fluffy store (panel edges still 100/200 from section 4).
+fcluster.frame.GetLeft = function() return 55 end
+fcluster.frame.GetBottom = function() return 165 end
+dragStop(panel)
+ok(type(p.fluffyBuffRowPos) == "table"
+   and p.fluffyBuffRowPos.x == 45 and p.fluffyBuffRowPos.y == 35,
+   "fluffy drag writes the cluster-relative fluffyBuffRowPos")
+ok(p.reactBuffRowPos.x == 40 and p.classicBuffRowPos.x == 5,
+   "... and leaves the classic/react stores alone")
+
+-- The one nudge pad follows the fluffy host too.
+ok(nudgeSpec.get() == p.fluffyBuffRowPos, "fluffy pad reads fluffyBuffRowPos")
+ok(nudgeSpec.default() == false, "fluffy pad reset re-welds (false)")
+p.fluffyBuffRowPos = false
+RB:ApplyLayout()
+ok(#points == 2, "fluffy: cleared store re-welds")
+
+-- The scan still paints on the fluffy host.
+locked = true
+playerBuffs = { { name = "Proc2825", id = 2825, icon = "proc-2825" } }
+refresh()
+ok(#painted == 1 and painted[1] == "proc-2825", "fluffy: the same scan paints")
+playerBuffs = {}
+
 print(("buff_row_classic_test: %d passed, %d failed"):format(pass, fail))
 if fail > 0 then os.exit(1) end
