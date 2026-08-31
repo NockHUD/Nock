@@ -358,6 +358,17 @@ function CastBar:Refresh(state)
   -- cancelled shot — stepping out of range, losing the target — has no such
   -- event, and a stuck bar would sit there claiming a shot is imminent.
   local a = state.player.autoShotCast
+  if a and not Nock.state.sim.active then
+    -- Keep the wind-up pinned to the live release. Under the locked-shot
+    -- model (Nock.ReanchorSwingStart) a speed change no longer moves it, so
+    -- this is a safety net for the grid moving under the bar for any other
+    -- reason (a re-measured duration, a late UNIT_ATTACK_SPEED). Not in
+    -- practice — the sim owns its own cast record.
+    local r = state.ranged
+    if r.swingStart > 0 and r.swingDuration > 0 then
+      a.endTime = Nock.AutoShotCastEnd(a.endTime, a.startTime, r.swingStart + r.swingDuration, now)
+    end
+  end
   if a and now > a.endTime + 0.5 then
     state.player.autoShotCast = nil
   end

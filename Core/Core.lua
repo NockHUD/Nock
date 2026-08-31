@@ -236,6 +236,7 @@ function Nock:StartTick()
   -- pairs() order, so the toc cannot guarantee it runs first). Cached once
   -- here so the tick never pays for a GetModule lookup.
   self._practice = self:GetModule("Practice", true)
+  self._swingTimer = self:GetModule("SwingTimer", true)
   local f = CreateFrame("Frame")
   -- Optional throttle. perfTickHz == 0 keeps the original uncapped behavior
   -- (tick every rendered frame); > 0 accumulates elapsed and only ticks at the
@@ -275,6 +276,18 @@ function Nock:Tick()
   -- grid's ghost outline follows the snapped landing spot (one call, nil-cheap).
   local em = self.EditMode
   if em and em._drag then em:DragTick() end
+
+  -- Ranged-speed poll. UNIT_ATTACK_SPEED is unreliable for ranged on this
+  -- client: the 2026-08-31 swinglog shows Rapid Fire popping AND expiring with
+  -- the event arriving only at the next release (or 0.2s late), leaving the
+  -- swing grid a whole cycle stale. One cheap API call per tick catches the
+  -- edge within a frame; RefreshSwingDurations no-ops when nothing moved.
+  if not state.sim.active and self._swingTimer then
+    local sd = UnitRangedDamage("player")
+    if sd and sd > 0 and sd ~= state.ranged.swingDuration then
+      self._swingTimer:RefreshSwingDurations()
+    end
+  end
 
   if state.ranged.swingStart > 0 then
     state.ranged.swingRemaining = math.max(0, state.ranged.swingStart + state.ranged.swingDuration - now)
@@ -444,6 +457,9 @@ function Nock:HandleSlashCommand(input)
   elseif input == "auraprobe" then
     local au = self:GetModule("Auras", true)
     if au and au.Probe then au:Probe() end
+  elseif input == "swinglog" then
+    local stm = self:GetModule("SwingTimer", true)
+    if stm and stm.SwingLogToggle then stm:SwingLogToggle() end
   elseif input == "lock" then
     self:SetLocked(true)
     self:Print("All Nock frames locked.")

@@ -51,11 +51,57 @@ function SwingTimer:PLAYER_ENTERING_WORLD()
   self:RefreshSwingDurations()
 end
 
+-- /nock swinglog — dummy-session evidence for the swing model (locked shot vs
+-- rescale-remainder): every Auto Shot wind-up start / release / fail and every
+-- ranged-speed edge, timestamped, with where the bar stood (elapsed/duration).
+-- First call arms, second dumps into the copybox (project rule) and disarms.
+-- Cheap when off: one nil check per event.
+local SWINGLOG_MAX = 300
+
+function SwingTimer:SwingLogToggle()
+  if self._swingLog then
+    local L = self._swingLog
+    self._swingLog = nil
+    if Nock.UI and Nock.UI.ShowCopyBox then
+      Nock.UI.ShowCopyBox(table.concat(L, "\n"))
+    end
+  else
+    self._swingLog = { ("swinglog armed  sd=%.3f  (time%% = bar fill at the event)")
+      :format(UnitRangedDamage("player") or 0) }
+    self._swingLogT0 = GetTime()
+    Nock:Print("Swing log armed — /nock swinglog again to dump it.")
+  end
+end
+
+function SwingTimer:SwingLogAdd(fmt, ...)
+  local L = self._swingLog
+  if not L or #L >= SWINGLOG_MAX then return end
+  local now = GetTime()
+  local r = Nock.state.ranged
+  local pct = 0
+  if r.swingStart > 0 and r.swingDuration > 0 then
+    pct = (now - r.swingStart) / r.swingDuration * 100
+  end
+  L[#L + 1] = ("%+9.3f %6.1f%%  "):format(now - (self._swingLogT0 or now), pct) .. fmt:format(...)
+end
+
 function SwingTimer:RefreshSwingDurations()
   if Nock.state.sim.active then return end   -- practice mode owns the swing
   local rangedSpeed = UnitRangedDamage("player")
   if rangedSpeed and rangedSpeed > 0 then
-    Nock.state.ranged.swingDuration = rangedSpeed
+    local r = Nock.state.ranged
+    if self._swingLog and r.swingDuration > 0 and r.swingDuration ~= rangedSpeed then
+      self:SwingLogAdd("SPEED %.3f -> %.3f", r.swingDuration, rangedSpeed)
+    end
+    -- A speed change never moves the pre-wind-up part of the shot in flight —
+    -- only the wind-up runs at the new speed; the rest applies from the next
+    -- shot (swinglog-evidenced; see Nock.ReanchorSwingStart). Shifting
+    -- swingStart keeps start + duration == the true release for every
+    -- consumer. Melee is deliberately left alone — its swingStart doubles as
+    -- the last-hit timestamp.
+    r.swingStart = Nock.ReanchorSwingStart(r.swingStart, r.swingDuration, rangedSpeed,
+                                           GetTime(), r.windupRatio)
+    r.swingDuration = rangedSpeed
   end
   local meleeSpeed = UnitAttackSpeed("player")
   if meleeSpeed and meleeSpeed > 0 then
@@ -89,6 +135,10 @@ function SwingTimer:UNIT_SPELLCAST_SUCCEEDED(event, unit, arg1, arg2)
   end
   if isAuto then
     local now = GetTime()
+    if self._swingLog then
+      local prev = self._lastAutoShot
+      self:SwingLogAdd("RELEASE  gap=%.3f", prev and (now - prev) or 0)
+    end
     self:UpdateAutoDelay(now)
     self:UpdateWindup(now)
     Nock.state.ranged.swingStart = now
@@ -239,6 +289,12 @@ function SwingTimer:COMBAT_LOG_EVENT_UNFILTERED()
   -- Wind-up start. CLEU is the only source — UnitCastingInfo returns nil for
   -- Auto Shot on this client (dummy-verified) — and it is delivered in the same
   -- frame as the immediate cast events, so the timestamp is trustworthy.
+  if self._swingLog and spellId == C.SpellID.AUTO_SHOT
+     and (subevent == "SPELL_CAST_START" or subevent == "SPELL_CAST_SUCCESS"
+          or subevent == "SPELL_CAST_FAILED") then
+    self:SwingLogAdd("%s  sd=%.3f", subevent, UnitRangedDamage("player") or 0)
+  end
+
   if subevent == "SPELL_CAST_START" and spellId == C.SpellID.AUTO_SHOT then
     self._windupStart = GetTime()
     self._windupSd    = UnitRangedDamage("player")

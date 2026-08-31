@@ -560,6 +560,64 @@ function Nock.ReleaseFreeIn(rem, pulse)
   return phase
 end
 
+-- Mid-cycle speed change: the shot the client already scheduled fires on its
+-- OLD timing — the ranged swing is not rescaled in flight; the new speed
+-- applies from the NEXT shot. Dummy-evidenced twice: a DST fall-off mid-cycle
+-- released the shot ~10% of a bar before the rescale-remainder model's
+-- prediction (2026-08-31), and the 2026-08-12 "mixed" wind-up sample (0.2177
+-- against 0.169 neighbours) is exactly old-windup / new-speed — a locked shot
+-- measured against the new UnitRangedDamage, no mid-flight blend required.
+--
+-- So a speed change shifts swingStart to PRESERVE the release: the returned
+-- start + newDur == the release already scheduled. SwingTimer feeds every
+-- ranged-speed change through here; without it, swingStart + swingDuration
+-- (the release every consumer derives) jumped by the full old/new difference —
+-- up to ~0.65s under Bloodlust — and the auto bar / wind-up bar aborted early
+-- or sat near-empty. Identity when there is nothing to carry: no swing
+-- tracked, missing/equal durations, or a release already in the past (a
+-- delayed shot is late for a reason — a queued cast — this model knows nothing
+-- about). A fresh release (start stamped this very instant) is left alone --
+-- the new cycle runs at the new speed from its own start. The
+-- shifted start may exceed `now` (haste gained late in the cycle); the fill
+-- math clamps its own progress — clamping here would move the release. Pure,
+-- for the test harness (Tests/swing_rescale_test.lua). Ranged only by design:
+-- melee DOES rescale in flight, and melee.swingStart doubles as the last-hit
+-- timestamp (WeaveCoach reads it against keyHeldSince).
+-- `windupRatio` (optional, windup/duration = 0.5/baseSpeed): swinglog round 2
+-- refined the model — the PRE-wind-up part of the cycle is locked, but the
+-- wind-up itself runs at the CURRENT speed (RF at 23.7%: gap 2.080 =
+-- 2.174 - windup@old + windup@new, 9ms off, reproduced twice; DST expiry
+-- likewise within 22ms). So the wind-up START is what is preserved; the
+-- release moves by ratio x (newDur - oldDur). Nil/0 ratio = pure locked.
+function Nock.ReanchorSwingStart(swingStart, oldDur, newDur, now, windupRatio)
+  if not swingStart or swingStart <= 0 then return swingStart end
+  if not oldDur or oldDur <= 0 or not newDur or newDur <= 0 then return swingStart end
+  if oldDur == newDur then return swingStart end
+  if now <= swingStart then return swingStart end
+  local release = swingStart + oldDur
+  if release <= now then return swingStart end
+  local r = tonumber(windupRatio) or 0
+  if r < 0 then r = 0 elseif r > 1 then r = 1 end
+  -- An edge landing once the wind-up has begun leaves the shot fully locked:
+  -- the wind-up commits to the speed it started with (swinglog round 3, DST
+  -- at 99.9%% released on the old schedule to 2ms).
+  if now >= release - r * oldDur then r = 0 end
+  release = release + r * (newDur - oldDur)
+  return release - newDur
+end
+
+-- The wind-up bar's end, re-checked against the live release each Refresh.
+-- Modules/CastBar snapshots the predicted release into autoShotCast.endTime at
+-- SPELL_CAST_START; a haste edge during the wind-up itself moves the real
+-- release afterwards (RescaleSwingStart moves the grid), so the bar adopts the
+-- live release whenever it is still a sane target: ahead of now (a grid stuck
+-- in the past means the shot is delayed — keep the seeded end) and after the
+-- bar's own start. Pure; returns the end time to draw against.
+function Nock.AutoShotCastEnd(curEnd, startTime, release, now)
+  if release and release > now and release > startTime then return release end
+  return curEnd
+end
+
 -- What a cast bar should draw, or nil for nothing. A real cast (or the Feign
 -- Death bar, which Modules/CastBar projects into the same field) always wins; the
 -- Auto Shot wind-up is shown only when the calling view's own setting allows it.
