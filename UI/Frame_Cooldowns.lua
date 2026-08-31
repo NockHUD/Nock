@@ -183,6 +183,12 @@ function CooldownsView:Rebuild()
     slot:ClearAllPoints()
     slot:SetPoint("TOPLEFT", self.frame, "TOPLEFT", rowOffset + col * stride, -row * stride)
     slot._entry          = entries[i]
+    -- Per-HUD active-highlight geometry (thickness + contained/overflow);
+    -- style + color are Refresh's job.
+    local p = Nock.db.profile
+    Nock.UI.ApplyGlowStyle(slot, p.cooldownActiveSize or 3,
+                           p.cooldownActiveFit == "contained")
+    Nock.UI.SetIconProcGlow(slot, false)
     slot._lastIcon       = nil
     slot._lastText       = ""
     slot._lastVisState   = nil
@@ -251,14 +257,26 @@ function CooldownsView:Refresh(state)
         end
 
         local vis = visualState(cd)
+        -- Settings preview: light every tile; suspended in combat.
+        if Nock.UI.activePreview
+           and not (InCombatLockdown and InCombatLockdown()) then
+          vis = "proc"
+        end
         local txt = (dispRem and dispRem > 0) and formatCD(dispRem) or ""
 
         if vis ~= slot._lastVisState then
           slot.icon:SetVertexColor(1, 1, 1, 1)
           if vis == "proc" then
-            Nock.UI.SetIconHighlight(slot, C.COLORS.PROC_GLOW)
+            -- Per-HUD active-highlight style (cooldownActive*): border with
+            -- the profile color, the action-button overlay, or nothing.
+            local p = Nock.db.profile
+            local style = p.cooldownActiveStyle or "border"
+            Nock.UI.SetIconHighlight(slot, (style == "border")
+              and (p.cooldownActiveColor or C.COLORS.PROC_GLOW) or nil)
+            Nock.UI.SetIconProcGlow(slot, style == "glow", nil)
           else
             Nock.UI.SetIconHighlight(slot, nil)
+            Nock.UI.SetIconProcGlow(slot, false)
           end
           slot._lastVisState = vis
         end

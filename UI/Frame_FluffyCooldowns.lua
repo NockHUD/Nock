@@ -123,6 +123,7 @@ end
 -- weld's two points own the width; only the height is ours to set.
 function FluffyCooldownsView:Rebuild()
   local rows, w, totalH = self:RowsGeometry()
+  local p = profile()
   self.frame:SetHeight(totalH)
 
   for _, s in ipairs(self._pool) do
@@ -153,6 +154,10 @@ function FluffyCooldownsView:Rebuild()
       local ySpan = 0.42 * math.min(1, row.h / row.w)
       slot.icon:SetTexCoord(0.08, 0.92, 0.5 - ySpan, 0.5 + ySpan)
       slot._entry          = entry
+      -- Per-HUD active-highlight geometry (thickness + contained/overflow);
+      -- style + color are the Refresh look's job.
+      Nock.UI.ApplyGlowStyle(slot, p.fluffyActiveSize or 3,
+                             p.fluffyActiveFit == "contained")
       slot._lastIcon       = nil
       slot._lastText       = ""
       slot._lastLook       = nil
@@ -229,10 +234,14 @@ function FluffyCooldownsView:Refresh(state)
           slot._lastIcon = dispIcon
         end
 
-        LOOK.procGlow = (entry.key == "KC" and p.reactKcProcGlow) and true or false
-        LOOK.tint     = p.reactRangeTint or "off"
-        LOOK.dim      = p.reactTileDim and true or false
-        LOOK.manaTint = p.reactManaTint and true or false
+        LOOK.procGlow    = (entry.key == "KC" and p.reactKcProcGlow) and true or false
+        LOOK.activeStyle = p.fluffyActiveStyle
+        -- Settings preview: light every tile; suspended in combat.
+        LOOK.preview     = (Nock.UI.activePreview
+                            and not (InCombatLockdown and InCombatLockdown())) or false
+        LOOK.tint        = p.reactRangeTint or "off"
+        LOOK.dim         = p.reactTileDim and true or false
+        LOOK.manaTint    = p.reactManaTint and true or false
         local so = state.target.spellOut
         local r  = Nock.UI.ReactSlotLook(cd, so and so[entry.key], LOOK, RES)
         local lk = Nock.UI.ReactLookKey(r)
@@ -242,7 +251,8 @@ function FluffyCooldownsView:Refresh(state)
           else slot.icon:SetVertexColor(1, 1, 1, 1) end
           slot.icon:SetAlpha(r.alpha)
           if slot.icon.SetDesaturated then slot.icon:SetDesaturated(r.desat) end
-          Nock.UI.SetIconHighlight(slot, (r.glow == "border") and C.COLORS.PROC_GLOW or nil)
+          Nock.UI.SetIconHighlight(slot, (r.glow == "border")
+            and (p.fluffyActiveColor or C.COLORS.PROC_GLOW) or nil)
           Nock.UI.SetIconProcGlow(slot, r.glow == "overlay", nil)
           slot._lastLook = lk
         end

@@ -248,6 +248,78 @@ local function panelStyleArgs(prefix, startOrder, opacityKey)
   }
 end
 
+-- Active-state highlight controls, one block per HUD family's grid tab. The
+-- look of a LIT cooldown tile (a proc up, a consumable's buff running):
+-- Style (border / action-button glow / none), and for the border its color,
+-- thickness and fit (over the tile edges vs inside them). Keys are the
+-- family's own — cooldownActive* / reactActive* / fluffyActive* — per the
+-- user's per-HUD choice (2026-08-31). disabledFn gates on the HUD mode
+-- (nil = always live, the classic grid's case). Greyed-out/recharging looks
+-- are untouched; so is the KC slot's own reactKcProcGlow override.
+local function fillActiveHighlightArgs(args, keyPrefix, baseOrder, disabledFn)
+  local function key(suffix) return keyPrefix .. suffix end
+  local function borderOff()
+    if disabledFn and disabledFn() then return true end
+    return (Nock.db.profile[key("Style")] or "border") ~= "border"
+  end
+  args.activeHeader = { type = "header", name = "Active highlight", order = baseOrder }
+  args[key("Style")] = {
+    type = "select", name = "Style", order = baseOrder + 0.1, width = 1.2,
+    desc = "How a tile announces its active state (a proc up, a consumable's buff running): the highlight border, the animated action-button glow, or nothing. The Kill Command tile's own proc-glow toggle overrides this on that one slot.",
+    values = { border = "Highlight border", glow = "Action-button glow", none = "None" },
+    sorting = { "border", "glow", "none" },
+    dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
+    disabled = disabledFn,
+    get = function() return Nock.db.profile[key("Style")] or "border" end,
+    set = function(_, v) visualsSet(_, key("Style"), v) end,
+  }
+  args[key("Color")] = {
+    type = "color", name = "Border color", order = baseOrder + 0.2, hasAlpha = true,
+    desc = "Color of the highlight border. The action-button glow keeps its own gold.",
+    disabled = borderOff,
+    get = function()
+      local c = Nock.db.profile[key("Color")] or { 0, 0.9, 0.9, 1 }
+      return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1
+    end,
+    set = function(_, r, g, b, a)
+      Nock.db.profile[key("Color")] = { r, g, b, a }
+      Nock:SendMessage("NOCK_VISUALS_CHANGED")
+    end,
+  }
+  args[key("Size")] = {
+    type = "range", name = "Border thickness", order = baseOrder + 0.3,
+    desc = "Thickness of the highlight border (px).",
+    min = 1, max = 5, step = 1,
+    disabled = borderOff,
+    get = function() return Nock.db.profile[key("Size")] or 3 end,
+    set = function(_, v) visualsSet(_, key("Size"), v) end,
+  }
+  args[key("Fit")] = {
+    type = "select", name = "Border fit", order = baseOrder + 0.4, width = 1.2,
+    desc = "Where the border sits: hanging over the tile's edges (the historic look) or contained inside the tile's own bounds.",
+    values = { overflow = "Over the tile edges", contained = "Inside the tile" },
+    sorting = { "overflow", "contained" },
+    dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
+    disabled = borderOff,
+    get = function() return Nock.db.profile[key("Fit")] or "overflow" end,
+    set = function(_, v) visualsSet(_, key("Fit"), v) end,
+  }
+  -- SESSION-ONLY (Nock.UI.activePreview, never a profile key): lights every
+  -- visible tile with the active look while ticked, so the style can be
+  -- dialed in without waiting for a proc. Painters suspend it in combat.
+  args.activePreview = {
+    type = "toggle", name = "Preview: light every tile", order = baseOrder + 0.5,
+    width = "full",
+    desc = "While ticked, every visible cooldown tile draws the active highlight so you can see the style, color, thickness and fit as you change them. Session-only (never saved), and suspended while you are in combat.",
+    disabled = disabledFn,
+    get = function() return Nock.UI.activePreview == true end,
+    set = function(_, v)
+      Nock.UI.activePreview = v and true or false
+      Nock:SendMessage("NOCK_VISUALS_CHANGED")
+    end,
+  }
+end
+
 -- Per-bar TRACK styling block. The "track" is the frame BEHIND a bar's fill --
 -- the part that shows through wherever the fill hasn't reached. Every classic
 -- bar hardcoded it to black, which is the "everything is a black box" look this
@@ -5211,6 +5283,9 @@ local function buildOptionsTable()
         o = o + 10
       end
 
+      -- Active-highlight styling for the classic squares (below the rows,
+      -- above the add form). Inside the rebuild: it wipes cdArgs whole.
+      fillActiveHighlightArgs(cdArgs, "cooldownActive", 8500, nil)
       -- (React grid slot toggles moved to the React HUD tab.)
       buildCustomAddForm(cdArgs, 9000, cdStage)
     end
@@ -5712,6 +5787,8 @@ local function buildOptionsTable()
       get = get,
       set = function(_, v) visualsSet(_, "reactManaTint", v) end,
     }
+    -- Active-highlight styling for the React grid (its own reactActive* keys).
+    fillActiveHighlightArgs(gridArgs, "reactActive", 69.55, notReact)
 
     -- Shared custom entries: the same profile.cooldownCustom store the classic
     -- grid edits. The manage list here is customs-only (built-ins live in the
@@ -6444,6 +6521,9 @@ local function buildOptionsTable()
       get = function() return Nock.db.profile.reactManaTint == true end,
       set = function(_, v) visualsSet(_, "reactManaTint", v) end,
     }
+    -- Active-highlight styling for the Fluffy row (its own fluffyActive*
+    -- keys — NOT shared with React, unlike the four above).
+    fillActiveHighlightArgs(fGridArgs, "fluffyActive", 30, notFluffy)
 
     -- Shared custom entries: the same profile.cooldownCustom store the
     -- classic and React grids edit; adds surface in the Add dropdown above.

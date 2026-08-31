@@ -117,6 +117,13 @@ Nock.Defaults = {
     cooldownOrder    = {},
     cooldownDisabled = {},
     cooldownCustom   = {},
+    -- Active-state highlight (a proc up / a consumable's buff running) on the
+    -- classic grid squares. Per HUD family on purpose — React and Fluffy
+    -- carry their own reactActive*/fluffyActive* set (user, 2026-08-31).
+    cooldownActiveStyle = "border",              -- "border" | "glow" | "none"
+    cooldownActiveColor = { 0.00, 0.90, 0.90, 1.00 }, -- the border's color (PROC_GLOW cyan)
+    cooldownActiveSize  = 3,                     -- border thickness, px
+    cooldownActiveFit   = "overflow",            -- "overflow" (outside the tile) | "contained"
 
     -- Global on/off for whole subsystems (peers of showCooldowns). All
     -- default true so existing setups are unchanged. When false the panel is
@@ -660,6 +667,12 @@ Nock.Defaults = {
     reactRangeTint         = "off",     -- React grid slots whose spell is out of range: "off" | "red" | "grey"
     reactTileDim           = false,     -- a tile on cooldown or not usable: desaturated at 60% (the WA's condition 1)
     reactManaTint          = false,     -- a tile whose spell lacks mana: blue + desaturated (the WA's condition 4)
+    -- Active-state highlight on the React grid (KC keeps its own
+    -- reactKcProcGlow override above; these style every other lit tile).
+    reactActiveStyle       = "border",  -- "border" | "glow" | "none"
+    reactActiveColor       = { 0.00, 0.90, 0.90, 1.00 },
+    reactActiveSize        = 3,
+    reactActiveFit         = "overflow", -- "overflow" | "contained"
     -- false = the built-in REACT_CD_ROWS layout; a table of 3 key arrays
     -- ({ {row1 keys}, {row2}, {row3} }) once the user edits the rows on the
     -- React HUD tab. Row heights/styles stay fixed; only membership + order
@@ -790,6 +803,12 @@ Nock.Defaults = {
     fluffyBuffRowPos     = false,       -- false = weld above the cluster; else saved point
     fluffyCdKeys         = false,       -- false = seeded row {KC,Arc,MS,Raptor,Spec,RF}
     fluffyCooldownDisabled = {},        -- ["<key>"] = true → hide that CD slot
+    -- Active-state highlight on the Fluffy CD row (per HUD; the shared
+    -- reactKcProcGlow still overrides the KC tile to the overlay glow).
+    fluffyActiveStyle    = "border",    -- "border" | "glow" | "none"
+    fluffyActiveColor    = { 0.00, 0.90, 0.90, 1.00 },
+    fluffyActiveSize     = 3,
+    fluffyActiveFit      = "overflow",  -- "overflow" | "contained"
     fluffyBarTexture     = "",          -- "" = reference flat fill
     fluffyFont           = "",          -- "" = reference font
     fluffyFontSize       = 9,

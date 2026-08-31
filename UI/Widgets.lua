@@ -821,11 +821,15 @@ function Nock.UI.SetIconHighlight(slot, color)
   end
 end
 
-function Nock.UI.SetGlowBorderSize(slot, size)
+-- Geometry of the slot's highlight border: `contained` keeps the edge inside
+-- the slot's own bounds; otherwise it hangs `size` px outside (the historic
+-- look — the border "flows over" the tile).
+function Nock.UI.ApplyGlowStyle(slot, size, contained)
   if not slot.glow then return end
+  local out = contained and 0 or size
   slot.glow:ClearAllPoints()
-  slot.glow:SetPoint("TOPLEFT", slot, "TOPLEFT", -size, size)
-  slot.glow:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", size, -size)
+  slot.glow:SetPoint("TOPLEFT", slot, "TOPLEFT", -out, out)
+  slot.glow:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", out, -out)
   slot.glow:SetBackdrop({
     bgFile   = SOLID_TEX,
     edgeFile = SOLID_TEX,
@@ -834,6 +838,10 @@ function Nock.UI.SetGlowBorderSize(slot, size)
   })
   slot.glow:SetBackdropColor(0, 0, 0, 0)
   -- Caller must re-apply border color via SetIconHighlight after this.
+end
+
+function Nock.UI.SetGlowBorderSize(slot, size)
+  Nock.UI.ApplyGlowStyle(slot, size, false)
 end
 
 local LCG = LibStub and LibStub("LibCustomGlow-1.0", true)
@@ -1442,10 +1450,13 @@ end
 --   cd    state.cooldowns[key] (procActive, ready, remaining, usable, noMana)
 --   out   state.target.spellOut[key]: true out of range / false / nil unknown
 --   opts  procGlow   the overlay glow on THIS slot (reactKcProcGlow, KC only)
+--         activeStyle grid-wide look for a lit tile: "border" (default) |
+--                    "glow" (overlay) | "none"; procGlow outranks it on KC
 --         tint       reactRangeTint "off" | "red" | "grey"        (WA cond. 5)
 --         dim        reactTileDim: unavailable -> grey at 0.6     (WA cond. 1)
 --         manaTint   reactManaTint: no mana -> blue + grey        (WA cond. 4)
 --         whenActive a consumable row (grey while recharging)
+--         preview    force the active look (the settings' preview toggle)
 -- res.vis "proc"|"ready"|"cd"; glow "overlay"|"border"|nil; desat; tint
 -- "red"|"blue"|nil; alpha 1|0.6. (The WA's under-3-s cue was built and
 -- dropped the same day -- noise, user 2026-08-30.)
@@ -1453,11 +1464,21 @@ function Nock.UI.ReactSlotLook(cd, out, opts, res)
   res = res or {}
   opts = opts or {}
   local vis
-  if cd.procActive then vis = "proc"
+  if cd.procActive or opts.preview then vis = "proc"
   elseif cd.ready then vis = "ready"
   else vis = "cd" end
   res.vis = vis
-  res.glow = (vis == "proc") and (opts.procGlow and "overlay" or "border") or nil
+  if vis == "proc" then
+    if opts.procGlow then res.glow = "overlay"
+    else
+      local st = opts.activeStyle
+      if st == "glow" then res.glow = "overlay"
+      elseif st == "none" then res.glow = nil
+      else res.glow = "border" end
+    end
+  else
+    res.glow = nil
+  end
   local desat = (opts.whenActive and vis == "cd") or false
   local tint, alpha = nil, 1
   if opts.dim and vis ~= "proc" and (vis == "cd" or cd.usable == false) then

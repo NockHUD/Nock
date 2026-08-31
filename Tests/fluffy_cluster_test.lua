@@ -467,6 +467,7 @@ Nock.UI.CreateIconSlot = function(parent, name)
 end
 Nock.UI.SetIconProcGlow  = function() end
 Nock.UI.SetIconHighlight = function() end
+Nock.UI.ApplyGlowStyle   = function() end
 Nock.UI.ReactSlotLook    = function(cd, out, opts, res) res = res or {}; res.alpha = 1; return res end
 Nock.UI.ReactLookKey     = function() return 1 end
 
@@ -526,6 +527,47 @@ p.fluffyCdKeys = {}
 local _, _, h0 = FCD:RowsGeometry()
 ok(h0 == 1, "no members: height collapses (1px floor)")
 p.fluffyCdKeys = false
+
+-- ---------------------------------------------------------------------------
+-- §8 Active-highlight styling plumb-through (per-HUD fluffyActive* keys):
+-- Rebuild applies size/fit to every slot, Refresh hands the style to
+-- ReactSlotLook and the profile color to SetIconHighlight.
+-- ---------------------------------------------------------------------------
+local seenStyle, seenColor = "unset", "unset"
+Nock.UI.ReactSlotLook = function(cd, out, opts, res)
+  seenStyle = opts.activeStyle
+  res = res or {}
+  res.vis, res.glow, res.alpha = "proc", "border", 1
+  res.desat, res.tint = false, nil
+  return res
+end
+local lookN = 0
+Nock.UI.ReactLookKey = function() lookN = lookN + 1; return lookN end -- always repaint
+Nock.UI.SetIconHighlight = function(_, color) seenColor = color end
+local glowCalls = {}
+Nock.UI.ApplyGlowStyle = function(_, size, contained)
+  glowCalls[#glowCalls + 1] = { size = size, contained = contained }
+end
+
+p.fluffyActiveStyle = "glow"
+p.fluffyActiveColor = { 1, 0, 0, 1 }
+p.fluffyActiveSize  = 2
+p.fluffyActiveFit   = "contained"
+FCD:Rebuild()
+ok(#glowCalls >= 6, "rebuild restyles every pooled slot's glow frame")
+ok(glowCalls[1] and glowCalls[1].size == 2 and glowCalls[1].contained == true,
+   "fluffyActiveSize/Fit reach ApplyGlowStyle")
+
+FCD.frame:Show()
+Nock.state.cooldowns = { KC = { procActive = true, icon = "icon-KC" } }
+Nock.state.target = Nock.state.target or {}
+FCD:Refresh(Nock.state)
+ok(seenStyle == "glow", "fluffyActiveStyle reaches ReactSlotLook as opts.activeStyle")
+ok(seenColor == p.fluffyActiveColor,
+   "the border highlight is painted with fluffyActiveColor, not the hardcoded cyan")
+
+p.fluffyActiveStyle, p.fluffyActiveColor = nil, nil
+p.fluffyActiveSize, p.fluffyActiveFit = nil, nil
 
 print(("fluffy_cluster: %d passed, %d failed"):format(pass, fail))
 if fail > 0 then os.exit(1) end

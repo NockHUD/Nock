@@ -587,8 +587,38 @@ onlyKeys(raBars, { "autoHeader", "reactAutoLegend", "reactShowNotation", "reactS
 onlyKeys(raRange, { "rangeHeader", "rangeFinderFindingStyle" }, "react tabRange")
 onlyKeys(raGrid, { "gridHeader", "gridNote", "reactConsumablesAlways", "rcustHeader",
   "kcHeader", "reactKcProcGlow", "kcActionBarGlow", "reactRangeTint", "reactTileDim", "reactManaTint",
+  "activeHeader", "reactActiveStyle", "reactActiveColor", "reactActiveSize", "reactActiveFit", "activePreview",
   "addHeader", "addType", "addId", "addProc", "addLabel", "addBtn" },
   "react tabGrid", { "rcd_", "rcust_" })
+
+-- Per-HUD active-highlight styling (2026-08-31): Style / Color / Size / Fit on
+-- each grid's tab, writing that HUD's own keys. KC's override toggle stays.
+ok(raGrid.reactActiveStyle and raGrid.reactActiveStyle.type == "select"
+   and raGrid.reactActiveStyle.dialogControl ~= nil
+   and raGrid.reactActiveStyle.disabled == raGrid.reactConsumablesAlways.disabled,
+   "react tabGrid: active style is a React-gated select with the LSM leak guard")
+ok(raGrid.reactActiveColor and raGrid.reactActiveColor.type == "color"
+   and raGrid.reactActiveSize and raGrid.reactActiveSize.type == "range"
+   and raGrid.reactActiveFit and raGrid.reactActiveFit.type == "select",
+   "react tabGrid: active color / size / fit controls exist")
+-- The preview toggle is SESSION state (Nock.UI.activePreview), never a
+-- profile key — a stale saved preview would light every tile for ever.
+ok(raGrid.activePreview and raGrid.activePreview.type == "toggle",
+   "react tabGrid: active-highlight preview toggle exists")
+if raGrid.activePreview then
+  pcall(raGrid.activePreview.set, nil, true)
+  ok(Nock.UI.activePreview == true and Nock.db.profile.activePreview == nil
+     and Nock.db.profile.reactActivePreview == nil,
+     "preview toggles the session flag, not a profile key")
+  pcall(raGrid.activePreview.set, nil, false)
+  ok(Nock.UI.activePreview == false, "preview unticks cleanly")
+end
+local ccdArgs = classicChild("cooldownGrid") and classicChild("cooldownGrid").args or {}
+ok(ccdArgs.cooldownActiveStyle and ccdArgs.cooldownActiveStyle.type == "select"
+   and ccdArgs.cooldownActiveColor and ccdArgs.cooldownActiveColor.type == "color"
+   and ccdArgs.cooldownActiveSize and ccdArgs.cooldownActiveSize.type == "range"
+   and ccdArgs.cooldownActiveFit and ccdArgs.cooldownActiveFit.type == "select",
+   "classic Cooldown Grid: its own active-highlight Style/Color/Size/Fit set")
 
 -- Reference-WA extras on the grid tab (2026-08-29): two Kill Command glows and
 -- the per-slot out-of-range tint. All ship OFF; the action-bar glow is the one
@@ -655,8 +685,22 @@ ok(r.grpEngine.args.rotRaptorWeaveHeadroom.get() == 1.35,
    "weave engine set through Fluffy reads back through Classic")
 onlyKeys(faGrid, { "gridHeader", "gridNote", "fluffyShowGrid",
   "lookHeader", "lookNote", "reactKcProcGlow", "reactRangeTint", "reactTileDim", "reactManaTint",
+  "activeHeader", "fluffyActiveStyle", "fluffyActiveColor", "fluffyActiveSize", "fluffyActiveFit", "activePreview",
   "fcustHeader", "addHeader", "addType", "addId", "addProc", "addLabel", "addBtn" },
   "fluffy tabGrid", { "fcd_", "fcust_" })
+ok(faGrid.fluffyActiveStyle and faGrid.fluffyActiveStyle.type == "select"
+   and faGrid.fluffyActiveColor and faGrid.fluffyActiveColor.type == "color"
+   and faGrid.fluffyActiveSize and faGrid.fluffyActiveSize.type == "range"
+   and faGrid.fluffyActiveFit and faGrid.fluffyActiveFit.type == "select",
+   "fluffy tabGrid: its own active-highlight Style/Color/Size/Fit set")
+-- The two sets are per HUD: writing through the fluffy set must not touch React's.
+if faGrid.fluffyActiveStyle then
+  pcall(faGrid.fluffyActiveStyle.set, nil, "none")
+  ok(Nock.db.profile.fluffyActiveStyle == "none"
+     and Nock.db.profile.reactActiveStyle ~= "none",
+     "fluffy active style writes fluffyActiveStyle only")
+  Nock.db.profile.fluffyActiveStyle = nil
+end
 -- The fluffy row editor: React's shape on the one fluffy row. Per-entry
 -- controls can't be counted here (this harness stubs Nock.Constants, so the
 -- seed list is empty — fluffy_cluster_test covers membership against the

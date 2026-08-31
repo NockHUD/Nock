@@ -147,6 +147,7 @@ end
 -- across rows; surplus slots are hidden, never freed.
 function ReactCooldownsView:Rebuild()
   local rows, w, totalH = self:RowsGeometry()
+  local p = profile()
   local gap = GAP
   self.frame:SetSize(w, totalH)
 
@@ -181,6 +182,10 @@ function ReactCooldownsView:Rebuild()
       local ySpan = 0.42 * math.min(1, row.h / row.w)
       slot.icon:SetTexCoord(0.08, 0.92, 0.5 - ySpan, 0.5 + ySpan)
       slot._entry          = entry
+      -- Per-HUD active-highlight geometry (thickness + contained/overflow);
+      -- style + color are the Refresh look's job.
+      Nock.UI.ApplyGlowStyle(slot, p.reactActiveSize or 3,
+                             p.reactActiveFit == "contained")
       -- whenActive (consumable) rows desaturate their icon while recharging —
       -- see the visualState block in Refresh.
       slot._whenActive     = (C.REACT_CD_ROWS[row.index]
@@ -298,11 +303,15 @@ function ReactCooldownsView:Refresh(state)
           slot._lastIcon = dispIcon
         end
 
-        LOOK.procGlow   = (entry.key == "KC" and p.reactKcProcGlow) and true or false
-        LOOK.tint       = p.reactRangeTint or "off"
-        LOOK.dim        = p.reactTileDim and true or false
-        LOOK.manaTint   = p.reactManaTint and true or false
-        LOOK.whenActive = slot._whenActive
+        LOOK.procGlow    = (entry.key == "KC" and p.reactKcProcGlow) and true or false
+        LOOK.activeStyle = p.reactActiveStyle
+        -- Settings preview: light every tile; suspended in combat.
+        LOOK.preview     = (Nock.UI.activePreview
+                            and not (InCombatLockdown and InCombatLockdown())) or false
+        LOOK.tint        = p.reactRangeTint or "off"
+        LOOK.dim         = p.reactTileDim and true or false
+        LOOK.manaTint    = p.reactManaTint and true or false
+        LOOK.whenActive  = slot._whenActive
         local so = state.target.spellOut
         local r  = Nock.UI.ReactSlotLook(cd, so and so[entry.key], LOOK, RES)
         local lk = Nock.UI.ReactLookKey(r)
@@ -312,7 +321,8 @@ function ReactCooldownsView:Refresh(state)
           else slot.icon:SetVertexColor(1, 1, 1, 1) end
           slot.icon:SetAlpha(r.alpha)
           if slot.icon.SetDesaturated then slot.icon:SetDesaturated(r.desat) end
-          Nock.UI.SetIconHighlight(slot, (r.glow == "border") and C.COLORS.PROC_GLOW or nil)
+          Nock.UI.SetIconHighlight(slot, (r.glow == "border")
+            and (p.reactActiveColor or C.COLORS.PROC_GLOW) or nil)
           -- Uncoloured: the same gold overlay as the action bar (user, 2026-08-29:
           -- the PROC_GLOW-tinted one read blue).
           Nock.UI.SetIconProcGlow(slot, r.glow == "overlay", nil)
