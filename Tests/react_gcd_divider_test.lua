@@ -147,12 +147,12 @@ edge, x = point(0.5, "converge", 0, 0)
 ok(near(x, 1), "zero half-width still yields the 1px inset")
 
 --------------------------------------------------------------------------------
--- Device-pixel snapping. The whole reason this exists: at a UI scale of
--- 0.5333 (1440p at the 768-line default) one LOGICAL pixel is 0.53 DEVICE
--- pixels, so a 2-logical-px tick renders as ~1 device px and a 1-logical-px
--- one is sub-pixel. Widths therefore mean DEVICE pixels and are converted;
--- positions are snapped so the quad's edges land on device boundaries instead
--- of smearing across two columns at half brightness.
+-- Device-pixel snapping. Widths mean DEVICE pixels and are converted through
+-- the physical pixels-per-unit (PixelScale = effectiveScale x physH/768 --
+-- the probe-proven client conversion); positions are snapped so the quad's
+-- edges land on device boundaries instead of smearing across two columns at
+-- half brightness. The S below is an opaque conversion factor to the pure
+-- math -- the assertions are round-trip properties, not monitor claims.
 --------------------------------------------------------------------------------
 local dw   = Nock.UI.DeviceWidth
 local snap = Nock.UI.PixelSnapCenter
@@ -214,6 +214,66 @@ ok(e3 == "RIGHT" and m3 == false and edgesWhole(-x3, S, 1),
    "rtl + scale: negative offset still lands on device pixels")
 local _, xUn = point(0.5, "converge", HALF, INNER)
 ok(near(xUn, 51), "omitting the scale keeps the old unsnapped behaviour")
+
+--------------------------------------------------------------------------------
+-- Absolute snapping. The pixel grid lives in SCREEN space: the bar's own edges
+-- sit at arbitrary sub-pixel positions, and the left and right edges carry
+-- DIFFERENT fractional phases, so an offset snapped relative to an unsnapped
+-- edge still rasterises 1px on one side and 2px on the other (the mirrored
+-- mark report, 2026-08-31). Passing the edge's physical position (originPx /
+-- leftPx / rightPx) makes the quad's ABSOLUTE edges land on whole pixels.
+--------------------------------------------------------------------------------
+local function absEdgesWhole(off, scale, n, originPx)
+  local c = off * scale + originPx
+  local left, right = c - n / 2, c + n / 2
+  return math.abs(left - math.floor(left + 0.5)) < 1e-9
+     and math.abs(right - math.floor(right + 0.5)) < 1e-9
+end
+for _, o in ipairs({ 0.37, 12.5, 991.13 }) do
+  for _, n in ipairs({ 1, 2, 3 }) do
+    local x = snap(7.77, S, n, o)
+    ok(absEdgesWhole(x, S, n, o),
+       string.format("snap with origin %.2f, n=%d: absolute edges land on pixels", o, n))
+    ok(math.abs(x - 7.77) * S <= 0.5 + 1e-9,
+       string.format("origin %.2f, n=%d: still moves less than half a device px", o, n))
+  end
+end
+
+-- Mirrored converge with two different edge phases: BOTH halves land on the
+-- grid, each measured against its own edge. The right half is applied as
+-- SetPoint("CENTER", bar, "RIGHT", -xR), i.e. its centre is rightPx - xR*S.
+local LPX, RPX = 100.37, 100.37 + 191.62
+local e4, x4, m4, xR4 = point(0.5, "converge", HALF, INNER, S, 2, LPX, RPX)
+ok(e4 == "LEFT" and m4 == true, "converge with phases still mirrors")
+ok(absEdgesWhole(x4, S, 2, LPX),  "left half lands on the grid against the left edge")
+ok(absEdgesWhole(-xR4, S, 2, RPX), "right half lands on the grid against the right edge")
+-- Without phases the 4th return equals the shared offset (old callers safe).
+local _, x5, _, xR5 = point(0.5, "converge", HALF, INNER, S, 2)
+ok(near(x5, xR5), "phase-less converge keeps one shared offset")
+-- rtl with a right phase: the negative offset lands on the grid absolutely.
+local e6, x6 = point(0.5, "rtl", HALF, INNER, S, 1, LPX, RPX)
+ok(e6 == "RIGHT" and absEdgesWhole(x6, S, 1, RPX),
+   "rtl with phase: absolute snap against the right edge")
+-- ltr with a left phase.
+local e7, x7 = point(0.5, "ltr", HALF, INNER, S, 2, LPX, RPX)
+ok(e7 == "LEFT" and absEdgesWhole(x7, S, 2, LPX),
+   "ltr with phase: absolute snap against the left edge")
+
+--------------------------------------------------------------------------------
+-- PixelScale = effectiveScale x physicalHeight/768 (probe-proven client
+-- conversion, see Skin.PixelsPerUnit). Headless without GetPhysicalScreenSize
+-- it falls back to the bare effective scale.
+--------------------------------------------------------------------------------
+local fakeFrame = { GetEffectiveScale = function() return 0.5333333 end }
+ok(math.abs(Nock.UI.PixelScale(fakeFrame) - 0.5333333) < 1e-6,
+   "no physical-size API: bare effective scale")
+_G.GetPhysicalScreenSize = function() return 2560, 1440 end
+ok(math.abs(Nock.UI.PixelScale(fakeFrame) - 1.0) < 1e-3,
+   "1440p at the 768-line default scale: one unit is one physical pixel")
+_G.GetPhysicalScreenSize = function() return 1920, 1080 end
+ok(math.abs(Nock.UI.PixelScale(fakeFrame) - 0.75) < 1e-3,
+   "1080p at the same scale: 0.75 physical px per unit")
+_G.GetPhysicalScreenSize = nil
 
 print(string.format("react_gcd_divider: %d passed, %d failed", pass, fail))
 if fail > 0 then os.exit(1) end

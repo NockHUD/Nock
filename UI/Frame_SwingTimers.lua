@@ -81,6 +81,10 @@ function SwingTimers:OnInitialize()
     t:SetVertexColor(unpack(color))
     t:SetWidth(2)
     t:SetHeight(rangedH)
+    -- The engine's own texel snapping must not second-guess a quad we place
+    -- on the device grid ourselves. Guarded: headless stubs lack the methods.
+    if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(false) end
+    if t.SetTexelSnappingBias then t:SetTexelSnappingBias(0) end
     t:Hide()
     return t
   end
@@ -315,7 +319,12 @@ local function placeTick(bar, tick, threshold, devWidth, sd, isFill, reverse, ps
   -- across two columns at half brightness, so the tick renders dimmer and
   -- narrower than its configured width and changes character whenever the
   -- threshold moves (haste, latency, a measured wind-up replacing the seed).
-  local x = Nock.UI.PixelSnapCenter(frac * bar.maxWidth + 1, ps, devWidth)
+  -- Snapped in ABSOLUTE screen space: the bar's left edge sits at an
+  -- arbitrary sub-pixel phase, and an offset snapped relative to an unsnapped
+  -- edge still leaves the quad straddling two columns.
+  local barL = bar.GetLeft and bar:GetLeft()
+  local x = Nock.UI.PixelSnapCenter(frac * bar.maxWidth + 1, ps, devWidth,
+                                    (ps and barL) and barL * ps or nil)
   tick:ClearAllPoints()
   tick:SetPoint("CENTER", bar, "LEFT", x, 0)
   tick:Show()

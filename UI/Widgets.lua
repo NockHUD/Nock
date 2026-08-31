@@ -1184,25 +1184,41 @@ end
 -- from the border.
 -- ---------------------------------------------------------------------------
 -- ---------------------------------------------------------------------------
--- Device-pixel helpers. A "pixel" in SetWidth/SetPoint is a LOGICAL unit that
--- the UI scale multiplies into real screen pixels, and the two are wildly
--- different in practice: at a UI scale of 0.5333 (1440p on the 768-line
--- default) a 2-logical-px tick is 1.07 device px and a 1-logical-px one is
--- sub-pixel. That is why every mark on the auto bar rendered as a dim hairline
--- regardless of the width it was given.
+-- Device-pixel helpers. A "pixel" in SetWidth/SetPoint is a LOGICAL unit; the
+-- real conversion to screen pixels is effectiveScale x physicalHeight / 768
+-- (the client's coordinate space is 768 units tall at scale 1 whatever the
+-- monitor -- probe-proven 2026-08-26, see Skin.PixelsPerUnit). Treating the
+-- bare effective scale as that conversion was this section's original sin:
+-- every "device" width came out physicalHeight/768 too wide (x1.875 at 1440p,
+-- x1.4 at 1080p) and the snap grid was that much too coarse, so a "2 px" mark
+-- was really 3.75 physical px landing between columns -- rasterised at
+-- whatever width the phase bought it, differently per monitor and per mark.
 --
 -- So mark widths are specified in DEVICE pixels and converted here, and mark
 -- positions are snapped so the quad's edges land on device boundaries instead
--- of straddling two columns at half brightness.
+-- of straddling two columns at half brightness. The snap must happen in
+-- ABSOLUTE screen space (pass `originPx`): the bar's own edges sit at
+-- arbitrary sub-pixel positions, and its left and right edges carry DIFFERENT
+-- fractional phases, so an offset snapped relative to an unsnapped edge still
+-- rasterises 1 px on one side and 2 px on the other (mirrored-mark report,
+-- 2026-08-31). Credit: Joosy contributed the absolute physical-pixel-grid
+-- snapping approach (see ATTRIBUTION.md).
 -- ---------------------------------------------------------------------------
 
--- Effective scale of `frame`, guarded for the pre-layout / headless cases.
--- Returns nil when there is nothing sensible to scale by, which every consumer
--- below treats as "no conversion".
+-- Physical pixels per LOCAL unit of `frame`, guarded for the pre-layout /
+-- headless cases (no GetPhysicalScreenSize -> bare effective scale, which is
+-- what the pure tests exercise). Returns nil when there is nothing sensible
+-- to scale by, which every consumer below treats as "no conversion".
+-- Duplicates Skin.PixelsPerUnit's conversion on purpose: Widgets must not
+-- depend on Skin.
 function Nock.UI.PixelScale(frame)
   if not (frame and frame.GetEffectiveScale) then return nil end
   local s = frame:GetEffectiveScale()
   if type(s) ~= "number" or s <= 0 then return nil end
+  if GetPhysicalScreenSize then
+    local _, h = GetPhysicalScreenSize()
+    if h and h > 0 then s = s * h / 768 end
+  end
   return s
 end
 
@@ -1221,33 +1237,53 @@ end
 -- columns at half brightness each, which is exactly the "it looks 1px, then it
 -- doesn't" flicker. Never moves a mark by as much as a device pixel, so the
 -- threshold it marks stays where the maths put it.
-function Nock.UI.PixelSnapCenter(x, scale, nDevice)
+--
+-- `originPx` (optional) is the anchor edge's position in PHYSICAL pixels
+-- (edge units x PixelScale): with it the snap happens in absolute screen
+-- space, the only space the pixel grid actually lives in. Without it the snap
+-- is relative -- exact only when the anchor edge itself sits on the grid.
+function Nock.UI.PixelSnapCenter(x, scale, nDevice, originPx)
   local v = tonumber(x) or 0
   local s = tonumber(scale)
   if not s or s <= 0 then return v end
   local n = tonumber(nDevice) or 1
   local half = (n % 2 == 0) and 0 or 0.5
-  local d = v * s
+  local o = tonumber(originPx) or 0
+  local d = v * s + o
   d = math.floor(d - half + 0.5) + half
-  return d / s
+  return (d - o) / s
 end
 
 -- `scale` and `nDevice` are optional: pass both to have the result snapped to
 -- the device-pixel grid (see Nock.UI.PixelSnapCenter). Omitted, the projection
--- is returned raw, which is what the pure-geometry tests assert.
-function Nock.UI.ReactAxisPoint(frac, dir, halfW, innerW, scale, nDevice)
+-- is returned raw, which is what the pure-geometry tests assert. `leftPx` /
+-- `rightPx` are the bar's edges in PHYSICAL pixels (GetLeft/GetRight x
+-- PixelScale): with them the snap is absolute, so the quad lands on real
+-- screen columns wherever the bar happens to sit. The 4th return is the
+-- RIGHT-half offset of a mirrored (converge) pair -- the two edges carry
+-- different sub-pixel phases, so the halves can no longer share one number;
+-- apply it as SetPoint("CENTER", bar, "RIGHT", -xR, 0).
+function Nock.UI.ReactAxisPoint(frac, dir, halfW, innerW, scale, nDevice, leftPx, rightPx)
   frac = tonumber(frac) or 0
   if frac < 0 then frac = 0 elseif frac > 1 then frac = 1 end
   local snap = Nock.UI.PixelSnapCenter
+  -- A distance measured leftward from the RIGHT edge: its centre sits at
+  -- (rightPx - d*scale) in device space, so snap THAT point and convert back.
+  -- Without a right edge, keep the old relative form -- snap the distance,
+  -- then let the sign be applied outside (snapping the negative directly
+  -- would round the wrong way for odd widths).
+  local function snapR(d)
+    if rightPx then return -snap(-d, scale, nDevice, rightPx) end
+    return snap(d, scale, nDevice)
+  end
   if dir == "ltr" then
-    return "LEFT", snap(1 + frac * (innerW or 0), scale, nDevice), false
+    return "LEFT", snap(1 + frac * (innerW or 0), scale, nDevice, leftPx), false
   elseif dir == "rtl" then
-    -- Snap the DISTANCE from the right edge, then re-negate: snapping the
-    -- negative directly would round the wrong way for odd widths.
-    return "RIGHT", -snap(1 + frac * (innerW or 0), scale, nDevice), false
+    return "RIGHT", -snapR(1 + frac * (innerW or 0)), false
   end
   -- converge (the reference look) and any unrecognised value.
-  return "LEFT", snap(1 + frac * (halfW or 0), scale, nDevice), true
+  local d = 1 + frac * (halfW or 0)
+  return "LEFT", snap(d, scale, nDevice, leftPx), true, snapR(d)
 end
 
 -- GCD progress for the divider, on the same 0-at-the-start / 1-at-the-end

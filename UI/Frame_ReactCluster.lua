@@ -147,6 +147,11 @@ function ReactCluster:OnInitialize()
     t:SetTexture(WHITE8X8)
     t:SetVertexColor(unpack(color))
     t:SetSize(w, REACT.AUTO_H - 2)
+    -- The engine's own texel snapping must not second-guess a quad we place
+    -- on the device grid ourselves (the default bias shifts a stretched
+    -- WHITE8X8 by half a texel). Guarded: headless stubs lack the methods.
+    if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(false) end
+    if t.SetTexelSnappingBias then t:SetTexelSnappingBias(0) end
     t:Hide()
     return t
   end
@@ -311,10 +316,11 @@ function ReactCluster:ApplyLayout()
   -- Mirrored pairs share one setting — they are one mark drawn on both halves,
   -- and letting them differ would only ever look like a bug.
   local auto = self.auto
-  -- Widths are DEVICE pixels, converted through the bar's effective scale --
-  -- see Nock.UI.DeviceWidth. At the author's 0.5333 UI scale a 2-logical-px
-  -- tick was 1.07 real pixels, which is why every mark rendered as the same dim
-  -- hairline no matter what width it was given.
+  -- Widths are DEVICE pixels, converted through the bar's physical pixels per
+  -- unit (Nock.UI.PixelScale = effectiveScale x physH/768) -- see
+  -- Nock.UI.DeviceWidth. Converting through the BARE effective scale made a
+  -- "2 px" mark 3.75 physical px at 1440p, rasterised to different widths per
+  -- monitor and per mark (the mirrored 1px-vs-2px report, 2026-08-31).
   local ps = Nock.UI.PixelScale(auto)
   self._pixelScale = ps
   self._markDevW = self._markDevW or {}
@@ -446,6 +452,13 @@ function ReactCluster:PositionAutoMarks(sd, steadyT, multiT, windup)
 
   local ps   = self._pixelScale
   local devW = self._markDevW or {}
+  -- The bar's edges in PHYSICAL pixels: the pixel grid lives in absolute
+  -- screen space, and the two edges carry different sub-pixel phases, so each
+  -- half of a mirrored pair snaps against its own edge. nil before layout ->
+  -- relative snap (the old behaviour), corrected on the next re-place.
+  local barL, barR = auto:GetLeft(), auto:GetRight()
+  local leftPx  = (ps and barL) and barL * ps or nil
+  local rightPx = (ps and barR) and barR * ps or nil
   local function placePair(tL, tR, T, wKey)
     if sd <= 0 or T <= 0 then
       tL:Hide(); tR:Hide()
@@ -456,11 +469,11 @@ function ReactCluster:PositionAutoMarks(sd, steadyT, multiT, windup)
     if T > sd then T = sd end
     -- Shared projection (Nock.UI.ReactAxisPoint) — same one the GCD divider
     -- places through, so the two can't drift apart.
-    local edge, x, mirrored =
-      Nock.UI.ReactAxisPoint((sd - T) / sd, dir, halfW, innerW, ps, devW[wKey])
+    local edge, x, mirrored, xR =
+      Nock.UI.ReactAxisPoint((sd - T) / sd, dir, halfW, innerW, ps, devW[wKey], leftPx, rightPx)
     tL:ClearAllPoints(); tL:SetPoint("CENTER", auto, edge, x, 0); tL:Show()
     if mirrored then
-      tR:ClearAllPoints(); tR:SetPoint("CENTER", auto, "RIGHT", -x, 0); tR:Show()
+      tR:ClearAllPoints(); tR:SetPoint("CENTER", auto, "RIGHT", -xR, 0); tR:Show()
     else
       tR:Hide()
     end
@@ -487,14 +500,14 @@ function ReactCluster:PositionAutoMarks(sd, steadyT, multiT, windup)
     for i = 1, #list do
       local lo = list[i].lo
       if lo and lo > 0 and lo < sd then
-        local edge, x, mirrored =
-          Nock.UI.ReactAxisPoint(lo / sd, dir, halfW, innerW, ps, devW.reactBracketWidth)
+        local edge, x, mirrored, xR =
+          Nock.UI.ReactAxisPoint(lo / sd, dir, halfW, innerW, ps, devW.reactBracketWidth, leftPx, rightPx)
         if mirrored then
           if n + 2 > MAX_BRACKETS then break end
           local bL = auto.brackets[n + 1]
           local bR = auto.brackets[n + 2]
           bL:ClearAllPoints(); bL:SetPoint("CENTER", auto, edge,    x, 0); bL:Show()
-          bR:ClearAllPoints(); bR:SetPoint("CENTER", auto, "RIGHT", -x, 0); bR:Show()
+          bR:ClearAllPoints(); bR:SetPoint("CENTER", auto, "RIGHT", -xR, 0); bR:Show()
           n = n + 2
         else
           if n + 1 > MAX_BRACKETS then break end
@@ -543,9 +556,13 @@ function ReactCluster:RefreshGcdDivider(state)
     return
   end
 
-  local edge, x, mirrored =
+  local ps = self._pixelScale
+  local barL, barR = auto:GetLeft(), auto:GetRight()
+  local edge, x, mirrored, xR =
     Nock.UI.ReactAxisPoint(frac, self._dirAuto or "converge", self._halfW or 0, self._innerW or 0,
-                           self._pixelScale, (self._markDevW or {}).reactGcdDividerWidth)
+                           ps, (self._markDevW or {}).reactGcdDividerWidth,
+                           (ps and barL) and barL * ps or nil,
+                           (ps and barR) and barR * ps or nil)
   -- Snapping already quantises x to the device grid, so it is safe to diff on
   -- directly: identical inputs give a bit-identical float. That is also what
   -- makes this cheap -- the divider only re-anchors once per device pixel
@@ -559,7 +576,7 @@ function ReactCluster:RefreshGcdDivider(state)
   auto.gcdL:Show()
   if mirrored then
     auto.gcdR:ClearAllPoints()
-    auto.gcdR:SetPoint("CENTER", auto, "RIGHT", -px, 0)
+    auto.gcdR:SetPoint("CENTER", auto, "RIGHT", -xR, 0)
     auto.gcdR:Show()
   else
     auto.gcdR:Hide()
@@ -605,13 +622,19 @@ function ReactCluster:RefreshAuto(state)
   local windup = r.windup or C.AUTO_SHOT_CAST
   local steadyT = Nock.ClipThreshold(1.5)
   local multiT  = Nock.ClipThreshold(0.5)
+  -- The bar's left edge is part of the mark inputs now: positions are snapped
+  -- in absolute screen space, so moving the HUD changes the answer even when
+  -- no threshold did. Cheap C call; only ever re-places while actually moving.
+  local barLeft = auto:GetLeft()
   if sd ~= self._markSd or steadyT ~= self._markSteadyT
-     or multiT ~= self._markMultiT or windup ~= self._markWindup then
+     or multiT ~= self._markMultiT or windup ~= self._markWindup
+     or barLeft ~= self._markBarLeft then
     self:PositionAutoMarks(sd, steadyT, multiT, windup)
     self._markSd      = sd
     self._markSteadyT = steadyT
     self._markMultiT  = multiT
     self._markWindup  = windup
+    self._markBarLeft = barLeft
   end
 
   self:RefreshGcdDivider(state)
