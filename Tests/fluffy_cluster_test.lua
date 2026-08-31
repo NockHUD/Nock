@@ -480,6 +480,16 @@ end
 
 ok(type(Nock.Constants.FLUFFY_CD_KEYS) == "table" and #Nock.Constants.FLUFFY_CD_KEYS == 6,
    "C.FLUFFY_CD_KEYS: the seeded six")
+do
+  -- Arcane/Multi stay OUT (drawn as windows in the shot lanes); the trinkets
+  -- take their exact former positions.
+  local want = { "KC", "T1", "T2", "Raptor", "Spec", "RF" }
+  local same = true
+  for i = 1, 6 do
+    if Nock.Constants.FLUFFY_CD_KEYS[i] ~= want[i] then same = false end
+  end
+  ok(same, "seed = KC, Raptor, Spec, RF, T1, T2 (no Arc/MS)")
+end
 
 dofile("UI/Frame_FluffyCooldowns.lua")
 local FCD = Nock.modules.FluffyCooldownsView
@@ -494,7 +504,7 @@ ok(#rows[1].entries == 6, "seeded six members")
 ok(math.abs(rows[1].w - (320 + 5) / 6) < 0.001, "stretch: 6 tiles overlap 5 seams")
 ok(FCD:ContentHeight() == 32, "ContentHeight = the row height")
 
-p.fluffyCooldownDisabled = { MS = true }
+p.fluffyCooldownDisabled = { Raptor = true }
 rows = FCD:RowsGeometry()
 ok(#rows[1].entries == 5, "a disabled key leaves the row")
 p.fluffyCooldownDisabled = {}

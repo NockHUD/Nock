@@ -777,7 +777,7 @@ Nock.Defaults = {
     fluffyShowRanged     = true,
     fluffyShowMelee      = true,
     fluffyShowRange      = true,        -- bottom of the stack, above the CD row
-    fluffyShowGrid       = false,       -- the 6-icon cooldown row (opt-in)
+    fluffyShowGrid       = false,       -- the 6-icon cooldown grid row (opt-in)
     -- Auto Shot bar extras (FluffyHUD → Auto Shot Bar; React's exact set).
     -- The wind-up commit mark follows the shared showWindupMark key.
     fluffyShowNotation   = true,        -- rotation notation on the bar's right edge

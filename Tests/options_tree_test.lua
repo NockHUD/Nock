@@ -654,8 +654,18 @@ if fEng then pcall(fEng.args.rotRaptorWeaveHeadroom.set, nil, 1.35) end
 ok(r.grpEngine.args.rotRaptorWeaveHeadroom.get() == 1.35,
    "weave engine set through Fluffy reads back through Classic")
 onlyKeys(faGrid, { "gridHeader", "gridNote", "fluffyShowGrid",
-  "lookHeader", "lookNote", "reactKcProcGlow", "reactRangeTint", "reactTileDim", "reactManaTint" },
-  "fluffy tabGrid", { "fcd_en_" })
+  "lookHeader", "lookNote", "reactKcProcGlow", "reactRangeTint", "reactTileDim", "reactManaTint",
+  "fcustHeader", "addHeader", "addType", "addId", "addProc", "addLabel", "addBtn" },
+  "fluffy tabGrid", { "fcd_", "fcust_" })
+-- The fluffy row editor: React's shape on the one fluffy row. Per-entry
+-- controls can't be counted here (this harness stubs Nock.Constants, so the
+-- seed list is empty — fluffy_cluster_test covers membership against the
+-- real Constants); the unconditional controls can.
+ok(faGrid.fcd_add and faGrid.fcd_add.type == "select"
+   and faGrid.fcd_add.dialogControl ~= nil,
+   "fluffy grid: Add dropdown with the LSM leak guard")
+ok(faGrid.fcd_reset and faGrid.fcd_reset.type == "execute" and faGrid.fcd_reset.confirm,
+   "fluffy grid: confirmed reset")
 onlyKeys(faBuff, { "buffHeader", "sharedNote", "fluffyBuffRows", "reactBuffPositional",
   "reactBuffFrenzyMode", "customHeader", "customNote", "addBuffId", "addBuffBtn" },
   "fluffy tabBuff", { "rb_en_", "rbc_" })

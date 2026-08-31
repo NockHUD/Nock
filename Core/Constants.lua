@@ -572,10 +572,13 @@ Nock.Constants = {
   },
 
   -- FluffyHUD's single cooldown icon row (UI/Frame_FluffyCooldowns.lua,
-  -- fluffyShowGrid, ships OFF): the React grid's row 1, seeded. Membership is
-  -- user-overridable via profile.fluffyCdKeys (a flat key list; false = this
-  -- seed) and per-key fluffyCooldownDisabled.
-  FLUFFY_CD_KEYS = { "KC", "Arc", "MS", "Raptor", "Spec", "RF" },
+  -- fluffyShowGrid, ships OFF). Seed deliberately DIFFERS from the React
+  -- row 1: Arcane/Multi are already drawn as windows in the fluffy shot
+  -- lanes, so their tiles would be noise — the trinket slots take their
+  -- exact positions (credit: TeamSpeakUser). Membership is fully editable via the
+  -- row editor on FluffyHUD → Cooldown Row (profile.fluffyCdKeys, a flat key
+  -- list; false = this seed) plus per-key fluffyCooldownDisabled.
+  FLUFFY_CD_KEYS = { "KC", "T1", "T2", "Raptor", "Spec", "RF" },
 
   -- Projectile-maker items (arrow + bullet equivalents). The info row sums,
   -- per maker, GetItemCount(id,false,true) * multiplier and adds it to the

@@ -6159,7 +6159,7 @@ local function buildOptionsTable()
     fSizeArgs.fluffyWidth = {
       type = "range",
       name = "Width",
-      desc = "Width of the fluffy bar cluster and cooldown row, in pixels.",
+      desc = "Width of the fluffy bar cluster and cooldown grid, in pixels.",
       min = 160, max = 480, step = 2,
       order = 11,
       disabled = notFluffy,
@@ -6169,7 +6169,7 @@ local function buildOptionsTable()
     fSizeArgs.fluffyScale = {
       type = "range",
       name = "Scale",
-      desc = "Row scale for the whole fluffy stack (cluster + cooldown row), on top of the global HUD scale.",
+      desc = "Row scale for the whole fluffy stack (cluster + cooldown grid), on top of the global HUD scale.",
       min = 0.5, max = 2.0, step = 0.05,
       order = 12,
       disabled = notFluffy,
@@ -6193,7 +6193,7 @@ local function buildOptionsTable()
     fSizeArgs.fluffyShowMelee = fluffyToggle("fluffyShowMelee", "Weave lane (melee)",
       "The melee weave lane under the shot windows: green while Raptor Strike is ready, white for an auto-only weave, red where no weave fits.", 25)
     fSizeArgs.fluffyShowRange = fluffyToggle("fluffyShowRange", "Range finder",
-      "The weave range bar at the bottom of the stack, above the cooldown row: finding ladder at long range, then the glide fill toward the sweet spot. Style options are shared with the classic bar (Classic HUD → Range Finder).", 26)
+      "The weave range bar at the bottom of the stack, above the cooldown grid: finding ladder at long range, then the glide fill toward the sweet spot. Style options are shared with the classic bar (Classic HUD → Range Finder).", 26)
     fSizeArgs.timingHeader = { type = "header", name = "Timing", order = 30 }
     fSizeArgs.fluffyShotWindow = {
       type = "range",
@@ -6277,44 +6277,137 @@ local function buildOptionsTable()
       args = weaveEngineArgs(),
     }
 
-    fGridArgs.gridHeader = { type = "header", name = "Cooldown row", order = 10 }
+    fGridArgs.gridHeader = { type = "header", name = "Cooldown grid", order = 10 }
     fGridArgs.gridNote = {
       type = "description", fontSize = "medium", order = 10.1,
-      name = "One React-style icon row under the cluster: Kill Command, Arcane Shot, Multi-Shot, Raptor Strike, your spec spell and Rapid Fire. Off by default.\n",
+      name = "One React-style icon row under the cluster, off by default. Ships with Kill Command, Raptor Strike, your spec spell, Rapid Fire and both trinkets — Arcane and Multi-Shot are left out on purpose, since they are already drawn as windows in the shot lanes. The row is fully editable below: hide, reorder, remove, or add anything Nock tracks (including the shared custom entries).\n",
     }
     fGridArgs.fluffyShowGrid = {
-      type = "toggle", name = "Cooldown icon row", order = 11, width = "full",
-      desc = "Show the 6-icon cooldown row under the fluffy cluster.",
+      type = "toggle", name = "Cooldown grid", order = 11, width = "full",
+      desc = "Show the 6-icon cooldown grid row under the fluffy cluster.",
       disabled = notFluffy,
       get = get,
       set = function(_, v) visualsSet(_, "fluffyShowGrid", v) end,
     }
-    do
-      local gridDep = function()
-        return notFluffy() or Nock.db.profile.fluffyShowGrid ~= true
+    -- The row editor: the React grid editor's exact shape on the ONE fluffy
+    -- row (effective/materialized lists over fluffyCdKeys, wipe-and-refill on
+    -- the fcd_ prefix; per entry hide-toggle + Up/Down/X, an Add dropdown of
+    -- everything Nock tracks — shared custom entries included — and a reset).
+    local function effectiveFluffyKeys()
+      local custom = Nock.db.profile.fluffyCdKeys
+      local src = (type(custom) == "table") and custom or CN.FLUFFY_CD_KEYS
+      local copy = {}
+      for i = 1, #src do copy[i] = src[i] end
+      return copy
+    end
+    -- First edit materializes the seed into the profile.
+    local function materializedFluffyKeys()
+      local p = Nock.db.profile
+      if type(p.fluffyCdKeys) ~= "table" then p.fluffyCdKeys = effectiveFluffyKeys() end
+      return p.fluffyCdKeys
+    end
+    local rebuildFluffyGridArgs
+    local function fluffyGridChanged()
+      Nock:SendMessage("NOCK_VISUALS_CHANGED")
+      rebuildFluffyGridArgs()
+      notify()
+    end
+    local fluffyGridDep = function()
+      return notFluffy() or Nock.db.profile.fluffyShowGrid ~= true
+    end
+    rebuildFluffyGridArgs = function()
+      for k in pairs(fGridArgs) do
+        if type(k) == "string" and k:sub(1, 4) == "fcd_" then fGridArgs[k] = nil end
       end
+      local keys = effectiveFluffyKeys()
+      local placed = {}
+      for _, k in ipairs(keys) do placed[k] = true end
       local o = 12
-      for i, key in ipairs(CN.FLUFFY_CD_KEYS) do
-        local k = key
-        o = o + 0.01
-        fGridArgs["fcd_en_" .. i] = {
-          type = "toggle", order = o, width = 1.4,
-          name = describe(k),
+      local function nextO() o = o + 0.01; return o end
+      local rowLen = #keys
+      for i, rkey in ipairs(keys) do
+        local key, idx = rkey, i
+        fGridArgs["fcd_en_" .. idx] = {
+          type = "toggle", order = nextO(), width = 1.4,
+          name = describe(key),
           desc = "Untick to hide the slot without removing it from the row.",
-          disabled = gridDep,
+          disabled = fluffyGridDep,
           get = function()
             local d = Nock.db.profile.fluffyCooldownDisabled
-            return not (d and d[k] == true)
+            return not (d and d[key] == true)
           end,
           set = function(_, v)
             local d = Nock.db.profile.fluffyCooldownDisabled or {}
-            d[k] = (not v) or nil
+            d[key] = (not v) or nil
             Nock.db.profile.fluffyCooldownDisabled = d
             Nock:SendMessage("NOCK_VISUALS_CHANGED")
           end,
         }
+        fGridArgs["fcd_up_" .. idx] = {
+          type = "execute", name = "Up", order = nextO(), width = 0.4,
+          disabled = function() return fluffyGridDep() or idx == 1 end,
+          func = function()
+            local r = materializedFluffyKeys()
+            r[idx], r[idx - 1] = r[idx - 1], r[idx]
+            fluffyGridChanged()
+          end,
+        }
+        fGridArgs["fcd_dn_" .. idx] = {
+          type = "execute", name = "Down", order = nextO(), width = 0.5,
+          disabled = function() return fluffyGridDep() or idx == rowLen end,
+          func = function()
+            local r = materializedFluffyKeys()
+            r[idx], r[idx + 1] = r[idx + 1], r[idx]
+            fluffyGridChanged()
+          end,
+        }
+        fGridArgs["fcd_rm_" .. idx] = {
+          type = "execute", name = "X", order = nextO(), width = 0.3,
+          desc = "Remove from the row (re-add it with the Add dropdown).",
+          disabled = fluffyGridDep,
+          func = function()
+            table.remove(materializedFluffyKeys(), idx)
+            fluffyGridChanged()
+          end,
+        }
       end
+      fGridArgs.fcd_add = {
+        type = "select", name = "Add to the row", order = nextO(), width = 1.4,
+        desc = "Adds the picked ability to the end of the row. The list covers everything Nock tracks, including the shared custom entries defined below.",
+        dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
+        disabled = fluffyGridDep,
+        values = function()
+          local CDMOD = Nock:GetModule("Cooldowns", true)
+          local out = {}
+          if CDMOD then
+            for _, e in ipairs(CDMOD:GetTracked()) do
+              if not placed[e.key] then out[e.key] = describe(e.key) end
+            end
+          end
+          return out
+        end,
+        get = function() return nil end,
+        set = function(_, v)
+          if not v or placed[v] then return end
+          local r = materializedFluffyKeys()
+          r[#r + 1] = v
+          fluffyGridChanged()
+        end,
+      }
+      fGridArgs.fcd_reset = {
+        type = "execute", name = "Reset row to default", order = nextO(), width = 1.0,
+        confirm = true,
+        confirmText = "Reset the FluffyHUD cooldown grid to the built-in seed? (Hidden-slot ticks are kept.)",
+        disabled = function()
+          return notFluffy() or type(Nock.db.profile.fluffyCdKeys) ~= "table"
+        end,
+        func = function()
+          Nock.db.profile.fluffyCdKeys = false
+          fluffyGridChanged()
+        end,
+      }
     end
+    rebuildFluffyGridArgs()
     fGridArgs.lookHeader = { type = "header", name = "Glows & tints", order = 20 }
     fGridArgs.lookNote = {
       type = "description", fontSize = "medium", order = 20.1,
@@ -6351,6 +6444,35 @@ local function buildOptionsTable()
       get = function() return Nock.db.profile.reactManaTint == true end,
       set = function(_, v) visualsSet(_, "reactManaTint", v) end,
     }
+
+    -- Shared custom entries: the same profile.cooldownCustom store the
+    -- classic and React grids edit; adds surface in the Add dropdown above.
+    local fluffyCdStage = { type = "spell" }
+    fGridArgs.fcustHeader = {
+      type = "header", name = "Custom entries (shared with the other grids)", order = 40,
+    }
+    local function rebuildFluffyCustomList()
+      for k in pairs(fGridArgs) do
+        if type(k) == "string" and k:sub(1, 6) == "fcust_" then fGridArgs[k] = nil end
+      end
+      local list = Nock.db.profile.cooldownCustom or {}
+      for i, rec in ipairs(list) do
+        local key = customEntryKey(rec)
+        fGridArgs["fcust_" .. i] = {
+          type = "description", fontSize = "medium", width = 1.7,
+          order = 41 + (i - 1) * 0.1,
+          name = describe(key),
+        }
+        fGridArgs["fcust_rm_" .. i] = {
+          type = "execute", name = "Remove", width = 0.5,
+          order = 41 + (i - 1) * 0.1 + 0.05,
+          func = function() removeCustomEntry(key) end,
+        }
+      end
+    end
+    rebuildFluffyCustomList()
+    customEntryRebuilds[#customEntryRebuilds + 1] = rebuildFluffyCustomList
+    buildCustomAddForm(fGridArgs, 50, fluffyCdStage)
 
     fillBuffArgs(fBuffArgs, "fluffy")
 
@@ -6497,7 +6619,7 @@ local function buildOptionsTable()
         hudMode  = hudModeSelect(2, "(same setting as General → HUD look)"),
         tabSize  = { type = "group", name = "Size & Elements", order = 10, args = fSizeArgs },
         tabBars  = { type = "group", name = "Auto Shot Bar",   order = 15, args = fBarsArgs },
-        tabGrid  = { type = "group", name = "Cooldown Row",    order = 20, args = fGridArgs },
+        tabGrid  = { type = "group", name = "Cooldown Grid",    order = 20, args = fGridArgs },
         tabBuff  = { type = "group", name = "Buff Row",        order = 30, args = fBuffArgs },
         tabSkin  = { type = "group", name = "Skin",            order = 40, args = fSkinArgs },
       },
