@@ -517,6 +517,7 @@ function Warnings:OnEnable()
   self:RebuildIdSets()
   self:RegisterEvent("GET_ITEM_INFO_RECEIVED")
   self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", "InvalidateGarment")
+  self:RegisterEvent("PLAYER_ENTERING_WORLD", "ResetKaraborNeck")
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "RebuildIdSets")
   -- The weave-key dialog and the Grounded import rewrite the macro bodies
   -- without an Options round-trip: the cached gate direction follows them.
@@ -892,6 +893,94 @@ local function checkShirtGate(state)
   return warn("shirtGate", "red", icon, label, nil)
 end
 
+-- Black Temple: the Medallion of Karabor (32649 / Blessed 32757) teleports
+-- you TO the raid and is easy to forget around your neck once inside — a
+-- stat-less Shadow Resistance neck for the whole run. One exception: Mother
+-- Shahraz is the fight where that SR is exactly right, so the warning stands
+-- down while she is in view (target / mouseover / focus / boss frames /
+-- nameplates, NPC 22947) — approaching her room wearing the neck is correct —
+-- and comes back the moment she is dead (take it off again) or is left
+-- behind. All scans are gated behind "in BT and wearing the neck", so this
+-- costs nothing anywhere else.
+local KARABOR_LINGER = 25    -- s a sighting keeps the warning down (plates blink)
+local BT_RECHECK     = 5     -- s between GetInstanceInfo reads
+local MOTHER_SCAN    = 0.25  -- s between unit sweeps (the sapper scan's cadence)
+local _btAt, _inBT = 0, false
+local _motherScanAt, _motherSeenAt, _motherDead = 0, nil, false
+
+-- Field 6 of a creature GUID is the NPC id (see BossMarkWatch.lua).
+local function npcIdOf(guid)
+  if not guid then return nil end
+  local id = guid:match("^%a+%-%d+%-%d+%-%d+%-%d+%-(%d+)%-")
+  return id and tonumber(id) or nil
+end
+
+local MOTHER_TOKENS = { "target", "mouseover", "focus", "boss1", "boss2", "boss3", "boss4" }
+
+-- A unit that is her: alive refreshes the sighting (and clears the death
+-- latch — a reset after a wipe brings her back alive); dead latches.
+local function noteMotherUnit(u, now)
+  if not (UnitExists and UnitExists(u)) then return end
+  if npcIdOf(UnitGUID and UnitGUID(u)) ~= C.NpcID.MOTHER_SHAHRAZ then return end
+  if UnitIsDead and UnitIsDead(u) then
+    _motherDead = true
+  else
+    _motherSeenAt, _motherDead = now, false
+  end
+end
+
+local function scanMother(now)
+  if now - _motherScanAt < MOTHER_SCAN then return end
+  _motherScanAt = now
+  for i = 1, #MOTHER_TOKENS do noteMotherUnit(MOTHER_TOKENS[i], now) end
+  if C_NamePlate and C_NamePlate.GetNamePlates then
+    local plates = C_NamePlate.GetNamePlates()
+    if plates then
+      for _, plate in ipairs(plates) do
+        local u = plate.namePlateUnitToken or (plate.UnitFrame and plate.UnitFrame.unit)
+        if u then noteMotherUnit(u, now) end
+      end
+    end
+  end
+end
+
+-- Zone edge: re-read the instance at once and forget the Mother latches (a
+-- fresh entry starts clean; her death last reset must not suppress-or-not
+-- this one).
+function Warnings:ResetKaraborNeck()
+  _btAt, _motherSeenAt, _motherDead = 0, nil, false
+end
+
+local function checkKaraborNeck(state)
+  if not isEnabled("warnKaraborNeckEnabled") then return nil end
+  if not GetInventoryItemID then return nil end
+  local now = GetTime()
+  if now >= _btAt then
+    _btAt = now + BT_RECHECK
+    _inBT = false
+    if GetInstanceInfo then
+      local name, itype, _, _, _, _, _, mapId = GetInstanceInfo()
+      -- Map id first (locale-proof); the enUS name as a fallback in case this
+      -- client's GetInstanceInfo predates the instanceMapID return.
+      _inBT = mapId == C.BLACK_TEMPLE_MAP_ID
+              or (mapId == nil and itype == "raid" and name == "Black Temple")
+    end
+  end
+  if not _inBT then return nil end
+  local neck = GetInventoryItemID("player", INVSLOT_NECK or 2)
+  if not (neck and C.KARABOR_NECK_ITEMS[neck]) then return nil end
+  scanMother(now)
+  if not _motherDead and _motherSeenAt and now - _motherSeenAt < KARABOR_LINGER then
+    return nil
+  end
+  -- The worn medallion's own texture — the thing to swap out; the blessed
+  -- medallion's icon (highest id) when the slot read has nothing.
+  local icon = (GetInventoryItemTexture and GetInventoryItemTexture("player", INVSLOT_NECK or 2))
+               or itemIcon(32757)
+               or "Interface\\Icons\\INV_Jewelry_Necklace_15"
+  return warn("karaborNeck", "red", icon, "Karabor neck!", nil)
+end
+
 -- Idiot check: in combat with anything other than Aspect of the Hawk up.
 -- Combat-gated on purpose — Cheetah/Pack out of combat is just travel, and a
 -- Viper top-up between pulls is normal. Viper is deliberately NOT exempt in
@@ -1201,6 +1290,7 @@ function Warnings:Refresh(state)
   add(checkWrongTrinket(state))
   add(checkBindConflict(state))
   add(checkShirtGate(state))
+  add(checkKaraborNeck(state))
   add(checkQuiverLow(state))
   add(checkAspect(state))
   add(checkDazed(state))
@@ -1387,6 +1477,17 @@ Warnings.Catalog = {
     end,
     description = "For garment-gated weave macros: reminds you when the gate Shirt/Tabard is in the wrong state as you target a raid boss — still on for [noequipped:...] lines, still off for [equipped:...] lines — so the Snowball/consume lines actually fire.",
     logic       = "Fires when ALL of:\n• You are inside a raid instance\n• Your target is a boss (??-level or worldboss classification)\n• The gate garment is in its everyday state instead of its boss state — whichever of Shirt/Tabard your Weave Bind macros carry a conditional for (plain shirt-still-on check when they carry none)\n\nBoth conditional directions are understood: /use [noequipped:Tabard] Snowball lines need the tabard OFF on bosses (warns 'Tabard on!'), /use [equipped:Tabard] ... lines need it ON (warns 'Tabard off!'). Either way, pulling in the wrong state silently disarms every gated line.\n\nWith 'Set your shirt/tabard for bosses automatically' enabled this warning steps back out of combat — Nock changes the garment itself — and only fires in combat (gear is locked then) or when the automatic change was blocked (bags full).\n\nFor the still-on case the square shows the worn garment's own icon — the exact thing to remove.",
+    thresholds  = {},
+  },
+  {
+    key         = "karaborNeck",
+    category    = "gear",
+    name        = "Karabor neck still on (Black Temple)",
+    severity    = "red",
+    enabledKey  = "warnKaraborNeckEnabled",
+    iconFn      = function() return itemIcon(32757) or "Interface\\Icons\\INV_Jewelry_Necklace_15" end,
+    description = "For Medallion of Karabor carriers: the neck teleports you TO Black Temple, and forgetting it on once inside costs you a real neck's stats for the whole run. Warns while it is worn in BT — except around Mother Shahraz, the one fight where its Shadow Resistance is exactly what you want.",
+    logic       = "Fires when ALL of:\n• You are inside Black Temple\n• The Medallion of Karabor (32649) or Blessed Medallion of Karabor (32757) is in your neck slot\n• Mother Shahraz is not around\n\n|cffffd200The Mother Shahraz exception:|r seeing her — targeted, moused over, focused, on a boss frame or a nameplate — stands the warning down, and the sighting lingers half a minute so a blinking nameplate doesn't flicker it. Walking up to her room with the neck already on is the correct play, so the approach stays quiet. The moment she is dead the warning is back: time to put the real neck on again.\n\nThe square shows the worn medallion's own icon — the thing to swap out.\n\nOutside Black Temple this check costs nothing and never fires.",
     thresholds  = {},
   },
   {

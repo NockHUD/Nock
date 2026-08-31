@@ -247,7 +247,16 @@ Nock.Constants = {
     TERON_GOREFIEND = 22871,   -- Black Temple. Wowhead TBC npc=22871.
     ARCHIMONDE      = 17968,   -- Mount Hyjal. Wowhead TBC npc=17968.
     ANETHERON       = 17808,   -- Mount Hyjal. Wowhead TBC npc=17808.
+    MOTHER_SHAHRAZ  = 22947,   -- Black Temple. Wowhead TBC npc=22947.
   },
+
+  -- The Black Temple quest neck: Medallion of Karabor (32649) and its upgrade
+  -- Blessed Medallion of Karabor (32757). Worn, it teleports you to the raid
+  -- entrance — and then it is easy to forget around your neck. Warnings'
+  -- karaborNeck check flags either while inside BT (map id 564), except at
+  -- Mother Shahraz, where its Shadow Resistance is the point.
+  KARABOR_NECK_ITEMS  = { [32649] = true, [32757] = true },
+  BLACK_TEMPLE_MAP_ID = 564,
 
   -- Windfury Totem temp-enchant IDs by rank (Ranks 1-5), as returned in the
   -- 4th value of GetWeaponEnchantInfo() when the totem buffs your main hand.

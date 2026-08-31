@@ -301,6 +301,12 @@ Nock.Defaults = {
     warnRipperSound         = "None",  -- optional cue at the flip to ALT F4
     ripperCountdownPosition = false,   -- false = centre screen
 
+    -- Black Temple: the Medallion of Karabor teleports you to the raid and is
+    -- easy to forget around your neck once inside — a stat-less SR neck for
+    -- the whole run. Stands down around Mother Shahraz (the one fight where
+    -- its Shadow Resistance is right) and returns when she dies.
+    warnKaraborNeckEnabled  = true,
+
     -- Helpers panel (consumables row below the warnings).
     parseMode                    = true,   -- master toggle for parse-tier helpers (scrolls)
     -- Seconds left at which an ACTIVE buff starts nagging with a countdown
