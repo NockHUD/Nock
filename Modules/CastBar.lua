@@ -145,6 +145,22 @@ local function applyManual(out, spellId, spellName)
   return true
 end
 
+-- A failed re-press of the spell already being cast (spamming the mount
+-- button, spamming Steady) fires its own SPELL_CAST_FAILED / UNIT_SPELLCAST_STOP
+-- for the failed ATTEMPT — same spellId, fresh cast GUID — while the first cast
+-- keeps running, and the clear paths used to take the bar down on it. Before
+-- clearing, ask the client whether the cast is still in flight; if it is, keep
+-- the bar and resync its timing (server-authoritative, so a pushback between
+-- press and spurious event is picked up for free).
+local function stillCasting(c)
+  if not c or c.isChannel then return false end
+  local name, _, _, startTime, endTime, _, _, _, spellId = UnitCastingInfo("player")
+  if not name or spellId ~= c.spellId then return false end
+  c.startTime = startTime / 1000
+  c.endTime = endTime / 1000
+  return true
+end
+
 function CastBar:OnEnable()
   self.playerGUID = UnitGUID("player")
   self:RegisterEvent("PLAYER_LOGIN")
@@ -255,6 +271,10 @@ function CastBar:COMBAT_LOG_EVENT_UNFILTERED()
     end
     local c = Nock.state.player.casting
     if c and not c.isChannel and c.spellId == spellId then
+      -- FAILED for the spell we're casting: only real if the client agrees the
+      -- cast is gone. A failed re-press (button spam) logs FAILED for the
+      -- attempt while the first cast keeps running. SUCCESS always clears.
+      if subEvent == "SPELL_CAST_FAILED" and stillCasting(c) then return end
       Nock.state.player.casting = nil
     end
   end
@@ -289,6 +309,10 @@ function CastBar:UNIT_SPELLCAST_STOP(event, unit)
   if Nock.state.sim.active then return end   -- practice mode owns the cast
   if unit ~= "player" then return end
   if Nock.state.player.casting ~= unitInfo then return end
+  -- Spam guard: a STOP/INTERRUPTED for a failed re-press arrives while the
+  -- first cast is still in flight — keep the bar (see stillCasting above). A
+  -- genuine completion or cancel has already dropped UnitCastingInfo.
+  if stillCasting(unitInfo) then return end
   Nock.state.player.casting = nil
 end
 
