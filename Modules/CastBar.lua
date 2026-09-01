@@ -261,7 +261,16 @@ function CastBar:COMBAT_LOG_EVENT_UNFILTERED()
     end
   elseif subEvent == "SPELL_CAST_SUCCESS" or subEvent == "SPELL_CAST_FAILED" then
     if spellId == Nock.Constants.SpellID.AUTO_SHOT then
-      Nock.state.player.autoShotCast = nil
+      -- SUCCESS is the release — always clears. FAILED is NOT trusted: a
+      -- re-press of !Auto Shot landing inside the wind-up (mashing the re-arm
+      -- after a weave) logs SPELL_CAST_FAILED(75) for the failed ATTEMPT while
+      -- the real wind-up keeps running, and unlike the real-cast path there is
+      -- no UnitCastingInfo to disambiguate — it returns nil for Auto Shot on
+      -- this client. A genuinely cancelled wind-up is torn down by Refresh's
+      -- stale cleanup (endTime + 0.5) or refilled by the retry's CAST_START.
+      if subEvent == "SPELL_CAST_SUCCESS" then
+        Nock.state.player.autoShotCast = nil
+      end
       return
     end
     -- Feign Death is instant, so it never fires SPELL_CAST_START. On success,

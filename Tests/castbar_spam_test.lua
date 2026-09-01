@@ -224,5 +224,46 @@ ok(a and (a.endTime - a.startTime) > 0.3,
 state.player.autoShotCast = nil
 state.ranged.swingStart, state.ranged.swingDuration, state.ranged.windup = 0, 0, 0
 
+--------------------------------------------------------------------------------
+-- 7. Wind-up spam (the "mash !Auto Shot after a weave" report). A re-press of
+--    !Auto Shot landing inside the wind-up logs SPELL_CAST_FAILED(75) for the
+--    failed ATTEMPT while the real wind-up keeps running — and there is no
+--    UnitCastingInfo to disambiguate (it returns nil for Auto Shot), so FAILED
+--    must not clear the record at all. SUCCESS (the release) clears; a wind-up
+--    whose release never comes is Refresh's stale cleanup (endTime + 0.5).
+--------------------------------------------------------------------------------
+now = 1000
+state.ranged.swingStart = 1000.360 - 2.174   -- release 360ms ahead
+state.ranged.swingDuration = 2.174
+state.ranged.windup = 0.365
+cleu("SPELL_CAST_START", AUTO)
+ok(state.player.autoShotCast ~= nil, "wind-up raised for the spam section")
+
+now = 1000.1
+cleu("SPELL_CAST_FAILED", AUTO)      -- mashed !Auto Shot: failed re-press
+ok(state.player.autoShotCast ~= nil,
+   "FAILED(75) from a mashed re-press keeps the wind-up bar")
+
+now = 1000.2
+cleu("SPELL_CAST_FAILED", AUTO)      -- and again
+ok(state.player.autoShotCast ~= nil,
+   "repeated FAILED(75) still keeps the wind-up bar")
+
+cleu("SPELL_CAST_SUCCESS", AUTO)     -- the arrow leaves
+ok(state.player.autoShotCast == nil, "SUCCESS(75) clears the wind-up")
+
+-- A genuinely cancelled wind-up (no SUCCESS ever) is torn down by the stale
+-- cleanup once its predicted release is 0.5s past.
+now = 1010
+state.ranged.swingStart = 1010.360 - 2.174
+cleu("SPELL_CAST_START", AUTO)
+ok(state.player.autoShotCast ~= nil, "wind-up raised for the stale section")
+cleu("SPELL_CAST_FAILED", AUTO)      -- a cancel that happens to log FAILED
+now = 1011.0                          -- release + 0.5s gone by
+CB:Refresh(state)
+ok(state.player.autoShotCast == nil,
+   "a wind-up with no release is cleared by the stale cleanup")
+state.ranged.swingStart, state.ranged.swingDuration, state.ranged.windup = 0, 0, 0
+
 print(string.format("castbar_spam_test: %d passed, %d failed", pass, fail))
 if fail > 0 then os.exit(1) end
