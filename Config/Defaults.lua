@@ -278,21 +278,24 @@ Nock.Defaults = {
     warnNoReleaseEnabled    = true,
 
     -- Anetheron's Sleep (Mount Hyjal): a CLICKABLE button that drinks a
-    -- Sulfuron Slammer, whose self-damage tick wakes you. It counts down to
-    -- the earliest next Sleep (16.5s after the last cast — the reference WA's
-    -- number; BigWigs says 19.5-45s), reads CLICK NOW while the window is
-    -- open and the buff is not, and judges every cast: buff up for at least
-    -- the margin = quiet, under it or absent = EXPOSED and the horn. The horn
-    -- fires on THAT verdict only — never on the window opening (user,
-    -- 2026-08-27). Same audible default and library fallback as the boss
-    -- mark. The button is secure, so it shows when Anetheron is seen out of
-    -- combat and hides when he dies (Modules/SlammerWatch.lua). Ships OFF
-    -- until it has been through a real Anetheron (user, 2026-08-27).
+    -- Sulfuron Slammer, whose self-damage tick wakes you. Sleep is INSTANT
+    -- (videos + logs, 2026-09-01: no cast bar), so the window is the only
+    -- prompt: it counts down to the earliest next Sleep (20s after the last
+    -- — observed; BigWigs says 19.5-45s apart), reads CLICK NOW while the
+    -- window is open and the buff is not, and judges every Sleep: buff up
+    -- for at least the margin = quiet, under it or absent = EXPOSED. The
+    -- horn ships SILENT (user, 2026-09-01: by the landing it is already too
+    -- late to act — the Glass at the window open is the actionable cue); it
+    -- fires on the exposed verdict only for whoever turns it on. The button
+    -- is secure, so it shows when Anetheron is seen out of combat and hides
+    -- when he dies (Modules/SlammerWatch.lua). Ships OFF until it has been
+    -- through a real Anetheron (user, 2026-08-27).
     warnSlammerEnabled      = false,
-    slammerWindow           = 16.5,    -- s after a Sleep until the next can come
-    slammerCoverMargin      = 2,       -- buff seconds left at the cast's END that still count as covered (slider 1.3-3)
+    slammerWindow           = 20,      -- s after a Sleep until the next can come
+    slammerLeeway           = 1,       -- the prompt opens this many s BEFORE the window (early drink is free, late gets you slept)
+    slammerCoverMargin      = 2,       -- buff seconds left at the cast that still count as covered (slider 1.3-3)
     slammerButtonSize       = 46,      -- icon edge in px; the label scales with it
-    warnSlammerSound        = "Air Horn",
+    warnSlammerSound        = "None",
     -- The softer second cue when a window OPENS - the reference WA's Glass
     -- (registered by WeakAuras); the client's ready-check chime when no
     -- library has it. Never on the re-drink prompt inside the window.

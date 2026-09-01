@@ -12,7 +12,8 @@ local C = Nock.Constants
 
 local MIN_SIZE, MAX_SIZE = 32, 96
 local LABEL_GAP = 4
-local BAR_GAP   = 3   -- the cast bar sits this far under the icon's edge
+local BAR_GAP   = 3   -- the wait bar sits this far under the icon's edge
+local BAR_HOT   = 3   -- seconds before the window opens at which the bar turns red
 -- Icon file for inv_summerfest_firedrink, for the frame the item is not cached.
 local FALLBACK_ICON = "Interface\\Icons\\INV_Summerfest_FireDrink"
 
@@ -27,7 +28,6 @@ local COLOR = {
   slept   = { 1.00, 0.20, 0.20 },
   sleptOk = { 1.00, 0.70, 0.20 },
   exposed = { 1.00, 0.20, 0.20 },
-  casting = { 1.00, 0.20, 0.20 },
   castOk  = { 0.30, 0.90, 0.30 },
   noStock = { 1.00, 0.20, 0.20 },
 }
@@ -146,8 +146,9 @@ function SlammerButton:OnInitialize()
   count:SetTextColor(1, 1, 1, 1)
   self.count = count
 
-  -- The boss's cast, as a bar along the icon's bottom border: fills left to
-  -- right over the cast, red while it is the click, green once covered.
+  -- The 20 s timer, as a bar along the icon's bottom border: empty at the
+  -- Sleep, filling toward the window, red for the last seconds before it
+  -- opens. Only up while the window is closed.
   local bar = CreateFrame("StatusBar", nil, tl)
   bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8x8")
   bar:SetMinMaxValues(0, 1)
@@ -157,7 +158,7 @@ function SlammerButton:OnInitialize()
   barBg:SetAllPoints(bar)
   barBg:SetColorTexture(0, 0, 0, 0.7)
   bar:Hide()
-  self.castBar = bar
+  self.waitBar = bar
 
   Nock.UI.RegisterNudgeable(a, {
     label   = "Slammer button",
@@ -223,10 +224,10 @@ function SlammerButton:ApplySize()
   self.edge:SetPoint("TOPLEFT", self.anchor, "TOPLEFT", -2, 2)
   self.edge:SetPoint("BOTTOMRIGHT", self.anchor, "BOTTOMRIGHT", 2, -2)
   local barH = math.max(4, math.floor(size * 0.14))
-  self.castBar:ClearAllPoints()
-  self.castBar:SetPoint("TOPLEFT",  self.edge, "BOTTOMLEFT",  0, -BAR_GAP)
-  self.castBar:SetPoint("TOPRIGHT", self.edge, "BOTTOMRIGHT", 0, -BAR_GAP)
-  self.castBar:SetHeight(barH)
+  self.waitBar:ClearAllPoints()
+  self.waitBar:SetPoint("TOPLEFT",  self.edge, "BOTTOMLEFT",  0, -BAR_GAP)
+  self.waitBar:SetPoint("TOPRIGHT", self.edge, "BOTTOMRIGHT", 0, -BAR_GAP)
+  self.waitBar:SetHeight(barH)
   local font = Nock.UI.GetFont() or C.FONT.PATH
   self.label:SetFont(font, math.max(10, math.floor(size * 0.34)), "THICKOUTLINE")
   self.value:SetFont(font, math.max(10, math.floor(size * 0.42)), "OUTLINE")
@@ -300,16 +301,23 @@ function SlammerButton:Refresh(state)
   local preview = not s.visible   -- unlocked, nothing to show: the idle look
   if preview and st == "idle" then label = "SLAMMER" end
 
-  -- The pulse and the cast bar are the only per-tick paints; everything
-  -- else is diffed. The pulse is every click prompt - the open window (the
-  -- WA's own prompt; Sleep may have no cast bar) and a cast you are not
-  -- covered for - never a cast you already are.
-  local clickNow = (st == "now") or (st == "casting" and label ~= "COVERED")
+  -- The pulse and the wait bar are the only per-tick paints; everything
+  -- else is diffed. The pulse is the one click prompt there is: the open
+  -- window (the WA's own prompt — Sleep is instant, there is no cast bar
+  -- to react to).
+  local clickNow = (st == "now")
   if clickNow then
     self.edge:SetAlpha(0.55 + 0.45 * math.sin(now * 8))
   end
-  if st == "casting" and s.castFrac then
-    self.castBar:SetValue(s.castFrac)
+  -- The bar rides waitFrac, not the state: the timer restarts at every cast
+  -- and keeps running under slept / the flashes / covered.
+  if s.waitFrac then
+    self.waitBar:SetValue(s.waitFrac)
+    local bc = (s.remaining <= BAR_HOT) and COLOR.now or COLOR.wait
+    self.waitBar:SetStatusBarColor(bc[1], bc[2], bc[3], 1)
+    if not self.waitBar:IsShown() then self.waitBar:Show() end
+  elseif self.waitBar:IsShown() then
+    self.waitBar:Hide()
   end
 
   local valueTenths = s.value and math.floor(s.value * 10) or -1
@@ -321,20 +329,12 @@ function SlammerButton:Refresh(state)
   local col
   if label == "NO SLAMMER" then col = COLOR.noStock
   elseif st == "slept" then col = (s.verdict == "covered") and COLOR.sleptOk or COLOR.slept
-  elseif st == "casting" then col = clickNow and COLOR.casting or COLOR.covered
   else col = COLOR[st] or COLOR.idle end
 
   self.label:SetText(label)
   self.label:SetTextColor(col[1], col[2], col[3], 1)
   self.edge:SetVertexColor(col[1], col[2], col[3], 1)
   if not clickNow then self.edge:SetAlpha(1) end
-  if st == "casting" then
-    local bc = clickNow and COLOR.casting or COLOR.covered
-    self.castBar:SetStatusBarColor(bc[1], bc[2], bc[3], 1)
-    self.castBar:Show()
-  else
-    self.castBar:Hide()
-  end
 
   if s.value then
     self.value:SetText(("%.1f"):format(math.max(0, s.value)))
@@ -345,7 +345,7 @@ function SlammerButton:Refresh(state)
 
   -- Bright when there is something to do or feel, grey while waiting.
   local bright = (st == "now" or st == "covered" or st == "exposed" or st == "slept"
-    or st == "casting" or st == "castOk")
+    or st == "castOk")
   self.icon:SetDesaturated(not bright and st ~= "idle")
   self.icon:SetAlpha(st == "idle" and 0.6 or 1)
 
@@ -355,9 +355,9 @@ function SlammerButton:Refresh(state)
   self._lastValue = s.value or -1
   local refreshed = (st == "covered" and s.value and s.value > lastValue + 0.5)
   -- The swipe is the buff (and the sleep) only: a swipe under the countdown
-  -- read as a cast bar, and the cast has a bar of its own now.
+  -- read as a cast bar.
   if stateChanged or refreshed then
-    if st == "covered" or st == "castOk" or (st == "casting" and label == "COVERED") then
+    if st == "covered" or st == "castOk" then
       setSwipe(self.cooldown, 6, s.value)
     elseif st == "slept" then
       setSwipe(self.cooldown, 10, s.value)

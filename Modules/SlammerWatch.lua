@@ -23,7 +23,7 @@ local _playerGUID
 local _bossUnit, _bossGUID   -- the last unit token that was him, for the dump
 local _seen, _dead           -- he is in view right now (target / mouseover / nameplate / boss1) / he died
 local _preview               -- /nock slammer test holds the button open
-local _sim                   -- /nock slammer sim: { interval, castTime, nextStart, nextCast, n } — a fake boss on a clock
+local _sim                   -- /nock slammer sim: { interval, nextCast, n } — a fake boss on a clock
 local _encStartSeen, _encEndSeen   -- whether this client fires the encounter events at all
 local _lastCast              -- { at, srcName } for the dump
 local _lastEnc               -- { id, name, at } of ANY encounter start: proves the event fires here
@@ -157,7 +157,7 @@ function SlammerWatch:OnInitialize()
   self.st = E.New()
   -- One reused config table: Refresh compares the sliders against it and only
   -- calls Configure on a change (no per-tick allocation).
-  self._cfg = { window = E.DEFAULT.window, margin = E.DEFAULT.margin }
+  self._cfg = { window = E.DEFAULT.window, margin = E.DEFAULT.margin, leeway = E.DEFAULT.leeway }
 end
 
 function SlammerWatch:OnEnable()
@@ -246,21 +246,6 @@ function SlammerWatch:OnEngageUnit()
   end
 end
 
--- The cast bar's real length, off whichever unit token is him right now. Nil
--- when none is in view (the engine then uses its configured castTime).
-local function bossCastDuration()
-  if not UnitCastingInfo then return nil end
-  local tokens = { _bossUnit, "target", "boss1", "focus", "mouseover" }
-  for i = 1, #tokens do
-    local u = tokens[i]
-    if u and UnitExists and UnitExists(u) and isAnetheron(UnitGUID(u)) then
-      local _, _, _, startMs, endMs = UnitCastingInfo(u)
-      if startMs and endMs and endMs > startMs then return (endMs - startMs) / 1000 end
-    end
-  end
-  return nil
-end
-
 function SlammerWatch:OnEncounterStart(_, id, name)
   _lastEnc = _lastEnc or {}
   _lastEnc.id, _lastEnc.name, _lastEnc.at = tonumber(id), name, GetTime()
@@ -318,24 +303,22 @@ function SlammerWatch:OnCombatLog()
     end
     return
   end
-  if sub ~= "SPELL_CAST_SUCCESS" and sub ~= "SPELL_CAST_START" and sub ~= "SPELL_AURA_APPLIED"
+  if sub ~= "SPELL_CAST_SUCCESS" and sub ~= "SPELL_AURA_APPLIED"
      and sub ~= "SPELL_AURA_REFRESH" and sub ~= "SPELL_AURA_REMOVED" then
     return
   end
   if spellId == C.SpellID.SLEEP_ANETHERON then
     local now = GetTime()
-    if sub == "SPELL_CAST_START" then
-      _seen = true
-      E.SetBuff(self.st, scanBuff())   -- the exact expiry, for the end-of-cast test
-      E.CastStart(self.st, now, bossCastDuration())
-      self._castSeen = (self._castSeen or 0) + 1
-      if E.TakeAlert(self.st) then playHorn() end
-    elseif sub == "SPELL_CAST_SUCCESS" then
+    -- Sleep is instant (videos + logs, 2026-09-01): no SPELL_CAST_START ever
+    -- fires, the success is the whole event.
+    if sub == "SPELL_CAST_SUCCESS" then
       _seen = true
       _lastCast = _lastCast or {}
       _lastCast.at, _lastCast.srcName = now, srcName
+      E.SetBuff(self.st, scanBuff())   -- the exact expiry, for the verdict
       E.CastSucceeded(self.st, now)
-      if E.TakeAlert(self.st) then playHorn() end
+      -- Consumed either way (one-shot); played only with something to drink.
+      if E.TakeAlert(self.st) and self.st.count > 0 then playHorn() end
     elseif dstGUID == _playerGUID then
       if sub == "SPELL_AURA_REMOVED" then E.Woke(self.st)
       else E.Slept(self.st, now) end
@@ -369,29 +352,23 @@ function SlammerWatch:Refresh(state)
     return
   end
 
-  -- The simulation owns the window while it runs (scaled to its interval);
-  -- the profile's sliders take over again when it stops.
-  if p and not _sim then
-    local w, m = tonumber(p.slammerWindow), tonumber(p.slammerCoverMargin)
+  -- The sliders apply live — the sim runs on the same profile numbers.
+  if p then
+    local w, m, l = tonumber(p.slammerWindow), tonumber(p.slammerCoverMargin), tonumber(p.slammerLeeway)
     local cfg = self._cfg
-    if (w and w ~= cfg.window) or (m and m ~= cfg.margin) then
-      cfg.window, cfg.margin = w or cfg.window, m or cfg.margin
+    if (w and w ~= cfg.window) or (m and m ~= cfg.margin) or (l and l ~= cfg.leeway) then
+      cfg.window = w or cfg.window
+      cfg.margin = m or cfg.margin
+      cfg.leeway = l or cfg.leeway
       E.Configure(self.st, cfg)
     end
   end
 
   if _sim and on then
-    if _sim.nextStart and now >= _sim.nextStart then
-      _sim.nextStart = nil
-      E.SetBuff(self.st, scanBuff())
-      E.CastStart(self.st, now, _sim.castTime)
-      if E.TakeAlert(self.st) then playHorn() end
-    end
     if now >= _sim.nextCast then
       _sim.n = _sim.n + 1
       self:FakeCast(("sim #%d"):format(_sim.n))
-      _sim.nextCast  = now + _sim.interval
-      _sim.nextStart = _sim.nextCast - _sim.castTime
+      _sim.nextCast = now + _sim.interval
     end
   end
 
@@ -414,12 +391,17 @@ function SlammerWatch:Refresh(state)
   _seen = inView
   local fightOn = E.Active(self.st)
 
-  -- The wish; the frame applies it out of combat. The unlock preview is the
-  -- frame's own business.
-  s.visible  = (_preview or ((inView or fightOn) and not _dead)) or false
+  -- The wish; the frame applies it out of combat. Second gate: Slammers in
+  -- the bag — pointless to show a button you cannot click (user,
+  -- 2026-09-01). The previews are exempt so it can be placed and tested
+  -- empty-handed (NO SLAMMER is their look then). The engine keeps running
+  -- either way: buy mid-raid and the button appears with the timer right.
+  local stocked = self.st.count > 0
+  s.visible  = (_preview or ((inView or fightOn) and not _dead and stocked)) or false
   s.bossSeen = inView
   E.Describe(self.st, now, s)
-  if E.TakeWindowAlert(self.st, now) then playChime() end
+  -- The chime is gated like the button: nothing to drink, nothing to say.
+  if E.TakeWindowAlert(self.st, now) and (stocked or _preview) then playChime() end
 end
 
 -- /nock slammer test: hold the button open with a five-second first window so
@@ -449,13 +431,7 @@ function SlammerWatch:Preview(on)
       .. "/nock slammer cast fakes a Sleep; /nock slammer off ends it."):format(self.st.count))
   else
     _preview = nil
-    if _sim then
-      _sim = nil
-      -- Hand the window back to the sliders: forget what Refresh last synced
-      -- so the next tick re-applies the profile's numbers.
-      E.Configure(self.st, { firstWindow = E.DEFAULT.firstWindow })
-      self._cfg.window, self._cfg.margin = nil, nil
-    end
+    _sim = nil
     E.Reset(self.st)
     self:Print("Slammer preview off.")
   end
@@ -487,12 +463,13 @@ function SlammerWatch:PreviewCast()
   self:FakeCast("Fake Sleep")
 end
 
--- /nock slammer sim [secs]: a fake Anetheron casting Sleep every `secs`
--- (default 5), the window scaled to it (open for the last 40 % of each
--- cycle) so the whole loop plays: wait -> CLICK NOW -> drink -> COVERED ->
--- cast -> verdict -> wait. A real button: every click drinks a real Slammer.
--- Runs off the slow lane; `/nock slammer off` ends it and hands the window
--- back to the sliders.
+-- /nock slammer sim [secs]: a fake Anetheron dropping an instant Sleep every
+-- `secs` on the REAL numbers — the profile's window (20 s after each Sleep,
+-- 16 s from the pull), untouched. Default 25 s between Sleeps (BigWigs times
+-- them 19.5-45 s apart), so the whole loop plays at fight pace: wait ->
+-- CLICK NOW -> drink -> COVERED -> verdict -> wait. A real button: every
+-- click drinks a real Slammer. Runs off the slow lane; `/nock slammer off`
+-- ends it.
 function SlammerWatch:Sim(secs)
   local p = Nock.db and Nock.db.profile
   if p and p.showWarnings == false then
@@ -507,18 +484,19 @@ function SlammerWatch:Sim(secs)
     self:Print("In combat — the button can only be shown out of combat.")
     return
   end
-  local interval = tonumber(secs) or 5
+  local interval = tonumber(secs) or 25
   if interval < 3 then interval = 3 end
-  local castTime = math.min(2, interval / 2)
   local now = GetTime()
   _preview = true
-  _sim = { interval = interval, castTime = castTime, n = 0,
-           nextCast = now + interval, nextStart = now + interval - castTime }
-  local window = interval * 0.5
-  E.Configure(self.st, { window = window, firstWindow = window })
+  _sim = { interval = interval, n = 0, nextCast = now + interval }
   self:Engage("sim")
-  self:Print(("Slammer sim: a Sleep every %.0f s with a %.1f s cast bar before it; the window opens "
-    .. "%.1f s after each (%d in your bags). /nock slammer off ends it."):format(interval, castTime, window, self.st.count))
+  local cfg = self.st.cfg
+  local open = math.max(0, cfg.window - cfg.leeway)
+  self:Print(("Slammer sim: an instant Sleep every %.0f s on the real timings — the prompt opens "
+    .. "%.0f s after each Sleep (window %.0f - leeway %.0f), %.0f s from now (%d in your bags).%s "
+    .. "/nock slammer off ends it."):format(
+    interval, open, cfg.window, cfg.leeway, math.max(0, cfg.firstWindow - cfg.leeway), self.st.count,
+    interval <= open and " NOTE: the interval is inside the closed window, so every Sleep will land during WINDOW CLOSED." or ""))
 end
 
 -- /nock slammer slept: as if that Sleep landed on you — SLEPT for 10 s (red
@@ -562,10 +540,8 @@ function SlammerWatch:Dump()
     st.buffUntil and ("%+.1fs"):format(st.buffUntil - now) or "-",
     st.sleptUntil and ("%+.1fs"):format(st.sleptUntil - now) or "-",
     tostring(st.verdict or "-"), st.count)
-  add("config: window %.1f, first %.1f, margin %.1f, buff %.1f, cast fallback %.1f", st.cfg.window,
-    st.cfg.firstWindow, st.cfg.margin, st.cfg.buffDur, st.cfg.castTime)
-  add("Sleep cast starts seen this session: %d%s", self._castSeen or 0,
-    st.castStartAt and st.castEndAt and (" (last: %.2f s bar)"):format(st.castEndAt - st.castStartAt) or "")
+  add("config: window %.1f, first %.1f, leeway %.1f, margin %.1f, buff %.1f", st.cfg.window,
+    st.cfg.firstWindow, st.cfg.leeway, st.cfg.margin, st.cfg.buffDur)
   if _lastCast then
     add("last Sleep: %.0fs ago by %s", now - _lastCast.at, tostring(_lastCast.srcName))
   else
