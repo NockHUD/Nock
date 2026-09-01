@@ -6302,6 +6302,16 @@ local function buildOptionsTable()
       "The Fluffy timeline lane: Steady windows, the queue window, Multi/Arcane slots and the clip band, with Auto Shot sparks.", 24)
     fSizeArgs.fluffyShowMelee = fluffyToggle("fluffyShowMelee", "Weave lane (melee)",
       "The melee weave lane under the shot windows: green while Raptor Strike is ready, white for an auto-only weave, red where no weave fits.", 25)
+    fSizeArgs.fluffyShowLaneIcons = {
+      type = "toggle",
+      name = "Spell icons on the lanes",
+      desc = "Draw each window's ability icon at the left edge of its span on the shot-window and weave lanes (Steady, Multi, Arcane, Raptor Strike, melee Attack). The queue window and the clip band stay bare. Hidden by default.",
+      order = 25.5,
+      width = "full",
+      disabled = notFluffy,
+      get = get,
+      set = function(_, v) visualsSet(_, "fluffyShowLaneIcons", v) end,
+    }
     fSizeArgs.fluffyShowRange = fluffyToggle("fluffyShowRange", "Range finder",
       "The weave range bar at the bottom of the stack, above the cooldown grid: finding ladder at long range, then the glide fill toward the sweet spot. Style options are shared with the classic bar (Classic HUD → Range Finder).", 26)
     fSizeArgs.timingHeader = { type = "header", name = "Timing", order = 30 }

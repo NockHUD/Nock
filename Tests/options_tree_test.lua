@@ -673,7 +673,8 @@ local faBuff = fa.tabBuff and fa.tabBuff.args or {}
 local faSkin = fa.tabSkin and fa.tabSkin.args or {}
 onlyKeys(faSize, { "sizeHeader", "fluffyWidth", "fluffyScale",
   "elementsHeader", "elementsNote", "fluffyShowCast", "fluffyShowAutoShotCast",
-  "fluffyShowSwing", "fluffyShowRanged", "fluffyShowMelee", "fluffyShowRange",
+  "fluffyShowSwing", "fluffyShowRanged", "fluffyShowMelee", "fluffyShowLaneIcons",
+  "fluffyShowRange",
   "timingHeader", "fluffyShotWindow", "castBarNonCombatCasts" }, "fluffy tabSize")
 onlyKeys(faBars, { "autoHeader", "fluffyShowNotation", "fluffyShowClipTicks",
   "showWindupMark", "fluffyShowDelay",

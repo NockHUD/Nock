@@ -451,6 +451,64 @@ ok(shownStrips(FC.ranged.strips) == 0 and shownStrips(FC.melee.strips) == 0
 Nock.state.shotpredict.active = true
 
 -- ---------------------------------------------------------------------------
+-- §6b Lane spell icons (fluffyShowLaneIcons, default OFF) — each mapped span
+-- gets its ability's icon centered in it, sized to the lane height; queue and
+-- the danger/weaveclip bands NEVER carry one; a span too narrow for the icon
+-- stays bare; idle engine hides them with the strips.
+-- ---------------------------------------------------------------------------
+ok(D.fluffyShowLaneIcons == false, "default fluffyShowLaneIcons == false")
+
+_G.GetSpellTexture = function(id) return "tex-" .. id end
+
+local function shownIcons(pool)
+  local n = 0
+  for i = 1, #(pool or {}) do if pool[i]._shown then n = n + 1 end end
+  return n
+end
+
+Nock.state.shotpredict.windows.multi  = { n = 1, { s = 1002.0, e = 1003.5 } }
+Nock.state.shotpredict.windows.arcane = { n = 1, { s = 1003.5, e = 1005.0 } }
+
+-- Default off: no icons even with wide spans on every lane.
+FC:Refresh(Nock.state)
+ok(shownIcons(FC.ranged.icons) == 0 and shownIcons(FC.melee.icons) == 0,
+   "icons: default off → none drawn")
+
+p.fluffyShowLaneIcons = true
+FC:Refresh(Nock.state)
+-- Ranged: steady/multi/arcane get icons; queue and danger never do.
+ok(shownIcons(FC.ranged.icons) == 3, "icons: steady+multi+arcane, never queue/danger")
+ok(FC.ranged.icons[1]._tex == "tex-34120", "icons: steady wears Steady Shot")
+ok(FC.ranged.icons[2]._tex == "tex-27021", "icons: multi wears Multi-Shot")
+ok(FC.ranged.icons[3]._tex == "tex-27019", "icons: arcane wears Arcane Shot")
+-- Melee: weaveauto wears the Attack fist, raptor wears Raptor Strike.
+ok(shownIcons(FC.melee.icons) == 2, "icons: both melee spans carry one")
+ok(FC.melee.icons[1]._tex == "tex-6603", "icons: weaveauto wears Attack")
+ok(FC.melee.icons[2]._tex == "tex-27014", "icons: raptor wears Raptor Strike")
+-- Left-aligned on the span's left edge, sized to the lane height (18 → 16).
+local ix1 = math.floor(0.5 * SC + 0.5)
+local isz = 18 - 2
+ok(FC.ranged.icons[1]._w == isz and FC.ranged.icons[1]._h == isz,
+   "icons: sized to the lane height")
+ok(FC.ranged.icons[1]._point[4] == 1 + ix1, "icons: left-aligned in the span")
+
+-- A span too narrow for the icon stays bare (steady shrunk under 16px).
+Nock.state.shotpredict.windows.steady[1].e = 1000.7
+FC:Refresh(Nock.state)
+ok(shownIcons(FC.ranged.icons) == 2, "icons: too-narrow span stays bare")
+Nock.state.shotpredict.windows.steady[1].e = 1002.0
+
+-- Idle engine hides the icons with the strips.
+Nock.state.shotpredict.active = false
+FC:Refresh(Nock.state)
+ok(shownIcons(FC.ranged.icons) == 0 and shownIcons(FC.melee.icons) == 0,
+   "icons: idle engine → hidden")
+Nock.state.shotpredict.active = true
+p.fluffyShowLaneIcons = false
+Nock.state.shotpredict.windows.multi  = { n = 0 }
+Nock.state.shotpredict.windows.arcane = { n = 0 }
+
+-- ---------------------------------------------------------------------------
 -- §7 Fluffy CD row (UI/Frame_FluffyCooldowns.lua) — ONE stretch row seeded
 -- with C.FLUFFY_CD_KEYS, membership via fluffyCdKeys override +
 -- fluffyCooldownDisabled + Cooldowns:IsEntryAvailable; width split with -1px

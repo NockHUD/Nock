@@ -129,6 +129,20 @@ local function makeStrips(bar, n, layer)
   return t
 end
 
+-- A pool of square spell icons over a lane (fluffyShowLaneIcons): OVERLAY so
+-- they paint above the span strips, cropped so the icon's baked border stays
+-- out of a bar this small.
+local function makeIcons(bar, n)
+  local t = {}
+  for i = 1, n do
+    local s = bar:CreateTexture(nil, "OVERLAY")
+    s:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    s:Hide()
+    t[i] = s
+  end
+  return t
+end
+
 function FluffyCluster:OnInitialize()
   local parent = Nock.parentFrame
   local container = CreateFrame("Frame", "NockFluffyCluster", parent)
@@ -197,10 +211,12 @@ function FluffyCluster:OnInitialize()
   local ranged = createFluffyBar(container, "NockFluffyRanged", FLUFFY.RANGED_H)
   ranged.strips = makeStrips(ranged, MAX_SPANS * 5)          -- steady/queue/multi/arcane/danger
   ranged.sparks = makeStrips(ranged, MAX_SPARKS, "OVERLAY")  -- Auto Shot releases
+  ranged.icons  = makeIcons(ranged, MAX_SPANS * 3)           -- steady/multi/arcane
   self.ranged = ranged
 
   local melee = createFluffyBar(container, "NockFluffyMelee", FLUFFY.MELEE_H)
   melee.strips = makeStrips(melee, MAX_SPANS * 3)            -- weaveauto/raptor/weaveclip
+  melee.icons  = makeIcons(melee, MAX_SPANS * 2)             -- weaveauto/raptor
   self.melee = melee
 
   -- Range finder: progressive fill toward the weave sweet spot, center tick =
@@ -648,6 +664,28 @@ local LANE_REF = {
   weaveauto = FLUFFY.WEAVE_AUTO, weaveclip = FLUFFY.DANGER,
 }
 
+-- Lane spell icons (fluffyShowLaneIcons): the ability a window represents.
+-- Queue and the danger/weaveclip bands are windows, not presses — no icon.
+local LANE_ICON_SPELL = {
+  steady    = "STEADY_SHOT",
+  multi     = "MULTI_SHOT",
+  arcane    = "ARCANE_SHOT",
+  raptor    = "RAPTOR_STRIKE",
+  weaveauto = "ATTACK",
+}
+local laneIconTex = {}  -- lane key → texture, cached on first successful fetch
+local function laneIcon(k)
+  local tex = laneIconTex[k]
+  if tex then return tex end
+  local ref = LANE_ICON_SPELL[k]
+  if not ref then return nil end
+  local id = C.SpellID[ref]
+  if C_Spell and C_Spell.GetSpellTexture then tex = C_Spell.GetSpellTexture(id)
+  elseif GetSpellTexture then tex = GetSpellTexture(id) end
+  laneIconTex[k] = tex
+  return tex
+end
+
 local function hidePool(pool, from)
   for i = from, #pool do
     if pool[i]:IsShown() then pool[i]:Hide() end
@@ -657,10 +695,11 @@ end
 -- One lane's walk. minX (px, optional) clips at the GCD/cast lockout —
 -- windows touching the fire edge means the GCD is free. Strip colors are set
 -- every draw: the pool is shared across window types between frames.
-local function drawSpans(self, bar, keys, sp, now, scale, h, minX)
+local function drawSpans(self, bar, keys, sp, now, scale, h, minX, showIcons)
   local innerW = self._innerW or 0
   local pool = bar.strips
-  local drawn = 0
+  local icons = bar.icons
+  local drawn, nIcons = 0, 0
   for ki = 1, #keys do
     local k = keys[ki]
     local list = sp.windows[k]
@@ -694,10 +733,25 @@ local function drawSpans(self, bar, keys, sp, now, scale, h, minX)
         t:SetPoint("TOPLEFT", bar, "TOPLEFT", 1 + x1, -1)
         t:SetSize(x2 - x1, h)
         t:Show()
+        -- The ability's icon on the span's left edge — only in a span wide
+        -- enough to hold it whole; slivers stay bare.
+        if showIcons and icons and nIcons < #icons and (x2 - x1) >= h then
+          local tex = laneIcon(k)
+          if tex then
+            nIcons = nIcons + 1
+            local ic = icons[nIcons]
+            ic:SetTexture(tex)
+            ic:ClearAllPoints()
+            ic:SetPoint("TOPLEFT", bar, "TOPLEFT", 1 + x1, -1)
+            ic:SetSize(h, h)
+            ic:Show()
+          end
+        end
       end
     end
   end
   hidePool(pool, drawn + 1)
+  if icons then hidePool(icons, nIcons + 1) end
 end
 
 local function refreshLanes(self, state)
@@ -711,12 +765,15 @@ local function refreshLanes(self, state)
     if self._lanesOn ~= false then
       hidePool(rangedBar.strips, 1)
       hidePool(rangedBar.sparks, 1)
+      hidePool(rangedBar.icons, 1)
       hidePool(meleeBar.strips, 1)
+      hidePool(meleeBar.icons, 1)
       self._lanesOn = false
     end
     return
   end
   self._lanesOn = true
+  local showIcons = profile().fluffyShowLaneIcons == true
 
   -- Render against the timestamp the engine anchored the spans to, not a
   -- fresh GetTime() — avoids the per-tick right-edge jitter.
@@ -742,7 +799,7 @@ local function refreshLanes(self, state)
 
   if rOn then
     local h = math.max(1, (self._hRanged or FLUFFY.RANGED_H) - 2)
-    drawSpans(self, rangedBar, RANGED_KEYS, sp, now, scale, h, lockPx)
+    drawSpans(self, rangedBar, RANGED_KEYS, sp, now, scale, h, lockPx, showIcons)
 
     -- Auto Shot sparks: full lane height, on top.
     local sparkCol = skinColor("fluffyColorSpark", FLUFFY.SPARK)
@@ -767,7 +824,7 @@ local function refreshLanes(self, state)
 
   if mOn then
     local h = math.max(1, (self._hMelee or FLUFFY.MELEE_H) - 2)
-    drawSpans(self, meleeBar, MELEE_KEYS, sp, now, scale, h)
+    drawSpans(self, meleeBar, MELEE_KEYS, sp, now, scale, h, nil, showIcons)
   end
 end
 
