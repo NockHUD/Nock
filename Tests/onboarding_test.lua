@@ -19,13 +19,18 @@ end
 local sentMessages = {}
 local sentArgs     = {}   -- parallel: { msg = name, payload = first vararg }
 
-local MACRO_DOWN = "/use Snowball\n/stopcasting\n/cast Raptor Strike\n/startattack"
-local MACRO_UP   = "/cast [target=pettarget,exists] Kill Command\n/cast !Auto Shot"
+local KC_LINE    = "/use [@pettarget,exists,harm,nodead] Kill Command"
+local MACRO_DOWN = "/use Snowball\n/use Raptor Strike\n" .. KC_LINE .. "\n/startattack"
+local MACRO_UP   = KC_LINE .. "\n/use [exists,harm,nodead] !Auto Shot"
 local MOVEPAD    = "/click MovePadBackward"
 local SNOWBALL   = "/use Snowball"
--- The press body with the poke stripped, and with it gated behind a shirt.
-local NOPOKE     = "/stopcasting\n/cast Raptor Strike\n/startattack"
-local GATED      = "/use [noequipped:Shirt] Snowball\n" .. NOPOKE
+-- The press body with the poke stripped, and with it gated behind a shirt
+-- (the gate covers the poke and the press /startattack).
+local NOPOKE     = "/use Raptor Strike\n" .. KC_LINE .. "\n/startattack"
+local GATED      = "/use [noequipped:Shirt] Snowball\n/use Raptor Strike\n" .. KC_LINE .. "\n/startattack [noequipped:Shirt]"
+-- The pre-2026-09 stock pair: still Nock-authored, upgraded by Default.
+local LEGACY_DOWN = "/use Snowball\n/stopcasting\n/cast Raptor Strike\n/startattack"
+local LEGACY_UP   = "/cast [target=pettarget,exists] Kill Command\n/cast !Auto Shot"
 
 local Nock = {
   Constants = {
@@ -34,8 +39,10 @@ local Nock = {
       KILL_COMMAND = 34026, RAPTOR_STRIKE = 27014, ASPECT_HAWK = 27044,
       ASPECT_CHEETAH = 5118, FEIGN_DEATH = 5384,
     },
-    WEAVE_BIND_MACRO_DOWN    = MACRO_DOWN,
-    WEAVE_BIND_MACRO_UP      = MACRO_UP,
+    WEAVE_BIND_MACRO_DOWN        = MACRO_DOWN,
+    WEAVE_BIND_MACRO_UP          = MACRO_UP,
+    WEAVE_BIND_MACRO_DOWN_LEGACY = LEGACY_DOWN,
+    WEAVE_BIND_MACRO_UP_LEGACY   = LEGACY_UP,
     WEAVE_BIND_MOVEPAD_LINE  = MOVEPAD,
     WEAVE_BIND_SNOWBALL_LINE = SNOWBALL,
   },
@@ -413,10 +420,12 @@ O:SelectCard(macro, mDefault)
 ok(p.weaveBindMacroDown == MACRO_DOWN and p.weaveBindMacroUp == MACRO_UP,
    "Default restores the shipped pair after Natty")
 
--- Clever appends the movement-pad line to BOTH bodies, once.
+-- Clever adds the movement-pad line to BOTH bodies, once, at the TOP (after
+-- the poke on the press body -- the author's battle-tested position).
+local CLEVER_DOWN = SNOWBALL .. "\n" .. MOVEPAD .. "\n/use Raptor Strike\n" .. KC_LINE .. "\n/startattack"
 O:SelectCard(macro, mClever)
-ok(p.weaveBindMacroDown == MACRO_DOWN .. "\n" .. MOVEPAD, "Clever appends MovePad to the press body")
-ok(p.weaveBindMacroUp == MACRO_UP .. "\n" .. MOVEPAD, "Clever appends MovePad to the release body")
+ok(p.weaveBindMacroDown == CLEVER_DOWN, "Clever slots MovePad in after the poke")
+ok(p.weaveBindMacroUp == MOVEPAD .. "\n" .. MACRO_UP, "Clever leads the release body with MovePad")
 ok(mClever.isSelected(p), "Clever reads as selected")
 O:SelectCard(macro, mClever)
 ok(select(2, p.weaveBindMacroDown:gsub("MovePad", "")) == 1, "Clever twice does not duplicate the line")
@@ -426,6 +435,24 @@ ok(p.weaveBindMacroDown:find("^/use Snowball"), "Clever keeps the Snowball line 
 O:SelectCard(macro, mDefault)
 ok(p.weaveBindMacroDown == MACRO_DOWN and p.weaveBindMacroUp == MACRO_UP,
    "Default strips Nock's own MovePad addition")
+
+-- A profile still carrying the pre-2026-09 stock pair: picking Default is the
+-- upgrade path to the new shape, and the extras choices carry over.
+p = freshProfile()
+p.weaveBindMacroDown, p.weaveBindMacroUp = LEGACY_DOWN, LEGACY_UP
+O:SelectCard(macro, mDefault)
+ok(p.weaveBindMacroDown == MACRO_DOWN and p.weaveBindMacroUp == MACRO_UP,
+   "Default upgrades the legacy stock pair")
+p = freshProfile()
+p.weaveBindMacroDown = "/use [noequipped:Shirt] Snowball\n/stopcasting\n/cast Raptor Strike\n/startattack\n" .. MOVEPAD
+p.weaveBindMacroUp   = LEGACY_UP .. "\n/startattack [equipped:Shirt]"
+O:SelectCard(macro, mDefault)
+ok(p.weaveBindMacroDown == GATED, "the legacy upgrade keeps the gate (and drops the step-out)")
+ok(p.weaveBindMacroUp == "/startattack [equipped:Shirt]\n" .. MACRO_UP, "...and rebuilds the release with its re-arm")
+p = freshProfile()
+p.weaveBindMacroDown = "/stopcasting\n/cast Raptor Strike\n/startattack"
+O:SelectCard(macro, mDefault)
+ok(p.weaveBindMacroDown == NOPOKE, "the legacy upgrade keeps a deliberately poke-less body poke-less")
 
 -- A hand-written macro survives Default untouched. Mixed state on purpose: the
 -- press body is the user's, the release body is empty (Nock's own doing), and
@@ -441,7 +468,7 @@ ok(p.weaveBindMacroUp == MACRO_UP, "Default still restores the body Nock had emp
 p = freshProfile()
 p.weaveBindMacroDown = "/cast Mongoose Bite"
 O:SelectCard(macro, mClever)
-ok(p.weaveBindMacroDown == "/cast Mongoose Bite\n" .. MOVEPAD, "Clever extends a hand-edited macro")
+ok(p.weaveBindMacroDown == MOVEPAD .. "\n/cast Mongoose Bite", "Clever extends a hand-edited macro (step-out first, no poke to follow)")
 
 -- The page tells WeaveBind, not just the HUD.
 p = freshProfile()
@@ -452,8 +479,8 @@ for _, m in ipairs(sentMessages) do if m == "NOCK_WEAVEBIND_CHANGED" then sawWea
 ok(sawWeaveBind, "macro changes broadcast NOCK_WEAVEBIND_CHANGED")
 
 -- 255 is the client's macro-body ceiling; Clever must not push past it.
-ok(#(MACRO_DOWN .. "\n" .. MOVEPAD) <= 255, "Clever press body fits in a macro")
-ok(#(MACRO_UP .. "\n" .. MOVEPAD) <= 255, "Clever release body fits in a macro")
+ok(#CLEVER_DOWN <= 255, "Clever press body fits in a macro")
+ok(#(MOVEPAD .. "\n" .. MACRO_UP) <= 255, "Clever release body fits in a macro")
 
 --------------------------------------------------------------------------------
 -- 4c. Weave macro extras: the Snowball poke and its garment gate
@@ -498,22 +525,23 @@ ok(p.weaveBindMacroDown == MACRO_DOWN, "poke back on, ahead of everything else")
 -- Gate on: shirt, fires while removed (the shipped convention, and the one the
 -- Boss Garment autopilot arms by taking the shirt off).
 O:ToggleOption(extras, rGate)
-ok(p.weaveBindMacroDown == GATED, "gate defaults to shirt / fires while removed")
--- ...and the release body gets the inverse re-arm (2026-08-27), on the stock text only.
-ok(p.weaveBindMacroUp == MACRO_UP .. "\n/startattack [equipped:Shirt]", "the gate writes the inverse re-arm into the stock release body")
+ok(p.weaveBindMacroDown == GATED, "gate defaults to shirt / fires while removed, on the poke and the press /startattack")
+-- ...and the release body gets the inverse re-arm, FIRST (the last line must
+-- stay !Auto Shot -- it wins the attack state), on the stock text only.
+ok(p.weaveBindMacroUp == "/startattack [equipped:Shirt]\n" .. MACRO_UP, "the gate writes the inverse re-arm into the stock release body, first")
 ok(O:IsOptionOn(rGate), "gate row reads on")
 ok(not O:IsOptionOn(rTabard) and not O:IsOptionOn(rWorn), "shirt + removed read as the off position")
 ok(not O:IsOptionLocked(rTabard) and not O:IsOptionLocked(rWorn),
    "garment and direction rows unlock with the gate on")
 
 O:ToggleOption(extras, rTabard)
-ok(p.weaveBindMacroDown == "/use [noequipped:Tabard] Snowball\n" .. NOPOKE,
-   "tabard row swaps the garment, keeps the direction")
-ok(p.weaveBindMacroUp == MACRO_UP .. "\n/startattack [equipped:Tabard]", "...and the release re-arm follows the garment")
+ok(p.weaveBindMacroDown == GATED:gsub("Shirt", "Tabard"),
+   "tabard row swaps the garment on both gated lines, keeps the direction")
+ok(p.weaveBindMacroUp == "/startattack [equipped:Tabard]\n" .. MACRO_UP, "...and the release re-arm follows the garment")
 O:ToggleOption(extras, rWorn)
-ok(p.weaveBindMacroDown == "/use [equipped:Tabard] Snowball\n" .. NOPOKE,
+ok(p.weaveBindMacroDown == GATED:gsub("Shirt", "Tabard"):gsub("noequipped", "equipped"),
    "direction row flips to fires-while-worn, keeps the garment")
-ok(p.weaveBindMacroUp == MACRO_UP .. "\n/startattack [noequipped:Tabard]", "...and the release re-arm stays the other way round")
+ok(p.weaveBindMacroUp == "/startattack [noequipped:Tabard]\n" .. MACRO_UP, "...and the release re-arm stays the other way round")
 ok(O:IsOptionOn(rTabard) and O:IsOptionOn(rWorn), "both rows read back on")
 -- The user's own bodies (custom text) follow a flip too -- a flip is their choice.
 local myDown, myUp = p.weaveBindMacroDown, p.weaveBindMacroUp
@@ -575,14 +603,16 @@ p = freshProfile()
 p.weaveBindMacroDown = NOPOKE
 O:SelectCard(macro, mDefault)
 ok(p.weaveBindMacroDown == NOPOKE, "Default leaves a deliberately poke-less body poke-less")
--- ...and Clever still builds on top of an extras choice.
+-- ...and Clever still builds on top of an extras choice, the step-out sliding
+-- in behind the gated poke -- the author's exact pasted press body.
 p = freshProfile()
 p.weaveBindMacroDown = GATED
 O:SelectCard(macro, mClever)
-ok(p.weaveBindMacroDown == GATED .. "\n" .. MOVEPAD, "Clever extends a gated body")
+local GATED_CLEVER = "/use [noequipped:Shirt] Snowball\n" .. MOVEPAD .. "\n/use Raptor Strike\n" .. KC_LINE .. "\n/startattack [noequipped:Shirt]"
+ok(p.weaveBindMacroDown == GATED_CLEVER, "Clever extends a gated body, MovePad after the poke")
 
 -- Everything at once still fits the client's 255-character macro body.
-ok(#(GATED .. "\n" .. MOVEPAD) <= 255, "fully loaded press body fits in a macro")
+ok(#GATED_CLEVER <= 255, "fully loaded press body fits in a macro")
 
 --------------------------------------------------------------------------------
 -- 5. Recap reads the profile, not a memory of clicks

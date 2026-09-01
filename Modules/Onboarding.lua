@@ -55,11 +55,12 @@ local function groundedBind()
   return wb and wb.GroundedWeaveBind and wb:GroundedWeaveBind() or nil
 end
 
--- A body the wizard may rewrite: one Nock authored, or one the Grounded
--- import put there (the user chose "Default" over it -- that is the point of
--- the choice; Undo in the settings still holds the import).
-local function replaceable(p, text, shipped)
-  if WM.IsNockAuthored(text, shipped) then return true end
+-- A body the wizard may rewrite: one Nock authored (the current stock shape
+-- or the pre-2026-09 legacy one), or one the Grounded import put there (the
+-- user chose "Default" over it -- that is the point of the choice; Undo in
+-- the settings still holds the import).
+local function replaceable(p, text, shipped, legacy)
+  if WM.IsNockAuthored(text, shipped, legacy) then return true end
   local imp = p.weaveBindImported
   return imp ~= nil and (text == (imp.down or "") or text == (imp.up or ""))
 end
@@ -70,7 +71,7 @@ local function setPressBody(p, text)
   p.weaveBindMacroDown = text
   -- The release re-arm follows the poke's gate (the inverse), on a release
   -- body Nock authored.
-  WM.SyncRearmIfStock(p, C.WEAVE_BIND_MACRO_UP)
+  WM.SyncRearmIfStock(p, C.WEAVE_BIND_MACRO_UP, C.WEAVE_BIND_MACRO_UP_LEGACY)
 end
 
 --------------------------------------------------------------------------------
@@ -253,7 +254,7 @@ Onboarding.Pages = {
     options = {
       {
         value = "default", label = "Default", recommended = true,
-        desc  = "Nock's tested pair: poke, Raptor Strike, then Kill Command and back to Auto Shot.",
+        desc  = "The battle-tested pair: poke, Raptor Strike and Kill Command on the press; the release re-arms Auto Shot.",
         icon  = function() return spellIcon(C.SpellID.RAPTOR_STRIKE) end,
         isSelected = function(p)
           local down, up = weaveMacros(p)
@@ -265,17 +266,36 @@ Onboarding.Pages = {
         -- an emptied body comes back, and anything else Nock authored keeps the
         -- extras page's answers (poke, gate) and loses only the MovePad line.
         -- Otherwise the two macro pages would undo each other.
+        -- A body still on the pre-2026-09 legacy stock is UPGRADED to the new
+        -- shape here (this card is the upgrade path), carrying the poke and
+        -- gate choices over; the SyncRearm at the end rebuilds the release
+        -- re-arm to match.
         apply = function(p)
           local down, up = weaveMacros(p)
           local imp = p.weaveBindImported
-          if replaceable(p, down, C.WEAVE_BIND_MACRO_DOWN) then
-            p.weaveBindMacroDown = (down == "" or (imp and down == (imp.down or ""))) and C.WEAVE_BIND_MACRO_DOWN
-              or WM.WithoutMovePad(down)
+          if replaceable(p, down, C.WEAVE_BIND_MACRO_DOWN, C.WEAVE_BIND_MACRO_DOWN_LEGACY) then
+            if down == "" or (imp and down == (imp.down or "")) then
+              p.weaveBindMacroDown = C.WEAVE_BIND_MACRO_DOWN
+            elseif not WM.IsNockAuthored(down, C.WEAVE_BIND_MACRO_DOWN) then
+              -- Legacy-authored: rebuild from the new stock, switches kept.
+              local nd = C.WEAVE_BIND_MACRO_DOWN
+              if not WM.HasSnowball(down) then nd = WM.WithoutSnowball(nd) end
+              local g, dir = WM.GateOf(down)
+              if g then nd = WM.WithGate(nd, g, dir) end
+              p.weaveBindMacroDown = nd
+            else
+              p.weaveBindMacroDown = WM.WithoutMovePad(down)
+            end
           end
-          if replaceable(p, up, C.WEAVE_BIND_MACRO_UP) then
-            p.weaveBindMacroUp = (up == "" or (imp and up == (imp.up or ""))) and C.WEAVE_BIND_MACRO_UP
-              or WM.WithoutMovePad(up)
+          if replaceable(p, up, C.WEAVE_BIND_MACRO_UP, C.WEAVE_BIND_MACRO_UP_LEGACY) then
+            if up == "" or (imp and up == (imp.up or ""))
+               or not WM.IsNockAuthored(up, C.WEAVE_BIND_MACRO_UP) then
+              p.weaveBindMacroUp = C.WEAVE_BIND_MACRO_UP
+            else
+              p.weaveBindMacroUp = WM.WithoutMovePad(up)
+            end
           end
+          WM.SyncRearmIfStock(p, C.WEAVE_BIND_MACRO_UP, C.WEAVE_BIND_MACRO_UP_LEGACY)
         end,
       },
       {
@@ -368,7 +388,7 @@ Onboarding.Pages = {
       {
         id    = "snowballGate", sub = true,
         label = "Only for bosses",
-        desc  = "Gates the poke behind a garment, so trash and questing do not burn your stack: it fires only while the shirt is off - the state you want for a boss. The release macro gets the inverse, /startattack while the shirt is on, standing in for the poke.",
+        desc  = "Gates the poke and the press's /startattack behind a garment, so trash and questing do not burn your stack: both fire only while the shirt is off - the state you want for a boss. The release macro gets the inverse, /startattack while the shirt is on, standing in for them.",
         dependsOn = function(p) return WM.HasSnowball(pressBody(p)) end,
         isOn  = function(p) return WM.GateOf(pressBody(p)) ~= nil end,
         setOn = function(p, on)

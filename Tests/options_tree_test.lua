@@ -415,10 +415,13 @@ ok(wb.weaveSnowball and wb.weaveSnowball.type == "toggle", "builder: Snowball po
 ok(wb.weaveSnowballGate and wb.weaveSnowballGate.type == "toggle", "builder: garment gate toggle")
 ok(wb.weaveGateGarment and wb.weaveGateGarment.type == "select", "builder: garment picker")
 ok(wb.weaveGateDirection and wb.weaveGateDirection.type == "select", "builder: direction picker")
+-- The auto-backpedal (MovePad) switch: the wizard's "Clever" shape as a
+-- settings toggle, editing BOTH stored bodies like the other builder rows.
+ok(wb.weaveMovePad and wb.weaveMovePad.type == "toggle", "builder: MovePad toggle")
 ok(wb.builderHeader and wb.builderHeader.order < wb.weaveSnowball.order,
    "builder: header above its controls")
 for _, k in ipairs({ "builderHeader", "weaveSnowball", "weaveSnowballGate",
-                     "weaveGateGarment", "weaveGateDirection" }) do
+                     "weaveGateGarment", "weaveGateDirection", "weaveMovePad" }) do
   ok(wb[k].order > wb.weaveBindKey.order and wb[k].order < wb.weaveBindMacroDown.order,
      "builder: " .. k .. " sits between the key and the macro boxes")
 end
@@ -429,7 +432,7 @@ ok(wb.weaveGateGarment.dialogControl == "Nock_LSM_Plain"
    "builder: both selects use the plain LSM widget")
 -- Nothing in the builder is reachable while the feature is off, and the three
 -- gate controls need a poke to gate.
-for _, k in ipairs({ "weaveSnowball", "weaveSnowballGate", "weaveGateGarment", "weaveGateDirection" }) do
+for _, k in ipairs({ "weaveSnowball", "weaveSnowballGate", "weaveGateGarment", "weaveGateDirection", "weaveMovePad" }) do
   ok(type(wb[k].disabled) == "function", "builder: " .. k .. " greys out")
 end
 ok(wb.weaveGateGarment.values and wb.weaveGateGarment.values.shirt and wb.weaveGateGarment.values.tabard,

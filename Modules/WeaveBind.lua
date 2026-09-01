@@ -320,7 +320,7 @@ function WeaveBind:OnEnable()
     -- (WM.IsNockAuthored tells them apart): the release re-arm (2026-08-27)
     -- on a release body Nock wrote whose press body already gates the poke.
     local WM = Nock.WeaveMacro
-    if WM and WM.SyncRearmIfStock and WM.SyncRearmIfStock(p, C.WEAVE_BIND_MACRO_UP) then
+    if WM and WM.SyncRearmIfStock and WM.SyncRearmIfStock(p, C.WEAVE_BIND_MACRO_UP, C.WEAVE_BIND_MACRO_UP_LEGACY) then
       self:Print("Weave Bind: your release macro gained the re-arm (/startattack gated the other way round from the poke). It is still Nock's stock macro; edit it and Nock leaves it alone.")
     end
   end

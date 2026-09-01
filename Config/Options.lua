@@ -442,7 +442,8 @@ local function setPressBody(text)
   Nock.db.profile.weaveBindMacroDown = text
   -- The release re-arm follows the poke's gate (the inverse), on a release
   -- body Nock authored (Core/WeaveMacro.lua).
-  Nock.WeaveMacro.SyncRearmIfStock(Nock.db.profile, Nock.Constants.WEAVE_BIND_MACRO_UP)
+  Nock.WeaveMacro.SyncRearmIfStock(Nock.db.profile, Nock.Constants.WEAVE_BIND_MACRO_UP,
+    Nock.Constants.WEAVE_BIND_MACRO_UP_LEGACY)
   Nock:SendMessage("NOCK_WEAVEBIND_CHANGED")
   -- The macro box is on the same page and has just changed underneath the user.
   local reg = LibStub("AceConfigRegistry-3.0", true)
@@ -2964,7 +2965,7 @@ local function buildOptionsTable()
           weaveSnowballGate = {
             type  = "toggle",
             name  = "Only throw one when the garment says so",
-            desc  = "Wraps the poke in an |cffffd200[noequipped:Shirt]|r-style conditional so trash pulls and questing don't burn your Snowball stack. Only the poke is gated — Raptor Strike and the press's /startattack always fire. The RELEASE macro gets the inverse, |cffffd200/startattack [equipped:Shirt]|r, standing in for the poke while it is off (only on a release macro Nock wrote; your own text is never touched).",
+            desc  = "Wraps the poke in an |cffffd200[noequipped:Shirt]|r-style conditional so trash pulls and questing don't burn your Snowball stack. The press's |cffffd200/startattack|r takes the same bracket, and the RELEASE macro gets the inverse, |cffffd200/startattack [equipped:Shirt]|r — the attack-state re-check moves to the release edge while the poke is off (the re-arm only on a release macro Nock wrote; your own text is never touched). Raptor Strike and the shot lines always fire.",
             order = 24,
             width = "full",
             disabled = noPoke,
@@ -3014,6 +3015,38 @@ local function buildOptionsTable()
               if (dir or "off") == v then return end
               Nock.db.profile.weaveBindMacroUp = WM.InvertGates(Nock.db.profile.weaveBindMacroUp or "")
               setPressBody(WM.InvertGates(pressBody()))
+            end,
+          },
+          weaveMovePad = {
+            type  = "toggle",
+            name  = "Auto-backpedal (movement pad)",
+            desc  = "Adds |cffffd200/click MovePadBackward|r to BOTH macros — the wizard's 'Clever' shape: the press starts backpedaling, the release stops it, so you step out for exactly as long as you hold the key. Nock loads Blizzard's Movement Pad on demand and watches for a stuck toggle.",
+            order = 27,
+            width = "full",
+            disabled = weaveBindOff,
+            -- Either body counts (the wizard's Clever detection): a hand-edit
+            -- that kept the line in one body still reads as ON.
+            get = function()
+              local WM, p = Nock.WeaveMacro, Nock.db.profile
+              return WM.HasMovePad(p.weaveBindMacroDown or "") or WM.HasMovePad(p.weaveBindMacroUp or "")
+            end,
+            set = function(_, v)
+              local WM, p = Nock.WeaveMacro, Nock.db.profile
+              if v then
+                p.weaveBindMacroDown = WM.WithMovePad(p.weaveBindMacroDown or "")
+                p.weaveBindMacroUp   = WM.WithMovePad(p.weaveBindMacroUp or "")
+                -- The pad is load-on-demand and can be absent; pull it in now
+                -- and say so if it can't, rather than letting the line fail
+                -- silently the first time the user weaves.
+                local wb = Nock:GetModule("WeaveBind", true)
+                if wb and wb.EnsureMovePad then wb:EnsureMovePad() end
+              else
+                p.weaveBindMacroDown = WM.WithoutMovePad(p.weaveBindMacroDown or "")
+                p.weaveBindMacroUp   = WM.WithoutMovePad(p.weaveBindMacroUp or "")
+              end
+              Nock:SendMessage("NOCK_WEAVEBIND_CHANGED")
+              local reg = LibStub("AceConfigRegistry-3.0", true)
+              if reg then reg:NotifyChange("Nock") end
             end,
           },
           weaveBindMacroDown = {

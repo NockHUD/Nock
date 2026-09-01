@@ -284,17 +284,23 @@ Nock.Constants = {
   -- both key edges is handled by the secure button's useOnKeyDown attribute
   -- (see WeaveBind.lua header) — no /console CVar lines needed here.
   --
-  -- "Weave on the way out" bodies (competitive-weaver practice, after the
-  -- Grounded preset the user verified in-game):
-  --   /use Snowball          — first press line (kept in the shipped default
-  --                            after in-game testing). Instant, off-GCD poke;
-  --                            forces the server to re-evaluate the attack
-  --                            state immediately instead of waiting for its
-  --                            ~0.5s melee-retry pulse (the "luck regime"
+  -- The author's battle-tested pair (2026-09-01, imported from long raid use):
+  --   /use Snowball          — first press line. Instant, off-GCD poke; forces
+  --                            the server to re-evaluate the attack state
+  --                            immediately instead of waiting for its ~0.5s
+  --                            melee-retry pulse (the "luck regime"
   --                            /nock weavelog full exposed).
+  --   No /stopcasting        — the step-in's own movement cancels a running
+  --                            Steady (and Clever's MovePad click starts that
+  --                            movement on the same press).
+  --   Kill Command           — on BOTH edges, so the proc is spent whichever
+  --                            edge it opens on. The [@pettarget,...] spelling
+  --                            is the author's tested text, kept verbatim by
+  --                            explicit choice (the older stock spelled it
+  --                            [target=pettarget]).
   --   /click MovePadBackward — OPTIONAL pair the user may add to BOTH bodies,
-  --                            no longer shipped in the defaults: MovePad
-  --                            buttons are toggling CheckButtons (verified in
+  --                            not shipped in the defaults: MovePad buttons
+  --                            are toggling CheckButtons (verified in
   --                            Blizzard_MovePad source), so the press-edge
   --                            click STARTS backpedaling and the release-edge
   --                            click STOPS it — you back out for exactly the
@@ -302,13 +308,19 @@ Nock.Constants = {
   --                            WeaveBind loads the pad on demand, hints if
   --                            it's missing, and watchdogs a stuck toggle
   --                            (lost release edge = infinite backpedal).
-  --   [target=pettarget]     — NOT [@pettarget]: @unit conditionals silently
-  --                            fail in secure macrotext on this client.
-  -- Release re-arms the ranged auto explicitly: /startattack on the press edge
-  -- switches the auto-attack state from Auto Shot to melee, and only
-  -- "/cast !Auto Shot" switches it back ("!" = turn on, never toggle off).
-  WEAVE_BIND_MACRO_DOWN = "/use Snowball\n/stopcasting\n/cast Raptor Strike\n/startattack",
-  WEAVE_BIND_MACRO_UP   = "/cast [target=pettarget,exists] Kill Command\n/cast !Auto Shot",
+  -- Release re-arms the ranged auto explicitly with "!Auto Shot" as the LAST
+  -- line ("!" = turn on, never toggle off) — the last line wins the attack
+  -- state. The press /startattack switches to melee; the garment gate
+  -- (Core/WeaveMacro.lua) covers the poke AND that /startattack, writing the
+  -- inverse "/startattack [equipped:...]" into the release as the first line.
+  WEAVE_BIND_MACRO_DOWN = "/use Snowball\n/use Raptor Strike\n/use [@pettarget,exists,harm,nodead] Kill Command\n/startattack",
+  WEAVE_BIND_MACRO_UP   = "/use [@pettarget,exists,harm,nodead] Kill Command\n/use [exists,harm,nodead] !Auto Shot",
+  -- The pre-2026-09 stock pair. Never applied any more, but still recognised
+  -- as Nock-authored (WM.IsNockAuthored's legacy arg) so gate edits keep
+  -- working on profiles that installed with it; picking Default in the wizard
+  -- upgrades such a pair to the new shape.
+  WEAVE_BIND_MACRO_DOWN_LEGACY = "/use Snowball\n/stopcasting\n/cast Raptor Strike\n/startattack",
+  WEAVE_BIND_MACRO_UP_LEGACY   = "/cast [target=pettarget,exists] Kill Command\n/cast !Auto Shot",
   -- The optional auto-backpedal pair described above. Appended to BOTH bodies
   -- (press starts backing out, release stops it) by the onboarding wizard's
   -- "Clever" macro choice; kept here so no module hardcodes the macro text.

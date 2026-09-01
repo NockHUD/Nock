@@ -52,6 +52,15 @@ local function isPoke(line)
   return line:match("^%s*/use%s") ~= nil and line:find(pokeItem(), 1, true) ~= nil
 end
 
+-- /startattack, bare or bracketed. Declared up here, ABOVE its first readers
+-- (WithoutSnowball, WithGate) -- a use before the declaration would silently
+-- read a global (project rule: locals bind lexically).
+local REARM_CMD = "/startattack"
+
+local function isRearm(line)
+  return line:match("^%s*/startattack%s*$") ~= nil or line:match("^%s*/startattack%s+%[") ~= nil
+end
+
 -- Rewrite the poke line in place; `build` receives the old line and returns the
 -- new one. Bodies without a poke come back untouched.
 local function mapPoke(text, build)
@@ -85,10 +94,15 @@ function WM.WithSnowball(text)
   return pokeLine() .. "\n" .. text
 end
 
+-- Dropping the poke drops the WHOLE gate: a press /startattack the gate
+-- covered comes back bare, or a poke-less body would keep a /startattack that
+-- never fires with the garment in the wrong state.
 function WM.WithoutSnowball(text)
   local t, out = split(text), {}
   for i = 1, #t do
-    if not isPoke(t[i]) then out[#out + 1] = t[i] end
+    if not isPoke(t[i]) then
+      out[#out + 1] = isRearm(t[i]) and REARM_CMD or t[i]
+    end
   end
   return join(out)
 end
@@ -96,8 +110,12 @@ end
 --------------------------------------------------------------------------------
 -- The garment gate
 --------------------------------------------------------------------------------
--- The bracket wraps the poke and nothing else. Gating /cast or /startattack
--- would disarm the whole weave whenever the garment was in the wrong state.
+-- The bracket covers the poke AND the press body's own /startattack (the
+-- author's battle-tested shape, 2026-09-01): with the garment in the poke-off
+-- state the press neither pokes nor starts the melee auto -- the release
+-- body's inverse re-arm (SyncRearm, below) takes over the attack-state
+-- re-check. Raptor Strike and the shot lines are never gated: that would
+-- disarm the whole weave.
 
 local function gateOfLine(line)
   local low = line:lower()
@@ -125,14 +143,28 @@ end
 function WM.WithGate(text, garment, dir)
   local name = GARMENTS[garment or ""]
   if not name then return text end
-  local prefix = (dir == "on") and "" or "no"
-  return mapPoke(text, function()
-    return ("/use [%sequipped:%s] %s"):format(prefix, name, pokeItem())
-  end)
+  if not WM.HasSnowball(text) then return text end
+  local bracket = ("[%sequipped:%s]"):format((dir == "on") and "" or "no", name)
+  local t = split(text)
+  for i = 1, #t do
+    if isPoke(t[i]) then
+      t[i] = ("/use %s %s"):format(bracket, pokeItem())
+    elseif isRearm(t[i]) then
+      t[i] = ("%s %s"):format(REARM_CMD, bracket)
+    end
+  end
+  return join(t)
 end
 
+-- Strips the gate from BOTH lines it covers: the poke comes back plain and
+-- any /startattack loses its bracket.
 function WM.WithoutGate(text)
-  return mapPoke(text, function() return pokeLine() end)
+  local t = split(text)
+  for i = 1, #t do
+    if isPoke(t[i]) then t[i] = pokeLine()
+    elseif isRearm(t[i]) then t[i] = REARM_CMD end
+  end
+  return join(t)
 end
 
 -- The garment and direction switches act on EVERY garment bracket of a body
@@ -173,11 +205,8 @@ end
 -- used to give. Written and kept in step by SyncRearm from every gate edit,
 -- only on a release body Nock authored; an ungated poke has no re-arm.
 --------------------------------------------------------------------------------
-local REARM_CMD = "/startattack"
-
-local function isRearm(line)
-  return line:match("^%s*/startattack%s*$") ~= nil or line:match("^%s*/startattack%s+%[") ~= nil
-end
+-- (REARM_CMD / isRearm live at the top of the file: the poke and gate
+-- sections read them too.)
 
 function WM.HasRearm(text)
   local t = split(text)
@@ -193,8 +222,11 @@ function WM.RearmGateOf(text)
   return nil
 end
 
--- Appended LAST (after the auto re-arm): the release body's own lines keep
--- their order. `garment`/`dir` nil writes the plain command.
+-- Inserted FIRST (before the auto re-arm) when absent: the last line wins the
+-- attack state, and `!Auto Shot` has to be it — a /startattack after it would
+-- leave the release in melee. An existing re-arm is rewritten in place; the
+-- release body's own lines keep their order. `garment`/`dir` nil writes the
+-- plain command.
 function WM.WithRearm(text, garment, dir)
   local name = GARMENTS[garment or ""]
   local line = name and ("%s [%sequipped:%s]"):format(REARM_CMD, (dir == "on") and "" or "no", name) or REARM_CMD
@@ -206,7 +238,7 @@ function WM.WithRearm(text, garment, dir)
       out[#out + 1] = t[i]
     end
   end
-  if not done then out[#out + 1] = line end
+  if not done then table.insert(out, 1, line) end
   return join(out)
 end
 
@@ -231,10 +263,10 @@ end
 -- empty. Returns true when the body changed. Called from every gate edit
 -- (the wizard, the options builder) and once at enable, so a stock body
 -- from before the re-arm existed is brought up to date.
-function WM.SyncRearmIfStock(p, shippedUp)
+function WM.SyncRearmIfStock(p, shippedUp, legacyUp)
   if not p then return false end
   local up, down = p.weaveBindMacroUp or "", p.weaveBindMacroDown or ""
-  if up == "" or not WM.IsNockAuthored(up, shippedUp) then return false end
+  if up == "" or not WM.IsNockAuthored(up, shippedUp, legacyUp) then return false end
   local new = WM.SyncRearm(up, down)
   if new == up then return false end
   p.weaveBindMacroUp = new
@@ -251,12 +283,17 @@ function WM.HasMovePad(text)
   return (text or ""):find("MovePad", 1, true) ~= nil
 end
 
--- Appended, never prepended: the press body opens with the poke and that line
--- has to stay first.
+-- At the TOP of the body (the author's battle-tested position): the backpedal
+-- starts/stops as early as possible on each edge. Only a leading poke (the
+-- press body opens with it -- off-GCD position re-check, has to stay first)
+-- or a leading release re-arm stay ahead of the step-out.
 function WM.WithMovePad(text)
   if text == nil or text == "" then return movePadLine() end
   if WM.HasMovePad(text) then return text end
-  return text .. "\n" .. movePadLine()
+  local t = split(text)
+  local at = (t[1] and (isPoke(t[1]) or isRearm(t[1]))) and 2 or 1
+  table.insert(t, at, movePadLine())
+  return join(t)
 end
 
 function WM.WithoutMovePad(text)
@@ -284,16 +321,23 @@ end
 --------------------------------------------------------------------------------
 -- True when the stored body is one Nock itself produced: empty, the shipped
 -- default, or the shipped default carrying any combination of the switches the
--- wizard and the options builder offer. Anything else is the user's own writing
--- and must survive the wizard untouched.
-function WM.IsNockAuthored(text, shipped)
+-- wizard and the options builder offer. `legacy` names an earlier shipped
+-- shape (the pre-2026-09 pair) that still counts as Nock's, so gate edits keep
+-- working for profiles that installed with it. Anything else is the user's own
+-- writing and must survive the wizard untouched.
+function WM.IsNockAuthored(text, shipped, legacy)
   if text == nil or text == "" then return true end
   -- Through split/join once, so a trailing newline or CRLF compares equal.
+  -- WithoutGate also strips a gated press /startattack back to bare.
   local n = WM.WithoutGate(WM.WithoutMovePad(join(split(text))))
   if n == shipped or n == WM.WithoutSnowball(shipped) then return true end
   -- The release re-arm (a shipped body never carries one; the press body's
   -- own /startattack is part of `shipped` and stays).
-  return WM.WithoutRearm(n) == shipped
+  if WM.WithoutRearm(n) == shipped then return true end
+  if legacy and legacy ~= "" and legacy ~= shipped then
+    return WM.IsNockAuthored(n, legacy)
+  end
+  return false
 end
 
 return WM
