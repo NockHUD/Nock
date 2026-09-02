@@ -2,7 +2,7 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
-## Unreleased
+## 1.1.8
 
 - **Fix: Helpers click-to-apply used a scroll on your target.** A plain
   consumable click was a bare item use, which the client aims at the
