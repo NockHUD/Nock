@@ -33,6 +33,7 @@ UI\PracticeTransport.lua
 UI\PracticePalette.lua
 UI\EditMode.lua
 UI\Frame_EditGrid.lua
+UI\Frame_EditList.lua
 UI\AceGUI_LSMDropdown.lua
 UI\AceGUI_BarLegends.lua
 UI\HUD.lua

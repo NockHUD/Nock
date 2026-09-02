@@ -73,6 +73,10 @@ function Nock.UI.RegisterNudgeable(frame, spec)
     handle:HookScript("OnDragStart", function() EditMode:OnDragBegin(frame) end)
     handle:HookScript("OnDragStop",  function() EditMode:OnDragEnd(frame) end)
   end
+  -- The element list hooks and lists frames as they register; most register
+  -- after its own OnEnable (TOC order), and a frame shown at creation fires
+  -- no OnShow, so this is the only signal for them.
+  if Nock.SendMessage then Nock:SendMessage("NOCK_NUDGEABLE_REGISTERED") end
 end
 
 -- ---------------------------------------------------------------------------
@@ -222,6 +226,26 @@ function Nock.UI.GetNudgeables()
   return registry
 end
 
+-- Pure: the rows the element list shows. One per registered frame that is on
+-- screen and passes its own gate (spec.active), the edit-mode chrome (the bar,
+-- the list itself: spec.chrome) left out, sorted by label. Each row is
+-- { label, frame, selected }; a fresh list every call -- this runs on events,
+-- never on the tick.
+function Nock.UI.EditListRows(entries, selectedFrame)
+  local rows = {}
+  for i = 1, #entries do
+    local e = entries[i]
+    local spec = e.spec
+    local shown = e.frame and e.frame.IsShown and e.frame:IsShown()
+    local activeOk = (not spec.active) or (spec.active() and true or false)
+    if shown and activeOk and not spec.chrome then
+      rows[#rows + 1] = { label = spec.label or "?", frame = e.frame, selected = (e.frame == selectedFrame) }
+    end
+  end
+  table.sort(rows, function(a, b) return a.label:lower() < b.label:lower() end)
+  return rows
+end
+
 -- ---------------------------------------------------------------------------
 -- The pad
 -- ---------------------------------------------------------------------------
@@ -259,6 +283,12 @@ function EditMode:SelectByFrame(frame)
   if self._selected == frame then return end
   self._selected = frame
   self:RefreshPads()
+  self:NotifySelection()
+end
+
+-- The element list mirrors the selection; it hears about changes here.
+function EditMode:NotifySelection()
+  if self.SendMessage then self:SendMessage("NOCK_EDIT_SELECTION") end
 end
 
 function EditMode:IsSelected(frame)
@@ -269,6 +299,7 @@ function EditMode:ClearSelection()
   if self._selected == nil then return end
   self._selected = nil
   self:RefreshPads()
+  self:NotifySelection()
 end
 
 function EditMode:OnLockChanged()
@@ -276,6 +307,7 @@ function EditMode:OnLockChanged()
   -- way the old selection is stale, so drop it before rebuilding.
   self._selected = nil
   self:RefreshPads()
+  self:NotifySelection()
 end
 
 function EditMode:CapturePosition(frame)
@@ -475,7 +507,8 @@ function EditMode:RefreshTags()
   local entries = Nock.UI.GetNudgeables()
   for i = 1, #entries do
     local e = entries[i]
-    if Nock.UI.TagVisible(locked) then
+    -- The edit-mode chrome (the bar, the element list) needs no name tag.
+    if Nock.UI.TagVisible(locked) and not e.spec.chrome then
       if not e.tag then e.tag = buildTag(e.frame) end
       local label = e.spec.label or "?"
       if e.tag._label ~= label then
@@ -567,7 +600,41 @@ function EditMode:RefreshPads()
     end
   end
   self:RefreshTags()
+  self:RefreshOutline()
   self:ApplyCombatState()
+end
+
+-- ---------------------------------------------------------------------------
+-- The selection outline: one accent border on the selected frame's rect, so
+-- a frame picked from the element list can be told apart from the ones it is
+-- stacked with. Tooltip strata, mouse-transparent, anchored to the frame so it
+-- follows drags and nudges for free. Nothing while locked or unselected.
+-- ---------------------------------------------------------------------------
+local OUTLINE_EDGE = 2
+
+function EditMode:RefreshOutline()
+  local frame = self._selected
+  local wanted = frame and not Nock.IsLocked() and frame:IsShown()
+  if not wanted then
+    if self.outline and self.outline:IsShown() then self.outline:Hide() end
+    return
+  end
+  local o = self.outline
+  if not o then
+    o = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    o:SetFrameStrata("TOOLTIP")
+    o:EnableMouse(false)
+    o:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = OUTLINE_EDGE })
+    o:SetBackdropBorderColor(unpack(C.COLORS.BORDER_UNLOCK))
+    self.outline = o
+  end
+  if o._for ~= frame then
+    o._for = frame
+    o:ClearAllPoints()
+    o:SetPoint("TOPLEFT", frame, "TOPLEFT", -OUTLINE_EDGE, OUTLINE_EDGE)
+    o:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", OUTLINE_EDGE, -OUTLINE_EDGE)
+  end
+  if not o:IsShown() then o:Show() end
 end
 
 -- Only `secure` specs are affected. Today that is Misdirect alone: it parents

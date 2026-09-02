@@ -13,7 +13,7 @@ local RASTER_MIN, RASTER_MAX, RASTER_STEP = 4, 64, 2
 local LINE_ALPHA, CENTRE_ALPHA = 0.18, 0.45
 
 local function profile() return Nock.db and Nock.db.profile or {} end
-local function Skin() return Nock.UI.Skin end
+local function Skin() return Nock.Skin end
 
 -- ---------------------------------------------------------------------------
 -- Overlay
@@ -111,11 +111,66 @@ end
 -- ---------------------------------------------------------------------------
 -- Panel
 -- ---------------------------------------------------------------------------
-local PANEL_W, PANEL_H, PAD, GAP = 560, 58, 10, 8
+-- Two rows: the title row (title, help line, Lock) over a hairline, then the
+-- controls row of three labelled groups -- GRID (show toggle + raster
+-- stepper), SNAP (off / release / drag) and ALIGN (nearest / corner) -- as
+-- segments whose active member wears the accent. PANEL_W is a floor; the
+-- row's measured width wins when the fonts run wider.
+local PANEL_W, PANEL_H, PAD = 560, 70, 12
+local TITLE_ROW_H = 33          -- title row, rule below it at this y
+local TITLE_DY = -3             -- the display face sits high in its box; drop the caps to the row centre
+local ROW2_TOP = TITLE_ROW_H + 1 + 7   -- 22-high controls centred in the 36 below the rule
+local GROUP_GAP, LABEL_GAP, DIVIDER_PAD = 4, 6, 12
+local OVERLAP = -1              -- segment members share a hairline
 
-local function setToggleLook(btn, on)
+local function setKind(btn, on)
   local S = Skin()
   if S then S.ButtonKind(btn, on and "primary" or "ghost") end
+  local base = btn:GetParent():GetFrameLevel()
+  btn:SetFrameLevel(base + (on and 3 or 2))
+end
+
+-- One button in the panel's vocabulary; `w` nil = fit the label.
+local function button(f, label, kind, w)
+  local S = Skin()
+  if S then return S.Button(f, label, kind or "ghost", w) end
+  local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  b:SetSize(w or 60, 22); b:SetText(label)
+  b.text = b:GetFontString()
+  return b
+end
+
+local function label(f, text)
+  local S = Skin()
+  local fs = f:CreateFontString(nil, "OVERLAY")
+  if S then S.Font(fs, "uiBold", S.SIZES.key or 10); S.Text(fs, "ink3") else fs:SetFontObject(GameFontDisableSmall) end
+  fs:SetText(text)
+  return fs
+end
+
+-- A run of buttons laid edge to edge after `anchor`. `members` is a list of
+-- { value, label }; `pick(value)` runs on a click. Returns the buttons keyed
+-- by value plus the rightmost one for the next anchor.
+local function segment(f, anchor, gap, members, pick)
+  local byValue, prev = {}, anchor
+  for i = 1, #members do
+    local m = members[i]
+    local b = button(f, m.label, "ghost")
+    b:SetPoint("LEFT", prev, "RIGHT", (i == 1) and gap or OVERLAP, 0)
+    b:SetScript("OnClick", function() pick(m.value) end)
+    byValue[m.value] = b
+    prev = b
+  end
+  return byValue, prev
+end
+
+local function divider(f, anchor)
+  local S = Skin()
+  local d = S and S.Rule(f, "line") or f:CreateTexture(nil, "ARTWORK")
+  if not S then d:SetColorTexture(0.15, 0.15, 0.15, 1) end
+  d:SetSize(1, 22)
+  d:SetPoint("LEFT", anchor, "RIGHT", DIVIDER_PAD, 0)
+  return d
 end
 
 function View:BuildPanel()
@@ -137,63 +192,70 @@ function View:BuildPanel()
   if S then S.Surface(f, "surface", "line") else Nock.UI.ApplyBackdrop(f) end
   self.panel = f
 
-  -- Title + help line.
+  -- Title row: title, help, Lock.
   local title = f:CreateFontString(nil, "OVERLAY")
-  if S then S.Font(title, "display", S.SIZES.h2 or 16); S.Text(title, "ink") else title:SetFontObject(GameFontNormal) end
-  title:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -6)
+  if S then S.Font(title, "display", S.SIZES.h2 or 20); S.Text(title, "ink") else title:SetFontObject(GameFontNormal) end
+  title:SetPoint("LEFT", f, "TOPLEFT", PAD, -TITLE_ROW_H / 2 + TITLE_DY)
   title:SetText("NOCK  EDIT MODE")
-  local help = f:CreateFontString(nil, "OVERLAY")
-  if S then S.Font(help, "ui", S.SIZES.small or 11); S.Text(help, "ink2") else help:SetFontObject(GameFontDisableSmall) end
-  help:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", PAD, 6)
-  help:SetText("Drag a frame to move it, click it for a nudge pad. Drag this bar anywhere.")
 
-  -- Controls row, right-aligned: [Grid −] [16] [+]  [Grid]  [Snap: …]  [By: …]  [Lock]
-  local function button(label, kind, w)
-    if S then return S.Button(f, label, kind or "ghost", w) end
-    local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    b:SetSize(w or 60, 22); b:SetText(label)
-    b.text = b:GetFontString()
-    return b
-  end
-  local lock  = button("Lock", "primary", 56)
-  lock:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -8)
+  local lock = button(f, "Lock", "primary", 64)
+  lock:SetPoint("RIGHT", f, "TOPRIGHT", -8, -TITLE_ROW_H / 2)
   lock:SetScript("OnClick", function() Nock:SetLocked(true) end)
 
-  local by = button("By: nearest", "ghost", 104)
-  by:SetPoint("RIGHT", lock, "LEFT", -GAP, 0)
-  by:SetScript("OnClick", function()
-    local p = profile()
-    p.editSnapBy = (p.editSnapBy == "corner") and "nearest" or "corner"
-    self:Apply()
-  end)
-  self.byBtn = by
+  local help = f:CreateFontString(nil, "OVERLAY")
+  if S then S.Font(help, "ui", S.SIZES.small or 11); S.Text(help, "ink3") else help:SetFontObject(GameFontDisableSmall) end
+  help:SetPoint("RIGHT", lock, "LEFT", -12, 0)
+  help:SetPoint("LEFT", title, "RIGHT", 12, 0)
+  help:SetJustifyH("RIGHT")
+  help:SetWordWrap(false)
+  help:SetText("Drag a frame to move it, click it for a nudge pad")
 
-  local snap = button("Snap: off", "ghost", 104)
-  snap:SetPoint("RIGHT", by, "LEFT", -GAP, 0)
-  snap:SetScript("OnClick", function()
-    local p = profile()
-    local m = Nock.UI.EditSnapMode(p)
-    p.editGridSnap = (m == "off") and "release" or (m == "release") and "drag" or "off"
-    self:Apply()
-  end)
-  self.snapBtn = snap
+  local rule = S and S.Rule(f, "lineSoft") or f:CreateTexture(nil, "ARTWORK")
+  if not S then rule:SetColorTexture(0.10, 0.10, 0.10, 1) end
+  rule:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -TITLE_ROW_H)
+  rule:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, -TITLE_ROW_H)
+  rule:SetHeight(1)
 
-  local grid = button("Grid", "ghost", 52)
-  grid:SetPoint("RIGHT", snap, "LEFT", -GAP, 0)
-  grid:SetScript("OnClick", function()
+  -- Controls row. Every element hangs LEFT off the one before it; `cursor`
+  -- is the running width so the panel can grow to fit.
+  local origin = CreateFrame("Frame", nil, f)
+  origin:SetSize(1, 22)
+  origin:SetPoint("TOPLEFT", f, "TOPLEFT", PAD - 1, -ROW2_TOP)
+  local cursor = PAD
+
+  -- GRID: label, Show toggle (with the check), raster stepper.
+  local gridLabel = label(f, "GRID")
+  gridLabel:SetPoint("LEFT", origin, "RIGHT", 0, 0)
+  cursor = cursor + gridLabel:GetStringWidth() + LABEL_GAP
+
+  local show = button(f, "Show", "ghost", 68)
+  show:SetPoint("LEFT", gridLabel, "RIGHT", LABEL_GAP, 0)
+  show:SetScript("OnClick", function()
     local p = profile()
     p.editGridShow = not (p.editGridShow ~= false)
     self:Apply()
   end)
-  self.gridBtn = grid
+  if S then
+    -- Icon at the left, label after it: the check reads as the state.
+    local ico = show:CreateTexture(nil, "OVERLAY")
+    ico:SetPoint("LEFT", show, "LEFT", 6, 0)
+    S.Icon(ico, "check", "accentInk")
+    S.IconSize(ico)
+    show.ico = ico
+    show.text:ClearAllPoints()
+    show.text:SetPoint("LEFT", ico, "RIGHT", 2, 0)
+  end
+  self.gridBtn = show
+  cursor = cursor + 68 + GROUP_GAP
 
-  local plus = button("+", "ghost", 24)
-  plus:SetPoint("RIGHT", grid, "LEFT", -GAP - 4, 0)
+  local minus = button(f, "-", "ghost", 22)
+  minus:SetPoint("LEFT", show, "RIGHT", GROUP_GAP, 0)
   local value = S and S.Chip(f) or f:CreateFontString(nil, "OVERLAY")
-  if S then value:SetSize(36, S.CHIP_H) else value:SetFontObject(GameFontHighlight) end
-  value:SetPoint("RIGHT", plus, "LEFT", -4, 0)
-  local minus = button("-", "ghost", 24)
-  minus:SetPoint("RIGHT", value, "LEFT", -4, 0)
+  if S then value:SetSize(36, 22) else value:SetFontObject(GameFontHighlight) end
+  value:SetPoint("LEFT", minus, "RIGHT", OVERLAP, 0)
+  local plus = button(f, "+", "ghost", 22)
+  plus:SetPoint("LEFT", value, "RIGHT", OVERLAP, 0)
+  if S then minus:SetFrameLevel(f:GetFrameLevel() + 2); plus:SetFrameLevel(f:GetFrameLevel() + 2) end
   local function step(d)
     local p = profile()
     local r = tonumber(p.editGridSize) or 16
@@ -204,13 +266,41 @@ function View:BuildPanel()
   plus:SetScript("OnClick", function() step(RASTER_STEP) end)
   minus:SetScript("OnClick", function() step(-RASTER_STEP) end)
   self.valueChip = value
-  local rl = f:CreateFontString(nil, "OVERLAY")
-  if S then S.Font(rl, "uiMedium", S.SIZES.body or 12); S.Text(rl, "ink2") else rl:SetFontObject(GameFontNormalSmall) end
-  rl:SetPoint("RIGHT", minus, "LEFT", -6, 0)
-  rl:SetText("Raster")
+  cursor = cursor + 22 + 36 + 22 + 2 * OVERLAP
+
+  -- SNAP
+  local d1 = divider(f, plus)
+  cursor = cursor + DIVIDER_PAD + 1
+  local snapLabel = label(f, "SNAP")
+  snapLabel:SetPoint("LEFT", d1, "RIGHT", DIVIDER_PAD, 0)
+  cursor = cursor + DIVIDER_PAD + snapLabel:GetStringWidth()
+  local snapBtns, snapLast = segment(f, snapLabel, LABEL_GAP, {
+    { value = "off", label = "Off" }, { value = "release", label = "Release" }, { value = "drag", label = "Drag" },
+  }, function(v) profile().editGridSnap = v; self:Apply() end)
+  self.snapBtns = snapBtns
+  cursor = cursor + LABEL_GAP
+  for _, b in pairs(snapBtns) do cursor = cursor + b:GetWidth() + OVERLAP end
+  cursor = cursor - OVERLAP
+
+  -- ALIGN
+  local d2 = divider(f, snapLast)
+  cursor = cursor + DIVIDER_PAD + 1
+  local byLabel = label(f, "ALIGN")
+  byLabel:SetPoint("LEFT", d2, "RIGHT", DIVIDER_PAD, 0)
+  cursor = cursor + DIVIDER_PAD + byLabel:GetStringWidth()
+  local byBtns = segment(f, byLabel, LABEL_GAP, {
+    { value = "nearest", label = "Nearest" }, { value = "corner", label = "Corner" },
+  }, function(v) profile().editSnapBy = v; self:Apply() end)
+  self.byBtns = byBtns
+  cursor = cursor + LABEL_GAP
+  for _, b in pairs(byBtns) do cursor = cursor + b:GetWidth() + OVERLAP end
+  cursor = cursor - OVERLAP
+
+  f:SetWidth(math.max(PANEL_W, math.ceil(cursor + PAD)))
 
   Nock.UI.RegisterNudgeable(f, {
-    label = "Edit panel",
+    label  = "Edit panel",
+    chrome = true,
     get   = function() return profile().editPanelPos end,
     set   = function(pos) profile().editPanelPos = pos; View:ApplyPanelPosition() end,
     reset = function() profile().editPanelPos = false; View:ApplyPanelPosition() end,
@@ -229,25 +319,23 @@ function View:ApplyPanelPosition()
   end
 end
 
-local SNAP_LABEL = { off = "Snap: off", release = "Snap: release", drag = "Snap: drag" }
-
 function View:PaintPanel()
   local p = profile()
+  local S = Skin()
   if self.valueChip then
     local r = tostring(tonumber(p.editGridSize) or 16)
     if self.valueChip.text then self.valueChip.text:SetText(r) else self.valueChip:SetText(r) end
   end
-  local S = Skin()
-  local mode = Nock.UI.EditSnapMode(p)
-  if S then
-    S.SetButtonText(self.snapBtn, SNAP_LABEL[mode], 104)
-    S.SetButtonText(self.byBtn, (p.editSnapBy == "corner") and "By: corner" or "By: nearest", 104)
-    setToggleLook(self.gridBtn, p.editGridShow ~= false)
-    setToggleLook(self.snapBtn, mode ~= "off")
-  else
-    self.snapBtn:SetText(SNAP_LABEL[mode])
-    self.byBtn:SetText((p.editSnapBy == "corner") and "By: corner" or "By: nearest")
+  local showing = p.editGridShow ~= false
+  setKind(self.gridBtn, showing)
+  if S and self.gridBtn.ico then
+    S.Icon(self.gridBtn.ico, "check", showing and "accentInk" or "ink3")
+    S.IconSize(self.gridBtn.ico)
   end
+  local mode = Nock.UI.EditSnapMode(p)
+  for v, b in pairs(self.snapBtns) do setKind(b, v == mode) end
+  local by = (p.editSnapBy == "corner") and "corner" or "nearest"
+  for v, b in pairs(self.byBtns) do setKind(b, v == by) end
 end
 
 -- ---------------------------------------------------------------------------

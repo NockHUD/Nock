@@ -18,6 +18,7 @@ Nock.Defaults = {
     editGridSnap     = "off",       -- "off" | "release" (snap when the drag ends) | "drag" (ghost outline while dragging, snap on release)
     editSnapBy       = "nearest",   -- "nearest" (edge or centre, per axis) | "corner" (top-left)
     editPanelPos     = false,       -- false = top centre; else { point, relPoint, x, y } (UIParent-relative)
+    editListPos      = false,       -- element list: false = left edge, centred; else { point, relPoint, x, y }
     -- LibDBIcon's own table for the minimap button (hide, minimapPos, ...).
     minimap          = { hide = false },
     -- Master switch for the HUD frame itself (swing bars, shot display, cooldown
