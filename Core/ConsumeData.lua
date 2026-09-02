@@ -43,6 +43,9 @@ Nock.ConsumeData = {
       [33052] = true, -- Fisherman's Feast  (+30 Stam)
       [31672] = true, -- Mok'Nathal Shortribs (+20 Stam)
     },
+    -- Click2Apply order: best first. Modules/Helpers.lua uses the first one in
+    -- bags, then falls back to any `items` entry in bags.
+    prefer = { 27655, 33872, 27659, 27664 },        -- food: Ravager Dog, Talbuk, Warp Burger, Mudfish
   },
 
   -- NOTE: the "Shattrath Flask of ..." items are deliberately NOT here. Despite
@@ -83,6 +86,7 @@ Nock.ConsumeData = {
       [32600] = true, -- Unstable Flask of the Physician
       [32601] = true, -- Unstable Flask of the Sorcerer
     },
+    prefer = { 22854, 33208 },                      -- flask: Relentless Assault, Chromatic Wonder
   },
 
   -- Aura names are the SHORT forms ("Major Strength", "Agility", "Greater
@@ -150,6 +154,7 @@ Nock.ConsumeData = {
       [35716] = true, -- Shattrath Flask of Pure Death
       [35717] = true, -- Shattrath Flask of Blinding Light
     },
+    prefer = { 22831, 28102, 28103, 13452 },        -- battleElixir: Major Agility, Onslaught, Adept's, Mongoose
   },
 
   guardianElixir = {
@@ -202,6 +207,7 @@ Nock.ConsumeData = {
       [35716] = true, -- Shattrath Flask of Pure Death
       [35717] = true, -- Shattrath Flask of Blinding Light
     },
+    prefer = { 22840, 32062, 32067 },               -- guardianElixir: Major Mageblood, Major Fortitude, Draenic Wisdom
   },
 
   scrollAgility = {
@@ -220,6 +226,7 @@ Nock.ConsumeData = {
       [10309] = true, -- Scroll of Agility IV   (+17 Agi)
       [27498] = true, -- Scroll of Agility V    (+20 Agi)
     },
+    prefer = { 27498, 10309, 4425 },                -- scrollAgility: V, IV, III
   },
 
   scrollStrength = {
@@ -237,6 +244,7 @@ Nock.ConsumeData = {
       [10310] = true, -- Scroll of Strength IV  (+17 Str)
       [27503] = true, -- Scroll of Strength V   (+20 Str)
     },
+    prefer = { 27503, 10310, 4426 },                -- scrollStrength: V, IV, III
   },
 
   -- Pet food. The pet's aura is ALSO named "Well Fed", same string as player
@@ -250,6 +258,7 @@ Nock.ConsumeData = {
       [33874] = true, -- Kibler's Bits
       [27656] = true, -- Sporeling Snack
     },
+    prefer = { 33874, 27656 },                      -- kibler: Kibler's Bits, Sporeling Snack
   },
 
   demonslayer = {
@@ -259,6 +268,7 @@ Nock.ConsumeData = {
     items = {
       [9224]  = true, -- Elixir of Demonslaying
     },
+    prefer = { 9224 },                              -- demonslayer
   },
 
   -- Temp weapon enchants are read via GetWeaponEnchantInfo, not auras — items
@@ -276,6 +286,14 @@ Nock.ConsumeData = {
       [12404] = true, -- Dense Sharpening Stone      (+8 dmg — sharp)
       [12643] = true, -- Dense Weightstone           (+8 dmg — blunt)
     },
+    prefer = { 23529, 28421, 23528 },               -- sharpeningStone: Adamantite sharp, Adamantite weight, Fel sharp
+    -- Which weapons take which stone: sharpening stones go on blades (sword,
+    -- axe, dagger), weightstones on blunt weapons (mace). The per-hand pick
+    -- filters on this so a mace is never offered a sharpening stone.
+    kind = {
+      [23529] = "sharp", [23528] = "sharp", [18262] = "sharp", [12404] = "sharp",
+      [28421] = "blunt", [28420] = "blunt", [12643] = "blunt",
+    },
   },
 
   -- 23122 is the Consecrated Sharpening Stone (+100 AP vs Undead). It used to
@@ -286,5 +304,7 @@ Nock.ConsumeData = {
     items = {
       [23122] = true, -- Consecrated Sharpening Stone (+100 AP vs Undead)
     },
+    prefer = { 23122 },                             -- consecratedStone
+    kind   = { [23122] = "sharp" },                 -- a sharpening stone: blades only
   },
 }

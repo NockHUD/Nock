@@ -148,6 +148,10 @@ Nock.Constants = {
     -- different spell IDs, so the scan matches by name and never compares this
     -- ID raw (same convention as GROWL / the aspects).
     DAZED         = 1604,
+    -- The generic eating / drinking auras (every food and drink applies one of
+    -- these families); resolved to their localized names in Modules/Auras.lua.
+    FOOD          = 433,
+    DRINK         = 430,
 
     -- Steam Tonk Controller's transform aura. Used to resolve the LOCALIZED
     -- aura name and as a secondary ID match in the player buff scan; the

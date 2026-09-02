@@ -311,11 +311,20 @@ ok(hg and hg.inline == true and hg.name == "Test Helper",
 -- panel gained when it became a standard movable/styled floating panel.
 local ha = child("alerts", "helpers").args
 ok(ha.helpersExpiringThreshold and ha.helpersExpiringThreshold.type == "range"
-   and ha.helpersExpiringThreshold.min == 0 and ha.helpersExpiringThreshold.max == 600,
-   "helpers: expiring threshold slider 0..600")
+   and ha.helpersExpiringThreshold.min == 0 and ha.helpersExpiringThreshold.max == 1800,
+   "helpers: expiring threshold slider 0..1800")
 ok(ha.helpersIconSize and ha.helpersIconSize.type == "range"
    and ha.helpersIconSize.min == 24 and ha.helpersIconSize.max == 64,
    "helpers: icon size slider 24..64")
+ok(ha.helpersClickToApply and ha.helpersClickToApply.type == "toggle",
+   "helpers: Click to apply toggle")
+ok(ha.helpersHeadline and ha.helpersHeadline.type == "toggle",
+   "helpers: headline toggle")
+ok(ha.consumeBannerEnabled and ha.consumeBannerEnabled.type == "toggle"
+   and ha.consumeBannerInstancesOnly == nil and ha.consumeBannerSound
+   and ha.consumeBannerSize and ha.consumeBannerSize.type == "range"
+   and ha.consumeBannerResetPos and ha.consumeBannerResetPos.type == "execute",
+   "helpers: eating / drinking pill controls")
 ok(ha.helpersIconGap and ha.helpersIconGap.type == "range", "helpers: icon gap slider")
 ok(ha.helpersScale and ha.helpersScale.type == "range"
    and ha.helpersScale.min == 0.5 and ha.helpersScale.max == 2.0,
@@ -880,6 +889,8 @@ do
   local anyWidth = false
   for _, g in pairs(tabs) do if type(g) == "table" and g.args and g.args.practiceTimelineWidth then anyWidth = true end end
   ok(not anyWidth and D.practiceTimelineWidth == nil, "practice: the review's Width (px) is gone from Options and Defaults")
+ok(D.helpersClickToApply == true and D.helpersHeadline == true,
+   "helpers: both new toggles default on")
 ok(D.editGridShow == true and D.editGridSize == 16 and D.editGridSnap == "off" and D.editSnapBy == "nearest" and D.editPanelPos == false,
    "defaults: grid on, raster 16, snap off, nearest, panel at the default spot")
 ok(D.reactKcProcGlow == false and D.kcActionBarGlow == false and D.reactRangeTint == "off"
@@ -1039,9 +1050,11 @@ local styleDefaults = {
   -- Helpers panel: 0/0 alpha reproduces the pre-styling look (no visible box);
   -- the layout numbers are the constants the view used to hardcode.
   { "helpersBgOpacity", 0 },              { "helpersBorderOpacity", 0 },
-  { "helpersExpiringThreshold", 300 },
+  { "helpersExpiringThreshold", 180 },
   { "helpersIconSize", 40 },              { "helpersIconGap", 10 },
   { "helpersScale", 1.0 },
+  { "consumeBannerEnabled", true },
+  { "consumeBannerSound", false },        { "consumeBannerSize", 32 },
   { "helpersPosition", false },
 }
 for _, e in ipairs(styleDefaults) do

@@ -585,6 +585,28 @@ function Nock:HandleSlashCommand(input)
       s.player.manaPct))
     local rf = self:GetModule("RangeFinder", true)
     if rf and rf.DebugProbes then self:Print(rf:DebugProbes()) end
+  elseif input:match("^helpers test") then
+    -- Session-only, never persisted. `helpers test` flips the instance +
+    -- raid gate bypass so the row (scrolls included) can be exercised on a
+    -- dummy; `helpers test demon|undead` additionally pretends the current
+    -- target is a boss of that creature type, for the conditional badges;
+    -- `helpers test off` clears both.
+    local arg = input:match("^helpers test%s+(%a+)$")
+    if arg == "demon" or arg == "undead" then
+      self.state.helpersTestMode = true
+      self.state.helpersTestCreature = (arg == "demon") and "Demon" or "Undead"
+      self:Print(("Helpers test gate ON — any target counts as a %s boss this session."):format(arg))
+    elseif arg == "off" then
+      self.state.helpersTestMode = false
+      self.state.helpersTestCreature = nil
+      self:Print("Helpers test gate OFF.")
+    else
+      local on = not self.state.helpersTestMode
+      self.state.helpersTestMode = on
+      if not on then self.state.helpersTestCreature = nil end
+      self:Print(on and "Helpers test gate ON — instance and raid gates bypassed this session."
+                    or "Helpers test gate OFF.")
+    end
   elseif input == "helpers" then
     -- Per-helper gate/status/buff-match/bag report. This is how you verify the
     -- Core/ConsumeData.lua spell + item IDs against what's actually on you:

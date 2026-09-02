@@ -2,6 +2,36 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
+## Unreleased
+
+- **Helpers row reworked.** The label sits in a band inside each icon, a
+  muted PRE-PULL caption sits under the row, scroll badges say which scroll
+  is missing (AGI / STR) with a YOU or PET strip along the top, and "ask
+  friend?" became NO FOOD / NO FLASK / NO SCROLL style labels. Text is Nock's
+  Plex Mono face, colours come from the skin palette.
+- **Click to apply** (Helpers tab, on by default). A badge whose consumable
+  is in your bags pulses gold with a pointer and uses it on click: scrolls on
+  you or your pet, stones on your main hand. Out of combat only, one item per
+  press.
+- The expiring warning now defaults to 3 minutes (was 5), the slider goes up
+  to 30, and the Demonslaying badge caps its own window at the last minute
+  since the elixir itself lasts five.
+- `/nock helpers test` bypasses the instance and raid gates for the session
+  so the row can be tried on a dummy; `/nock helpers test demon` or `undead`
+  also makes any target count as a boss of that type, for the Demonslaying
+  and consecrated-stone badges. `/nock helpers test off` clears it.
+- **Eating / drinking pill.** A small centre-screen capsule (above the boss
+  alert, movable) while the Food or Drink aura is on you: round icon under
+  a draining swipe, EATING / DRINKING, seconds left; a buff food adds a
+  WELL FED IN Ns line counting down the ten seconds, and the pill flashes
+  WELL FED in green when the buff lands, with an optional chime. On by default and
+  shown wherever you eat or drink; size and chime in the Helpers tab.
+- **Weapon stones on both hands.** For dual wielders the stone badge (and
+  the consecrated one vs Undead) now covers the off hand too: the top strip
+  says MAIN or OFF, the click applies to that hand, and the stone offered
+  matches the weapon (sharpening stone on a blade, weightstone on a mace).
+  2H weapons stay skipped: that hand carries Windfury.
+
 ## 1.1.7
 
 - **New stock weave macros — the battle-tested pair.** The shipped weave

@@ -73,12 +73,15 @@ local AC = Nock.AuraCache
 -- a scan that finds nothing publishes nil. Consumers read fields, never
 -- identity, and Core:Tick already writes mark.remaining in place.
 local ASPECT_T, FEIGN_T, DAZED_T, MARK_T = {}, {}, {}, {}
+local EATING_T, DRINKING_T = {}, {}
 
 function Auras:OnEnable()
   self.huntersMarkName = spellNameOf(C.SpellID.HUNTERS_MARK) or "Hunter's Mark"
   self.dazedName       = spellNameOf(C.SpellID.DAZED) or "Dazed"
   self.satedName       = spellNameOf(C.SpellID.SATED) or "Sated"
   self.exhaustionName  = spellNameOf(C.SpellID.EXHAUSTION) or "Exhaustion"
+  self.foodName        = spellNameOf(C.SpellID.FOOD) or "Food"
+  self.drinkName       = spellNameOf(C.SpellID.DRINK) or "Drink"
   self:BuildAspectNameMap()
   self:ResolveTonkName()
 
@@ -95,6 +98,8 @@ end
 function Auras:PLAYER_LOGIN()
   self.huntersMarkName = spellNameOf(C.SpellID.HUNTERS_MARK) or self.huntersMarkName
   self.dazedName       = spellNameOf(C.SpellID.DAZED) or self.dazedName
+  self.foodName        = spellNameOf(C.SpellID.FOOD) or self.foodName
+  self.drinkName       = spellNameOf(C.SpellID.DRINK) or self.drinkName
   self:BuildAspectNameMap()
   self:ResolveTonkName()
   self:UpdateCanWeave()
@@ -157,6 +162,7 @@ end
 -- (not closures made per scan) and read/write these.
 local sc_nameMap, sc_tonkName
 local sc_aspect, sc_inLust, sc_feign, sc_rapidFire, sc_quickShots, sc_drums, sc_tonk, sc_tonkSince
+local sc_foodName, sc_drinkName, sc_eating, sc_drinking
 local sc_dazedName, sc_satedName, sc_exhaustionName, sc_dazed, sc_sated
 local sc_markName, sc_mark
 
@@ -186,6 +192,18 @@ local function onPlayerBuff(name, spellId, icon, expirationTime, duration)
   if     spellId == C.SpellID.RAPID_FIRE      then sc_rapidFire  = true
   elseif spellId == C.SpellID.QUICK_SHOTS     then sc_quickShots = true
   elseif spellId == C.SpellID.DRUMS_OF_BATTLE then sc_drums      = true end
+  -- Eating / drinking: the generic Food / Drink auras, matched by their
+  -- localized names (each food applies its own spell ID, the name is the one
+  -- stable handle). Drives the centre-screen pill (UI/Frame_ConsumeBanner.lua).
+  if name == sc_foodName then
+    local e = EATING_T
+    e.icon, e.expirationTime, e.duration, e.spellId = icon, expirationTime, duration, spellId
+    sc_eating = e
+  elseif name == sc_drinkName then
+    local d = DRINKING_T
+    d.icon, d.expirationTime, d.duration = icon, expirationTime, duration
+    sc_drinking = d
+  end
   if spellId == C.SpellID.STEAM_TONK or (sc_tonkName and name == sc_tonkName) then
     sc_tonk = true
     -- expirationTime - duration is the server's own application time, exact
@@ -237,6 +255,8 @@ function Auras:ScanPlayer()
   sc_nameMap = self.aspectKeyByName
   sc_tonkName = self.tonkName
   sc_dazed, sc_sated = nil, nil
+  sc_eating, sc_drinking = nil, nil
+  sc_foodName, sc_drinkName = self.foodName, self.drinkName
   sc_dazedName = self.dazedName
   sc_satedName, sc_exhaustionName = self.satedName, self.exhaustionName
   if AC then AC.ForEach("player", onPlayerAura) end
@@ -250,6 +270,8 @@ function Auras:ScanPlayer()
   p.feign      = feign
   p.dazed      = dazed
   p.sated      = sated or false
+  p.eating     = sc_eating
+  p.drinking   = sc_drinking
   -- The haste procs are simulated in practice mode (Modules/Practice.lua).
   if not Nock.state.sim.active then
     p.inLust     = inLust

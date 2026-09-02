@@ -56,5 +56,37 @@ for _, id in ipairs({ 8118, 8119, 8120, 12179, 33082 }) do
   ok(CD.scrollStrength.buffs[id], "scrollStrength.buffs has " .. id)
 end
 
+-- prefer: ordered "use this first" lists for Click2Apply. Every entry must be
+-- an item the category already scans for, and the list must not repeat itself.
+local WITH_PREFER = { "food", "flask", "battleElixir", "guardianElixir",
+                      "scrollAgility", "scrollStrength", "kibler", "demonslayer",
+                      "sharpeningStone", "consecratedStone" }
+for _, k in ipairs(WITH_PREFER) do
+  local cat = CD[k]
+  ok(type(cat.prefer) == "table" and #cat.prefer >= 1, k .. ".prefer is a non-empty array")
+  local seen = {}
+  for i, id in ipairs(cat.prefer or {}) do
+    ok(cat.items[id] == true, k .. ".prefer[" .. i .. "]=" .. tostring(id) .. " is in items")
+    ok(not seen[id], k .. ".prefer has no duplicate " .. tostring(id))
+    seen[id] = true
+  end
+end
+ok(CD.scrollAgility.prefer[1] == 27498, "scrollAgility prefers rank V")
+ok(CD.scrollStrength.prefer[1] == 27503, "scrollStrength prefers rank V")
+ok(CD.food.prefer[1] == 27655, "food prefers Ravager Dog")
+
+-- kind: every stone is tagged sharp or blunt, and only stones carry a kind.
+for _, k in ipairs({ "sharpeningStone", "consecratedStone" }) do
+  local cat = CD[k]
+  ok(type(cat.kind) == "table", k .. ".kind is a table")
+  for id in pairs(cat.items) do
+    ok(cat.kind[id] == "sharp" or cat.kind[id] == "blunt", k .. ".kind[" .. id .. "] tagged")
+  end
+  for id in pairs(cat.kind or {}) do
+    ok(cat.items[id] == true, k .. ".kind[" .. id .. "] is an item of the category")
+  end
+end
+ok(CD.sharpeningStone.kind[28421] == "blunt", "Adamantite Weightstone is blunt")
+
 print(("%d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

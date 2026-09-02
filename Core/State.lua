@@ -23,6 +23,8 @@ Nock.state = {
     aspect   = nil,  -- { name, spellId, icon, expirationTime, duration } or nil
     feign    = nil,  -- { icon, expirationTime, duration } while Feign Death buff is up, else nil
     dazed    = nil,  -- { name, spellId, icon, expirationTime, duration } while Dazed, else nil
+    eating   = nil,  -- { icon, expirationTime, duration, spellId } while the Food aura is up (set by Auras)
+    drinking = nil,  -- { icon, expirationTime, duration } while the Drink aura is up (set by Auras)
     sated    = false,  -- Sated/Exhaustion (post-Bloodlust) debuff on the player (set by Auras; drives noRelease)
     inLust   = false,
     canWeave = false,  -- true if 2H equipped (no offhand weapon)
@@ -199,8 +201,15 @@ Nock.state = {
     -- entries: { id, severity = "red"|"amber"|"blue", text }
   },
   helpers = {
-    -- ordered array of pre-pull / situational badges.
-    -- entries: { id, status = "active"|"missing", icon, remaining }
+    -- Ordered array of pre-pull / situational badges (Modules/Helpers.lua).
+    -- entries: { id, status = "missing"|"expiring",
+    --            phase = "missing"|"expiring"|"eating"|"applying",
+    --            icon, remaining, label (band text),
+    --            unit = "player"|"pet"|"mh"|"oh"|nil (the YOU / PET / MAIN / OFF strip),
+    --            sub = "agi"|"str"|"mh"|"oh"|nil (which scroll / hand is missing),
+    --            applyItem = item ID a click would use or nil,
+    --            applyKind = "item"|"pet"|"weapon", applySlot = 16|17 for weapon,
+    --            applyName }
   },
   -- A boss's single-target mark aimed at you — Teron Gorefiend's Shadow of
   -- Death, Archimonde's Air Burst. Deliberately NOT an entry in `warnings`
@@ -254,6 +263,8 @@ Nock.state = {
   -- the user already runs a third-party consumes-reminder pack (event-driven,
   -- set by the Helpers module). Suppresses the Helpers panel to avoid overlap.
   helpersHiddenByWA = false,
+  helpersTestMode   = false,  -- /nock helpers test: bypass the instance + raid gates this session
+  helpersTestCreature = nil,  -- /nock helpers test demon|undead: any target reads as a boss of that type
   misdirection = {
     hunters = {
       -- [name] = { name, target, isActive, charges, cdRemaining, cdDuration,

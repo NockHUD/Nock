@@ -105,6 +105,8 @@ UI\Frame_BossBanner.lua
 UI\Frame_SlammerButton.lua
 UI\Frame_RipperCountdown.lua
 UI\Frame_Helpers.lua
+UI\Frame_HelpersClick.lua
+UI\Frame_ConsumeBanner.lua
 UI\Frame_Misdirect.lua
 UI\Frame_BuffTracker.lua
 UI\Frame_DebuffTracker.lua

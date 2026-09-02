@@ -16,6 +16,7 @@ local units = { player = true }          -- [unit] = exists
 local buffs = { player = {}, pet = {} }  -- [unit] = array of {name, exp, spellId}
 local bags  = {}                         -- [itemId] = count
 local mhEnchant, mhExpMs = false, 0
+local ohEnchant, ohExpMs = false, 0
 
 _G.GetTime = function() return now end
 _G.UnitExists = function(u) return units[u] or false end
@@ -26,7 +27,20 @@ _G.UnitBuff = function(u, i)
   return b.name, nil, nil, nil, nil, b.exp, nil, nil, nil, b.spellId
 end
 _G.GetItemCount = function(id) return bags[id] or 0 end
-_G.GetWeaponEnchantInfo = function() return mhEnchant, mhExpMs end
+_G.GetWeaponEnchantInfo = function()
+  return mhEnchant, mhExpMs, nil, nil, ohEnchant, ohExpMs
+end
+_G.GetItemSpell = function(id) return "Use" .. tostring(id) end
+-- Equipped weapons per slot (16 = main hand, 17 = off hand) and their weapon
+-- subclass (7 = one-handed sword, 4 = one-handed mace, 13 = fist).
+local equipped = {}                       -- [slot] = itemId
+local weaponClass = {}                    -- [itemId] = subclassID
+_G.GetInventoryItemID = function(_, slot) return equipped[slot] end
+_G.GetItemInfoInstant = function(id)
+  if not weaponClass[id] then return nil end
+  return id, "Weapon", "x", "INVTYPE_WEAPON", 0, 2, weaponClass[id]
+end
+_G.GetItemInfo  = function(id) return "Item" .. tostring(id) end
 _G.UnitCanAttack = function() return true end
 _G.UnitClassification = function() return "worldboss" end
 _G.UnitLevel = function() return -1 end
@@ -47,8 +61,8 @@ function Nock:NewModule(name)
 end
 Nock.Constants = {}
 Nock.db = { profile = {} }
-Nock.state = { helpers = {}, helpersHiddenByWA = false,
-               player = { inCombat = false, canWeave = false,
+Nock.state = { helpers = {}, helpersHiddenByWA = false, helpersTestMode = false, helpersTestCreature = nil,
+               player = { inCombat = false, canWeave = false, casting = nil,
                           tonk = { active = false } } }
 Nock.IsInInstance = function() return true end
 Nock.IsInRaidInstance = function() return true end
@@ -86,15 +100,20 @@ end
 local function resetWorld()
   buffs.player, buffs.pet, bags = {}, {}, {}
   units.pet, mhEnchant, mhExpMs = nil, false, 0
+  ohEnchant, ohExpMs = false, 0
   Nock.db.profile = {}
   units.target = nil
+  Nock.state.player.casting = nil
+  Nock.state.helpersTestMode = false
+  Nock.state.helpersTestCreature = nil
+  equipped[16], equipped[17] = nil, nil
 end
 
 -- 1. Bare player: consumable helpers all "missing", ask-friend labels (empty bags).
 resetWorld()
 local h = refresh()
 ok(h.food and h.food.status == "missing", "food missing on bare player")
-ok(h.food and h.food.label == "ask friend?", "food ask-friend with empty bags")
+ok(h.food and h.food.label == "NO FOOD", "food NO FOOD with empty bags")
 ok(h.battleElixir and h.guardianElixir, "both elixir slots nag")
 -- Bare player is committed to neither flask nor elixirs, so the flask nags too.
 ok(h.flask ~= nil and h.flask.status == "missing", "flask missing on bare player")
@@ -126,15 +145,15 @@ ok(h.scrollPlayer and h.scrollPlayer.remaining
    and math.abs(h.scrollPlayer.remaining - 100) < 1,
    "expiring remaining = sooner scroll")
 
--- 5. Expiring threshold: buff at 299s left -> expiring; at 301s -> invisible.
+-- 5. Expiring threshold (default 180 s): buff at 179s left -> expiring; at 181s -> invisible.
 resetWorld()
 local beId = anyId(CD.battleElixir.buffs)
-buffs.player = { { name = "x", exp = now + 299, spellId = beId } }
+buffs.player = { { name = "x", exp = now + 179, spellId = beId } }
 h = refresh()
-ok(h.battleElixir and h.battleElixir.status == "expiring", "299s left -> expiring")
-buffs.player = { { name = "x", exp = now + 301, spellId = beId } }
+ok(h.battleElixir and h.battleElixir.status == "expiring", "179s left -> expiring")
+buffs.player = { { name = "x", exp = now + 181, spellId = beId } }
 h = refresh()
-ok(h.battleElixir == nil, "301s left -> not surfaced")
+ok(h.battleElixir == nil, "181s left -> not surfaced")
 
 -- 6. Threshold 0 disables expiring.
 Nock.db.profile.helpersExpiringThreshold = 0
@@ -153,7 +172,7 @@ resetWorld()
 bags[22831] = 1  -- battle elixir in bags = committed to elixirs
 h = refresh()
 ok(h.flask == nil, "elixir in bags -> flask nag hidden")
-ok(h.battleElixir and h.battleElixir.label ~= "ask friend?",
+ok(h.battleElixir and h.battleElixir.label ~= "NO ELIXIR",
    "battle elixir keeps its own label with elixir in bags")
 
 -- 8. Expiring keeps the plain label even with empty bags (you HAVE the buff).
@@ -161,8 +180,8 @@ resetWorld()
 buffs.player = { { name = "x", exp = now + 100, spellId = beId } }
 h = refresh()
 ok(h.battleElixir and h.battleElixir.status == "expiring"
-   and h.battleElixir.label ~= "ask friend?",
-   "expiring never shows ask-friend")
+   and h.battleElixir.label ~= "NO ELIXIR",
+   "expiring never shows the NO-X label")
 
 -- 9. Combat / WA-suppression / out-of-instance gates keep the list empty.
 resetWorld()
@@ -217,6 +236,176 @@ buffs.pet = { { name = "Well Fed", exp = now + 1800, spellId = anyId(CD.kibler.b
 h = refresh()
 ok(h.kibler == nil, "pet food satisfied by its own spell id")
 ok(h.food and h.food.status == "missing", "fed pet does NOT satisfy player food")
+
+-- 14. Scroll sub-state: which scroll is missing, on which unit.
+resetWorld()
+Nock.db.profile.parseMode = true
+units.pet = true
+bags[27498], bags[27503] = 5, 5
+h = refresh()
+ok(h.scrollPlayer and h.scrollPlayer.sub == "agi" and h.scrollPlayer.label == "AGI",
+   "both scrolls missing -> AGI first")
+ok(h.scrollPlayer and h.scrollPlayer.unit == "player", "player scroll row tagged player")
+ok(h.scrollPlayer and h.scrollPlayer.applyItem == 27498, "player AGI row applies Agility V")
+ok(h.scrollPlayer and h.scrollPlayer.applyKind == "item", "player scroll is a plain item use")
+ok(h.scrollPet and h.scrollPet.unit == "pet", "pet scroll row tagged pet")
+ok(h.scrollPet and h.scrollPet.applyKind == "pet", "pet scroll uses the pet-target macro")
+buffs.player = { { name = "Agility", exp = now + 1200, spellId = 33077 } }
+h = refresh()
+ok(h.scrollPlayer and h.scrollPlayer.sub == "str" and h.scrollPlayer.label == "STR"
+   and h.scrollPlayer.applyItem == 27503, "agi up -> STR row applies Strength V")
+buffs.player = {
+  { name = "Agility",  exp = now + 100,  spellId = 33077 },
+  { name = "Strength", exp = now + 1200, spellId = 33082 },
+}
+h = refresh()
+ok(h.scrollPlayer and h.scrollPlayer.sub == nil and h.scrollPlayer.label == "SCROLLS"
+   and h.scrollPlayer.phase == "expiring", "both up, expiring -> SCROLLS")
+ok(h.flask and h.flask.unit == nil, "flask has no unit tag")
+ok(h.kibler and h.kibler.unit == "pet" and h.kibler.applyKind == "pet", "pet food is pet-targeted")
+
+-- 15. PickApplyItem: prefer order, fallback, nil.
+resetWorld()
+ok(Helpers.PickApplyItem(CD.food) == nil, "nothing in bags -> nil")
+bags[27651] = 1                                   -- Buzzard Bites (not preferred)
+ok(Helpers.PickApplyItem(CD.food) == 27651, "only a fallback food -> fallback")
+bags[27659] = 1                                   -- Warp Burger (prefer[3])
+ok(Helpers.PickApplyItem(CD.food) == 27659, "preferred beats fallback")
+bags[27655] = 1                                   -- Ravager Dog (prefer[1])
+ok(Helpers.PickApplyItem(CD.food) == 27655, "prefer order wins")
+
+-- 16. Rows: applyItem / applyName / NO-X label / click toggle.
+resetWorld()
+bags[22854] = 1
+h = refresh()
+ok(h.flask and h.flask.applyItem == 22854 and h.flask.applyName == "Item22854",
+   "flask row carries the item it would use")
+ok(h.flask and h.flask.label == "FLASK", "flask label upper-case short label")
+ok(h.sharpeningStone and h.sharpeningStone.applyKind == "weapon", "stone is a weapon apply")
+ok(h.sharpeningStone and h.sharpeningStone.label == "NO STONE"
+   and h.sharpeningStone.applyItem == nil,
+   "no stone in bags -> NO STONE, not clickable")
+Nock.db.profile.helpersClickToApply = false
+h = refresh()
+ok(h.flask and h.flask.applyItem == nil and h.flask.label == "FLASK",
+   "click toggle off -> no apply item, label unchanged")
+Nock.db.profile.helpersClickToApply = nil
+
+-- 17. Phases: eating and applying.
+resetWorld()
+bags[27655] = 1
+buffs.player = { { name = "Food", exp = now + 20, spellId = 43180 } }
+h = refresh()
+ok(h.food and h.food.phase == "eating" and h.food.label == "EATING"
+   and h.food.applyItem == nil, "eating channel -> EATING, not clickable")
+resetWorld()
+bags[23529] = 1
+Nock.state.player.casting = { name = "Use23529" }
+h = refresh()
+ok(h.sharpeningStone and h.sharpeningStone.phase == "applying"
+   and h.sharpeningStone.label == "APPLYING" and h.sharpeningStone.applyItem == nil,
+   "casting the stone's use spell -> APPLYING")
+Nock.state.player.casting = nil
+
+-- 18. Test gate bypasses the instance and raid gates.
+resetWorld()
+Nock.db.profile.parseMode = true
+Nock.IsInInstance = function() return false end
+Nock.IsInRaidInstance = function() return false end
+h = refresh()
+ok(next(h) == nil, "gates closed, no test mode -> empty")
+Nock.state.helpersTestMode = true
+h = refresh()
+ok(h.food and h.scrollPlayer, "test mode -> rows surface, scrolls included")
+Nock.state.helpersTestMode = false
+Nock.IsInInstance = function() return true end
+Nock.IsInRaidInstance = function() return true end
+
+-- 19. Dual wield (harness canWeave = false): the stone badge covers BOTH
+--     hands, main hand first, and says which via unit + applySlot.
+resetWorld()
+bags[23529] = 1
+h = refresh()
+ok(h.sharpeningStone and h.sharpeningStone.sub == "mh" and h.sharpeningStone.unit == "mh"
+   and h.sharpeningStone.applySlot == 16 and h.sharpeningStone.label == "STONE"
+   and h.sharpeningStone.applyItem == 23529,
+   "no stones -> main hand first, slot 16, clickable")
+mhEnchant, mhExpMs = true, 1500 * 1000
+h = refresh()
+ok(h.sharpeningStone and h.sharpeningStone.sub == "oh" and h.sharpeningStone.unit == "oh"
+   and h.sharpeningStone.applySlot == 17, "MH stoned -> off hand, slot 17")
+ohEnchant, ohExpMs = true, 100 * 1000
+h = refresh()
+ok(h.sharpeningStone and h.sharpeningStone.status == "expiring" and h.sharpeningStone.sub == nil
+   and math.abs(h.sharpeningStone.remaining - 100) < 1, "both stoned -> sooner expiry counts down")
+ohEnchant, ohExpMs = true, 1500 * 1000
+h = refresh()
+ok(h.sharpeningStone == nil, "both stoned, both long -> invisible")
+-- 2H (canWeave = true): the stone badge stays hidden, as before.
+Nock.state.player.canWeave = true
+mhEnchant = false
+h = refresh()
+ok(h.sharpeningStone == nil, "2H -> stone badge hidden")
+Nock.state.player.canWeave = false
+
+-- 20. Per-hand stone kind: a blade gets a sharpening stone, a mace a
+--     weightstone, and a hand with no matching stone in bags reads NO STONE.
+resetWorld()
+equipped[16], equipped[17] = 1001, 1002
+weaponClass[1001], weaponClass[1002] = 7, 4      -- sword, mace
+bags[23529], bags[28421] = 1, 1                   -- Adamantite sharpening + weightstone
+h = refresh()
+ok(h.sharpeningStone and h.sharpeningStone.sub == "mh"
+   and h.sharpeningStone.applyItem == 23529, "sword main hand -> sharpening stone")
+mhEnchant, mhExpMs = true, 1500 * 1000
+h = refresh()
+ok(h.sharpeningStone and h.sharpeningStone.sub == "oh"
+   and h.sharpeningStone.applyItem == 28421, "mace off hand -> weightstone")
+bags[28421] = 0
+h = refresh()
+ok(h.sharpeningStone and h.sharpeningStone.sub == "oh"
+   and h.sharpeningStone.applyItem == nil and h.sharpeningStone.label == "NO STONE",
+   "mace off hand, only sharpening stones in bags -> NO STONE")
+-- Unknown weapon (no item info yet): any stone in bags is offered.
+equipped[17] = 1003
+h = refresh()
+ok(h.sharpeningStone and h.sharpeningStone.applyItem == 23529,
+   "unknown off hand -> any stone in bags")
+ok(Helpers.PickApplyItem(CD.sharpeningStone, "blunt") == nil, "PickApplyItem filters by kind")
+ok(Helpers.PickApplyItem(CD.sharpeningStone, "sharp") == 23529, "PickApplyItem keeps matching kind")
+mhEnchant = false
+
+-- 21. Test creature: any target reads as a boss of that type.
+resetWorld()
+units.target = true
+_G.UnitCreatureType = function() return "Beast" end
+bags[9224] = 1
+h = refresh()
+ok(h.demonslayer == nil, "beast target -> no demonslayer badge")
+Nock.state.helpersTestCreature = "Demon"
+h = refresh()
+ok(h.demonslayer and h.demonslayer.status == "missing" and h.demonslayer.applyItem == 9224,
+   "test creature Demon -> demonslayer badge, clickable")
+_G.UnitCreatureType = function() return "Demon" end
+Nock.state.helpersTestCreature = nil
+
+-- 22. Demonslaying caps its own expiring window at 60 s: a fresh 5-minute
+--     elixir must not read as expiring, the last minute must.
+resetWorld()
+units.target = true
+Nock.state.helpersTestCreature = "Demon"
+bags[9224] = 1
+buffs.player = { { name = "Demonslaying", exp = now + 200, spellId = 11406 } }
+h = refresh()
+ok(h.demonslayer == nil, "demonslaying with 200s left -> not surfaced")
+buffs.player = { { name = "Demonslaying", exp = now + 50, spellId = 11406 } }
+h = refresh()
+ok(h.demonslayer and h.demonslayer.status == "expiring", "demonslaying with 50s left -> expiring")
+Nock.db.profile.helpersExpiringThreshold = 0
+h = refresh()
+ok(h.demonslayer == nil, "global threshold 0 still disables the capped window")
+Nock.db.profile.helpersExpiringThreshold = nil
+Nock.state.helpersTestCreature = nil
 
 -- 13. DebugDump returns a report string and never throws.
 resetWorld()

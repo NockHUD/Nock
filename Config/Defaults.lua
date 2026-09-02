@@ -321,7 +321,18 @@ Nock.Defaults = {
     parseMode                    = true,   -- master toggle for parse-tier helpers (scrolls)
     -- Seconds left at which an ACTIVE buff starts nagging with a countdown
     -- ("expiring"); 0 turns the early warning off entirely.
-    helpersExpiringThreshold     = 300,
+    helpersExpiringThreshold     = 180,
+    -- Click2Apply: badges whose consumable is in bags become secure click
+    -- targets (press only, out of combat). Off = the row is display-only.
+    helpersClickToApply          = true,
+    -- The PRE-PULL headline (count pill + "click to apply" hint) above the row.
+    helpersHeadline              = true,
+    -- Eating / drinking pill: centre-screen while the Food / Drink aura is up,
+    -- WELL FED flash when the buff lands. Shown wherever it happens, no gates.
+    consumeBannerEnabled         = true,
+    consumeBannerSound           = false,  -- ready-check chime on WELL FED
+    consumeBannerSize            = 32,     -- icon edge; the text scales with it
+    consumeBannerPosition        = false,  -- false = above the boss banner spot
     -- Panel placement + look. `false` means the legacy computed spot (centred
     -- below the warnings row); a table once the panel has been dragged.
     helpersPosition              = false,
