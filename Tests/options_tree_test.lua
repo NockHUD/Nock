@@ -589,7 +589,7 @@ onlyKeys(classicChild("rotation").args,
 onlyKeys(ra, { "intro", "hudMode", "tabSize", "tabBars", "tabRange", "tabGrid", "tabBuff", "tabSkin" },
   "react root")
 onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "elementsNote",
-  "reactShowAutoBar", "reactShowMeleeBar", "reactShowRangeBar", "reactShowManaBar", "reactManaText",
+  "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview", "reactShowRangeBar", "reactShowManaBar", "reactManaText",
   "reactShowCastBar", "reactShowAutoShotCast", "reactShowGrid", "reactShowAspectIcon", "reactShowMarkIcon",
   "orderHeader", "order_reset", "castBarNonCombatCasts" }, "react tabSize",
   { "order_lbl_", "order_up_", "order_dn_" })
@@ -598,7 +598,7 @@ onlyKeys(raBars, { "autoHeader", "reactAutoLegend", "reactShowNotation", "reactS
   "grpEngine" }, "react tabBars")
 onlyKeys(raRange, { "rangeHeader", "rangeFinderFindingStyle" }, "react tabRange")
 onlyKeys(raGrid, { "gridHeader", "gridNote", "reactConsumablesAlways", "rcustHeader",
-  "kcHeader", "reactKcProcGlow", "kcActionBarGlow", "reactRangeTint", "reactTileDim", "reactManaTint",
+  "kcHeader", "reactKcProcGlow", "reactRaptorGoGlow", "kcActionBarGlow", "reactRangeTint", "reactTileDim", "reactManaTint",
   "activeHeader", "reactActiveStyle", "reactActiveColor", "reactActiveSize", "reactActiveFit", "activePreview",
   "addHeader", "addType", "addId", "addProc", "addLabel", "addBtn" },
   "react tabGrid", { "rcd_", "rcust_" })
@@ -697,7 +697,7 @@ if fEng then pcall(fEng.args.rotRaptorWeaveHeadroom.set, nil, 1.35) end
 ok(r.grpEngine.args.rotRaptorWeaveHeadroom.get() == 1.35,
    "weave engine set through Fluffy reads back through Classic")
 onlyKeys(faGrid, { "gridHeader", "gridNote", "fluffyShowGrid",
-  "lookHeader", "lookNote", "reactKcProcGlow", "reactRangeTint", "reactTileDim", "reactManaTint",
+  "lookHeader", "lookNote", "reactKcProcGlow", "reactRaptorGoGlow", "reactRangeTint", "reactTileDim", "reactManaTint",
   "activeHeader", "fluffyActiveStyle", "fluffyActiveColor", "fluffyActiveSize", "fluffyActiveFit", "activePreview",
   "fcustHeader", "addHeader", "addType", "addId", "addProc", "addLabel", "addBtn" },
   "fluffy tabGrid", { "fcd_", "fcust_" })
@@ -893,7 +893,7 @@ ok(D.helpersClickToApply == true and D.helpersHeadline == true,
    "helpers: both new toggles default on")
 ok(D.editGridShow == true and D.editGridSize == 16 and D.editGridSnap == "off" and D.editSnapBy == "nearest" and D.editPanelPos == false,
    "defaults: grid on, raster 16, snap off, nearest, panel at the default spot")
-ok(D.reactKcProcGlow == false and D.kcActionBarGlow == false and D.reactRangeTint == "off"
+ok(D.reactKcProcGlow == false and D.reactRaptorGoGlow == false and D.reactMeleeStageCue == false and D.kcActionBarGlow == false and D.reactRangeTint == "off"
    and D.reactTileDim == false and D.reactManaTint == false and D.reactReadySoon == nil,
    "defaults: every reference-WA extra ships off; ready-soon is gone")
 ok(raGrid.reactTileDim and raGrid.reactManaTint and raGrid.reactReadySoon == nil

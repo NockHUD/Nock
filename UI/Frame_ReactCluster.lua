@@ -26,6 +26,7 @@ local REACT = {
   GAP     = -1,  -- bars overlap their 1px borders → one shared black seam (clamped, reference look)
   FONT_BIG   = 9,    -- auto-bar texts
   FONT_SMALL = 9,    -- melee / range / mana texts
+  FONT_STAGE = 9,    -- melee takeover word (GO IN / HOLD / BACK OUT / RELEASE): READY's size (user, 2026-09-02)
 
   BAR_BG       = { 0.08, 0.08, 0.08, 0.90 },
   BORDER       = { 0.00, 0.00, 0.00, 1.00 },
@@ -50,7 +51,13 @@ local REACT = {
   RANGE_DIVIDER   = { 1.00, 1.00, 1.00, 0.90 },  -- centre tick (melee boundary)
   RANGE_DIVIDER_W = 1,                           -- centre tick width px
   TEXT         = { 1.00, 1.00, 1.00, 1.00 },
+  MARCH        = { 0.00, 0.00, 0.00, 0.55 },  -- takeover triangles: translucent dark over the stage fill
+  MARCH_GAP    = 0.6,                         -- gap between triangles, as a fraction of their size
+  MARCH_INSET  = 1,                           -- px between a triangle and the bar's inner top/bottom
 }
+-- Solid right-pointing triangle, 20x20 (not power-of-two: no mip chain), RGB
+-- white so the vertex colour tints it; left-pointing = flipped tex coords.
+local MARCH_TEX = "Interface\\AddOns\\Nock\\Media\\ReactChevron"
 
 -- React range bar — consumes the shared range engine published by
 -- Modules/RangeFinder.lua via Modules/RangeEngine.lua (state.target
@@ -63,15 +70,14 @@ local REACT = {
 local MAX_BRACKETS = 12  -- 6 eWS bounds x 2 mirrored sides
 
 -- Weave-coach stage cue on the melee bar (state.weave.stage, semantics in
--- Modules/WeaveCoach.lua). The one that saves weaves: HOLD means the queued
--- hit has NOT landed yet — releasing there /stopattack-cancels the swing and
--- the Raptor silently. RELEASE (or the struck sound) is the safe let-go.
-local MELEE_STAGE = {
-  GO      = { "GO",       0.20, 0.90, 0.30 },
-  HOLD    = { "HOLD",     1.00, 0.70, 0.00 },
-  STRUCK  = { "BACK OUT", 0.40, 0.70, 1.00 },
-  RELEASE = { "RELEASE",  0.20, 0.90, 0.30 },
-}
+-- Modules/WeaveCoach.lua; looks in Nock.UI.ReactStageLook). The one that
+-- saves weaves: HOLD means the queued hit has NOT landed yet — releasing
+-- there /stopattack-cancels the swing and the Raptor silently. RELEASE (or
+-- the struck sound) is the safe let-go. With reactMeleeStageCue (opt-in)
+-- the stage TAKES OVER the bar: full fill in the stage colour, triangles
+-- marching in the direction to move, the word over them. Off, it is the
+-- small centred text in the stage colour, as before 1.1.8.
+local FLASH_SEC = 0.4   -- RELEASE: fill lerped from white back to green over this
 
 local function profile()
   return (Nock.db and Nock.db.profile) or {}
@@ -182,6 +188,47 @@ function ReactCluster:OnInitialize()
   melee.fill:SetPoint("TOPLEFT", melee, "TOPLEFT", 1, -1)
   melee.fill:SetPoint("BOTTOMLEFT", melee, "BOTTOMLEFT", 1, 1)
   melee.text = makeText(melee, REACT.FONT_SMALL, "CENTER")
+  -- Weave-stage takeover: a child frame over the fill holding two clipped
+  -- half-width triangle runs and the stage word. Each run is a carrier frame
+  -- with a pool of MARCH_TEX textures spaced one pitch apart (sized by
+  -- ApplyLayout); the tick slides the CARRIER by Nock.UI.MarchOffset, one
+  -- SetPoint per half. Child frames draw above the bar's own regions, so the
+  -- word gets a frame of its own above the runs. Hidden whenever no stage is
+  -- up.
+  local cue = CreateFrame("Frame", nil, melee)
+  cue:SetAllPoints(melee)
+  cue:SetFrameLevel(melee:GetFrameLevel() + 1)
+  local function makeMarch(side)
+    local f = CreateFrame("Frame", nil, cue)
+    if f.SetClipsChildren then f:SetClipsChildren(true) end
+    f:SetPoint("TOP",    melee, "TOP",    0, -1)
+    f:SetPoint("BOTTOM", melee, "BOTTOM", 0,  1)
+    if side == "L" then
+      f:SetPoint("LEFT",  melee, "LEFT",   1, 0)
+      f:SetPoint("RIGHT", melee, "CENTER", 0, 0)
+    else
+      f:SetPoint("LEFT",  melee, "CENTER", 0, 0)
+      f:SetPoint("RIGHT", melee, "RIGHT", -1, 0)
+    end
+    local carrier = CreateFrame("Frame", nil, f)
+    carrier:SetPoint("LEFT", f, "LEFT", 0, 0)
+    carrier:SetSize(1, 1)
+    f.carrier = carrier
+    f.tris = {}            -- texture pool, grown by ApplyLayout
+    f.side = side
+    f.pitch = 8            -- set by ApplyLayout from the bar height
+    f.count = 0
+    f:Hide()
+    return f
+  end
+  cue.marchL = makeMarch("L")
+  cue.marchR = makeMarch("R")
+  local stageF = CreateFrame("Frame", nil, cue)
+  stageF:SetAllPoints(cue)
+  stageF:SetFrameLevel(cue:GetFrameLevel() + 2)
+  melee.stageText = makeText(stageF, REACT.FONT_STAGE, "CENTER")
+  cue:Hide()
+  melee.cue = cue
   self.melee = melee
 
   -- Range bar: plain progressive fill toward the weave sweet spot (original
@@ -310,6 +357,36 @@ function ReactCluster:ApplyLayout()
     Nock.UI.SafeSetFont(e.fs, font, math.max(6, e.size + delta), "OUTLINE")
   end
 
+  -- Melee takeover triangle runs: triangles the bar's inner height (minus
+  -- MARCH_INSET each side), one pitch apart, two pitches more than fill a
+  -- half so the slide (always within [-pitch, 0]) never uncovers an edge.
+  -- Pool grows and never shrinks; extras hide. Direction (tex-coord flip) is
+  -- set per stage by RefreshMelee. Not the tick: once per layout.
+  local cue = self.melee.cue
+  local size = math.max(2, g.hMelee - 2 - 2 * REACT.MARCH_INSET)
+  local pitch = size * (1 + REACT.MARCH_GAP)
+  local count = math.ceil(self._halfW / pitch) + 2
+  local function buildMarch(mf)
+    mf.pitch, mf.count = pitch, count
+    mf.carrier:SetSize(count * pitch, size)
+    for i = 1, count do
+      local t = mf.tris[i]
+      if not t then
+        t = mf.carrier:CreateTexture(nil, "ARTWORK")
+        t:SetTexture(MARCH_TEX)
+        t:SetVertexColor(unpack(REACT.MARCH))
+        mf.tris[i] = t
+      end
+      t:SetSize(size, size)
+      t:ClearAllPoints()
+      t:SetPoint("LEFT", mf.carrier, "LEFT", (i - 1) * pitch, 0)
+      t:Show()
+    end
+    for i = count + 1, #mf.tris do mf.tris[i]:Hide() end
+  end
+  buildMarch(cue.marchL)
+  buildMarch(cue.marchR)
+
   -- Marks are cut to fit the (possibly overridden) bar heights.
   -- Auto-bar marks: width + colour per mark, resolved from the React skin keys
   -- (defaults = the REACT constants, so an untouched profile looks identical).
@@ -424,6 +501,7 @@ function ReactCluster:ApplyLayout()
   self._lastMeleeP    = nil
   self._lastMeleeText = nil
   self._lastMeleeColor = nil
+  self._lastStage     = nil   -- re-arms the takeover (runs rebuilt above)
   self._lastRatio     = nil
   self._lastRangeMode = nil
   self._lastRangeText = nil
@@ -687,6 +765,77 @@ function ReactCluster:RefreshMelee(state)
   local m = state.melee
   local ready = (m.swingStart == 0) or (m.swingRemaining <= 0)
 
+  -- Weave-coach stage -> look. `takeover` is the full-bar cue; with the
+  -- option off the stage only owns the small text (below).
+  local now = GetTime()
+  local stage = Nock.UI.CoachStage(state, now)   -- coach stage, or the settings preview cycle
+  local look = Nock.UI.ReactStageLook(stage)
+  local takeover = (look and profile().reactMeleeStageCue == true) and true or false
+  local cue = melee.cue
+
+  if stage ~= self._lastStage or takeover ~= self._lastTakeover then
+    self._lastStage, self._lastTakeover = stage, takeover
+    -- The fill and the texts swap owners on this edge: drop every cache.
+    self._lastMeleeP, self._lastMeleeColor, self._lastMeleeText = nil, nil, nil
+    if takeover then
+      melee.stageText:SetText(look.text)
+      local mL, mR = cue.marchL, cue.marchR
+      if look.march ~= 0 then
+        -- Inward: the left half points right, the right half points left.
+        -- Outward: the mirror. A left-pointing triangle is the texture with
+        -- its horizontal tex coords flipped.
+        local inward = look.march > 0
+        local function point(mf, right)
+          local tris = mf.tris
+          for i = 1, mf.count do
+            if right then tris[i]:SetTexCoord(0, 1, 0, 1)
+            else tris[i]:SetTexCoord(1, 0, 0, 1) end
+          end
+        end
+        point(mL, inward)
+        point(mR, not inward)
+        mL:Show(); mR:Show()
+      else
+        mL:Hide(); mR:Hide()
+      end
+      self._flashAt = look.flash and now or nil
+      cue:Show()
+    else
+      cue:Hide()
+      self._flashAt = nil
+    end
+  end
+
+  if takeover then
+    -- Full fill in the stage colour; RELEASE enters white and settles to the
+    -- colour over FLASH_SEC (painted every tick only while it lasts).
+    if self._lastMeleeP ~= 1 then
+      melee.fill:SetWidth(math.max(0.01, self._innerW or 0))
+      self._lastMeleeP = 1
+    end
+    local mix = self._flashAt and Nock.UI.FlashMix(now - self._flashAt, FLASH_SEC) or 0
+    if mix > 0 or self._wasFlashing or self._lastMeleeColor ~= look then
+      local c = look.fill
+      melee.fill:SetVertexColor(c[1] + (1 - c[1]) * mix, c[2] + (1 - c[2]) * mix,
+                                c[3] + (1 - c[3]) * mix, c[4] or 1)
+      self._lastMeleeColor = look
+    end
+    self._wasFlashing = mix > 0
+    if mix <= 0 then self._flashAt = nil end
+    if self._lastMeleeText ~= "" then
+      melee.text:SetText("")
+      self._lastMeleeText = ""
+    end
+    -- The runs slide every tick: left half toward/away from the centre per
+    -- the stage, right half the mirror.
+    if look.march ~= 0 then
+      local mL, mR = cue.marchL, cue.marchR
+      mL.carrier:SetPoint("LEFT", mL, "LEFT", Nock.UI.MarchOffset(now, mL.pitch,  look.march), 0)
+      mR.carrier:SetPoint("LEFT", mR, "LEFT", Nock.UI.MarchOffset(now, mR.pitch, -look.march), 0)
+    end
+    return
+  end
+
   local p01 = 1
   if not ready and m.swingDuration > 0 then
     p01 = 1 - (m.swingRemaining / m.swingDuration)
@@ -697,15 +846,13 @@ function ReactCluster:RefreshMelee(state)
     self._lastMeleeP = p01
   end
 
-  -- Weave-coach stage outranks READY; each stage carries its own text color
-  -- (so a txt diff is also a color diff — one cache covers both).
-  local stage = state.weave and state.weave.stage
-  local look = stage and MELEE_STAGE[stage]
-  local txt = look and look[1] or (ready and "READY" or "")
+  -- Takeover off: the stage outranks READY as the small text, in the stage
+  -- colour (a txt diff is also a colour diff — one cache covers both).
+  local txt = look and look.text or (ready and "READY" or "")
   if txt ~= self._lastMeleeText then
     melee.text:SetText(txt)
     if look then
-      melee.text:SetTextColor(look[2], look[3], look[4])
+      melee.text:SetTextColor(look.fill[1], look.fill[2], look.fill[3])
     else
       melee.text:SetTextColor(unpack(REACT.TEXT))
     end

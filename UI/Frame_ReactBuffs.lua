@@ -600,6 +600,32 @@ function ReactBuffs:Refresh(state)
     -- and the player's own procs (visible on any buff frame) take what is
     -- left. Before this, WF and the Grace alert were the ones dropped.
 
+    -- WEAVE: the weave coach's stage as a slot — Raptor Strike's icon with
+    -- the stage word (GO IN / HOLD / BACK OUT / RELEASE), the row's part of
+    -- the React move-in cue. Nock.UI.CoachStage is THE stage reading (the
+    -- coach's committed stage, or the settings preview cycle out of combat),
+    -- the same one the melee bar and the Raptor tile draw from.
+    local stage = not dis.weave and Nock.UI.CoachStage(state)
+    local stageLook = stage and Nock.UI.ReactStageLook(stage)
+    if stageLook then
+      -- Icon = what the weave is, the melee bar's own green/blue rule: Raptor
+      -- Strike while Raptor is off cooldown (GO IN always is — the coach only
+      -- says GO for a Raptor), the plain Attack icon on an auto-only weave
+      -- (HOLD / BACK OUT / RELEASE with Raptor on cooldown). No cooldown
+      -- entry (preview, cold login) reads as Raptor.
+      local cd = state.cooldowns and state.cooldowns.Raptor
+      local raptor = (stage == "GO") or not cd or cd.ready
+      local icon
+      if raptor then
+        self._raptorIcon = self._raptorIcon or spellIcon(C.SpellID.RAPTOR_STRIKE)
+        icon = self._raptorIcon
+      else
+        self._attackIcon = self._attackIcon or spellIcon(C.SpellID.ATTACK)
+        icon = self._attackIcon
+      end
+      addItem(items, icon or 134400, 0, 0, stageLook.text, false)
+    end
+
     -- MOVE IN: a live, attackable target outside Auto Shot range (the shoot
     -- probe false and not near melee: rangeZone "OUT", Modules/RangeFinder).
     -- No combat gate — a dummy from too far away is the everyday case.

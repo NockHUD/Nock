@@ -235,6 +235,9 @@ function FluffyCooldownsView:Refresh(state)
         end
 
         LOOK.procGlow    = (entry.key == "KC" and p.reactKcProcGlow) and true or false
+        -- Move-in cue: the Raptor tile glows while the weave coach says GO.
+        LOOK.goGlow      = (entry.key == "Raptor" and p.reactRaptorGoGlow
+                            and Nock.UI.CoachStage(state) == "GO") and true or false
         LOOK.activeStyle = p.fluffyActiveStyle
         -- Settings preview: light every tile; suspended in combat.
         LOOK.preview     = (Nock.UI.activePreview

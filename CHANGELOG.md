@@ -4,6 +4,25 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 ## Unreleased
 
+- **React HUD: move-in cue on the melee bar.** The weave coach's stage now
+  takes over the melee bar instead of swapping its 9px text: the bar fills
+  in the stage colour, triangles march the way to move (in on GO IN, out on
+  BACK OUT), the word stays over them, and RELEASE enters with a flash. React
+  HUD → Size & elements → "Weave cue takes over the melee bar" (off by
+  default; off = the small text as before). Needs the hold-to-weave key,
+  like the coach.
+  A session-only "Preview: cycle the weave stages" toggle next to it runs
+  the four stages on the bar, the Raptor glow and the buff row's weave slot
+  out of combat; practice drills show the real cue.
+- **React buff row: weave stage slot.** The row carries the coach's stage as
+  a slot too: Raptor Strike's icon (the plain Attack icon on an auto-only
+  weave, Raptor on cooldown) with GO IN / HOLD / BACK OUT / RELEASE under
+  it, first in the row. Hide it per entry under Buff Row like the
+  other utility slots. (MOVE IN stays what it was: the ranged alert for a
+  target beyond Auto Shot range, with the Auto Shot icon.)
+- **React HUD: Raptor Strike glow on GO IN** (Cooldown Grid → Glows & tints,
+  off by default, shared with the FluffyHUD row). The Raptor tile gets the
+  action-button glow while the coach says GO IN.
 - **Helpers row reworked.** The label sits in a band inside each icon, a
   muted PRE-PULL caption sits under the row, scroll badges say which scroll
   is missing (AGI / STR) with a YOU or PET strip along the top, and "ask

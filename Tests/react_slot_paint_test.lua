@@ -186,6 +186,18 @@ r = look({ ready = true, noMana = true }, false, { tint = "off", manaTint = true
 r = look({ ready = true, noMana = true }, false, { tint = "off" });                  ok(r.tint == nil, "no mana without the option: nothing")
 r = look({ ready = true, noMana = true }, true, { tint = "red", manaTint = true });  ok(r.tint == "red", "no mana AND out of range: red wins")
 
+-- Raptor GO glow (React move-in cue): opts.goGlow lights the Raptor slot with
+-- the overlay glow while the weave coach says GO, whatever the slot's own
+-- state. Nothing else in the look changes, and without the flag nothing does.
+r = look(ready, false, { tint = "off", goGlow = true });               ok(r.vis == "ready" and r.glow == "overlay", "goGlow on a ready slot: overlay glow")
+r = look(oncd, false, { tint = "off", goGlow = true });                ok(r.vis == "cd" and r.glow == "overlay", "goGlow on a slot on cooldown: still the overlay (the coach already folded the CD in)")
+r = look(ready, true, { tint = "red", goGlow = true });                ok(r.glow == "overlay" and r.tint == "red", "goGlow + out of range: glow AND red")
+r = look(ready, false, { tint = "off", goGlow = false });              ok(r.glow == nil, "goGlow false: no glow")
+r = look(ready, false, { tint = "off" });                              ok(r.glow == nil, "goGlow absent: no glow")
+local kg = Nock.UI.ReactLookKey(look(ready, false, { tint = "off", goGlow = true }))
+local kn = Nock.UI.ReactLookKey(look(ready, false, { tint = "off" }))
+ok(kg ~= kn, "the look key changes with goGlow, so the painter repaints on GO's edges")
+
 -- LookKey: one string per distinct look, so the painter's diff can key on it.
 local k1 = Nock.UI.ReactLookKey(look(ready, true,  { tint = "red" }))
 local k2 = Nock.UI.ReactLookKey(look(ready, false, { tint = "red" }))

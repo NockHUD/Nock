@@ -61,6 +61,10 @@ p.reactBuffDisabled = {}
 local painted = {}
 local nudgeSpec
 Nock.UI = {
+  -- Mirrors UI/Widgets.lua: the weave-cue settings preview, off unless a test ticks it.
+  StagePreviewOn = function() return (Nock.UI.stagePreview and not (InCombatLockdown and InCombatLockdown())) and true or false end,
+  CoachStage = function(state) if Nock.UI.StagePreviewOn() then return "GO" end return state and state.weave and state.weave.stage end,
+  ReactStageLook = function(s) return ({ GO = { text = "GO IN" }, HOLD = { text = "HOLD" }, STRUCK = { text = "BACK OUT" }, RELEASE = { text = "RELEASE" } })[s] end,
   CreateReactSlot = function(parent, name) return Stub.CreateFrame("Frame", name, parent) end,
   PaintReactSlot  = function(slot, item) painted[#painted + 1] = item.icon end,
   ApplyBackdrop   = function() end,

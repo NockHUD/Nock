@@ -70,6 +70,10 @@ Nock.db.profile.reactBuffDisabled = {}
 
 local painted = {}
 Nock.UI = {
+  -- Mirrors UI/Widgets.lua: the weave-cue settings preview, off unless a test ticks it.
+  StagePreviewOn = function() return (Nock.UI.stagePreview and not (InCombatLockdown and InCombatLockdown())) and true or false end,
+  CoachStage = function(state) if Nock.UI.StagePreviewOn() then return "GO" end return state and state.weave and state.weave.stage end,
+  ReactStageLook = function(s) return ({ GO = { text = "GO IN" }, HOLD = { text = "HOLD" }, STRUCK = { text = "BACK OUT" }, RELEASE = { text = "RELEASE" } })[s] end,
   CreateReactSlot = function(parent, name) return Stub.CreateFrame("Frame", name, parent) end,
   PaintReactSlot  = function(slot, item) painted[#painted + 1] = { icon = item.icon, label = item.label, desat = item.desat } end,
   ApplyBackdrop   = function() end,
@@ -148,6 +152,70 @@ st.target.rangeZone = "OUT"
 targetDead = true
 refresh()
 ok(#painted == 0, "dead target -> no alert")
+
+--------------------------------------------------------------------------------
+-- 2b. WEAVE: the coach's stage is a slot — Raptor Strike's icon, the stage
+-- word as label, full colour, FIRST in the row (ahead of MOVE IN). The
+-- settings preview (Nock.UI.stagePreview) drives it out of combat; the
+-- ranged MOVE IN is NOT part of the preview (it is a different cue).
+--------------------------------------------------------------------------------
+targetDead = false
+st.target.rangeZone = "SWEET"
+st.weave.stage = "GO"
+refresh()
+ok(#painted == 1 and painted[1].label == "GO IN" and painted[1].icon == "icon-27014" and painted[1].desat == false,
+   "stage GO -> GO IN slot with the Raptor Strike icon, full colour (" .. labels() .. ")")
+for _, pair in ipairs({ { "HOLD", "HOLD" }, { "STRUCK", "BACK OUT" }, { "RELEASE", "RELEASE" } }) do
+  st.weave.stage = pair[1]
+  refresh()
+  ok(#painted == 1 and painted[1].label == pair[2], "stage " .. pair[1] .. " -> " .. pair[2])
+end
+-- Icon follows the weave: Raptor ready -> Raptor Strike, on cooldown -> the
+-- plain Attack icon (an auto-only weave); GO IN is always a Raptor.
+st.cooldowns.Raptor = { ready = false }
+st.weave.stage = "HOLD"
+refresh()
+ok(#painted == 1 and painted[1].icon == "icon-" .. Nock.Constants.SpellID.ATTACK and painted[1].label == "HOLD",
+   "Raptor on cooldown, HOLD -> Attack icon (" .. labels() .. ")")
+st.weave.stage = "GO"
+refresh()
+ok(painted[1] and painted[1].icon == "icon-27014", "Raptor on cooldown, GO -> still the Raptor icon (GO is a Raptor)")
+st.cooldowns.Raptor = { ready = true }
+st.weave.stage = "RELEASE"
+refresh()
+ok(painted[1] and painted[1].icon == "icon-27014", "Raptor ready, RELEASE -> Raptor icon")
+st.cooldowns.Raptor = nil
+st.weave.stage = "GO"
+st.target.rangeZone = "OUT"
+refresh()
+ok(#painted == 2 and painted[1].label == "GO IN" and painted[2].label == "MOVE IN",
+   "weave slot leads, MOVE IN follows (" .. labels() .. ")")
+Nock.db.profile.reactBuffDisabled.weave = true
+refresh()
+ok(#painted == 1 and painted[1].label == "MOVE IN", "weave entry disabled -> only MOVE IN")
+Nock.db.profile.reactBuffDisabled.weave = nil
+st.weave.stage = nil
+st.target.rangeZone = "SWEET"
+refresh()
+ok(#painted == 0, "no stage, in range -> nothing")
+-- Preview: GO IN out of combat, nothing in combat, never the ranged MOVE IN.
+Nock.UI.stagePreview = true
+_G.InCombatLockdown = function() return false end
+refresh()
+ok(#painted == 1 and painted[1].label == "GO IN" and painted[1].icon == "icon-27014",
+   "stage preview on -> GO IN slot, not MOVE IN (" .. labels() .. ")")
+_G.InCombatLockdown = function() return true end
+refresh()
+ok(#painted == 0, "stage preview in combat -> suspended")
+_G.InCombatLockdown = nil
+Nock.db.profile.reactBuffDisabled.weave = true
+refresh()
+ok(#painted == 0, "weave entry disabled -> the preview shows nothing either")
+Nock.db.profile.reactBuffDisabled.weave = nil
+Nock.UI.stagePreview = nil
+-- Back to the state the next section expects (dead target, zone OUT).
+st.target.rangeZone = "OUT"
+targetDead = true
 targetDead = false
 targetAttackable = false
 refresh()

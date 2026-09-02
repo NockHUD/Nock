@@ -1848,7 +1848,7 @@ local function buildOptionsTable()
           showBuffRow = {
             type = "toggle",
             name = "Buff row (procs + utility)",
-            desc = "The React HUD's proc row floating above the Classic HUD (just above the cast bar by default; drag it when unlocked): haste/burst procs, utility buffs, Windfury, the pet's Frenzy and the MOVE IN alert. Its settings are under Classic HUD → Buff Row (shared with React HUD → Buff Row).",
+            desc = "The React HUD's proc row floating above the Classic HUD (just above the cast bar by default; drag it when unlocked): haste/burst procs, utility buffs, Windfury, the pet's Frenzy and the MOVE IN alert, the weave coach's stage. Its settings are under Classic HUD → Buff Row (shared with React HUD → Buff Row).",
             order = 11.5,
             width = "full",
             get = function() return Nock.db.profile.showBuffRow ~= false end,
@@ -5477,6 +5477,21 @@ local function buildOptionsTable()
     }
     sizeArgs.reactShowAutoBar  = reactToggle("reactShowAutoBar",  "Auto Shot bar",  "The converge Auto Shot bar (clip ticks, delay readout, notation).", 21)
     sizeArgs.reactShowMeleeBar = reactToggle("reactShowMeleeBar", "Melee swing bar", "Melee swing bar with the READY text and weave-coach cues.", 22)
+    sizeArgs.reactMeleeStageCue = reactOptInToggle("reactMeleeStageCue", "Weave cue takes over the melee bar",
+      "While the weave coach has a stage (GO IN / HOLD / BACK OUT / RELEASE; needs the hold-to-weave key), the melee bar fills in the stage colour with chevrons marching the way to move and the word in a bigger font. Off: the stage is only the small text in the bar.", 22.1)
+    -- SESSION-ONLY (Nock.UI.stagePreview, never a profile key): cycles the
+    -- four coach stages on the melee bar (and the Raptor tile's GO glow) so
+    -- the cue can be looked at without a fight. Suspended in combat.
+    sizeArgs.stagePreview = {
+      type = "toggle", name = "Preview: cycle the weave stages", order = 22.2, width = "full",
+      desc = "While ticked, the melee bar cycles GO IN → HOLD → BACK OUT → RELEASE every 1.5 s, the Raptor Strike tile glows on GO IN (if that option is on) and the buff row shows its weave slot (Raptor Strike icon with the stage word), so you can see the whole cue without weaving. Session-only (never saved), and suspended while you are in combat. Practice mode shows the real thing: its drills drive the coach like a live fight.",
+      disabled = notReact,
+      get = function() return Nock.UI.stagePreview == true end,
+      set = function(_, v)
+        Nock.UI.stagePreview = v and true or false
+        Nock:SendMessage("NOCK_VISUALS_CHANGED")
+      end,
+    }
     sizeArgs.reactShowRangeBar = reactToggle("reactShowRangeBar", "Range bar",       "Finding ladder + predictive weave fill.", 23)
     sizeArgs.reactShowManaBar  = reactToggle("reactShowManaBar",  "Mana bar",        "Thin mana bar with the percent readout.", 24)
     sizeArgs.reactManaText = {
@@ -5843,6 +5858,14 @@ local function buildOptionsTable()
       get = get,
       set = function(_, v) visualsSet(_, "reactKcProcGlow", v) end,
     }
+    gridArgs.reactRaptorGoGlow = {
+      type = "toggle",
+      name = "Raptor Strike glow on GO IN",
+      desc = "While the weave coach says GO IN (hold-to-weave key enabled, Raptor ready, swing recharged, target within a step), the Raptor Strike tile gets the animated action-button glow. The move-in cue for eyes on the grid.",
+      order = 69.15, width = "full", disabled = notReact,
+      get = get,
+      set = function(_, v) visualsSet(_, "reactRaptorGoGlow", v) end,
+    }
     gridArgs.kcActionBarGlow = {
       type = "toggle",
       name = "Kill Command glow on the action bar",
@@ -5948,10 +5971,10 @@ local function buildOptionsTable()
         type = "toggle",
         name = "Buff row (procs + utility)",
         desc = react
-          and "One icon row centered above the HUD, growing from the center: haste/burst procs (Bloodlust, Drums, Rapid Fire, Quick Shots, The Beast Within, Haste Potion, racials, trinket procs) plus utility buffs (Feign Death, Misdirection, Mend/Feed Pet, Intimidation, Windfury enchant, Leader of the Pack / Grace of Air range, the pet's Frenzy, the MOVE IN alert). While on, it replaces the classic Buff Tracker and Totem panels.\n\nThe row is movable: unlock the HUD (/nock unlock) and drag it anywhere — below the HUD, off to one side — or use its nudge pad for exact placement. The position is relative to the HUD, so it follows scale and drags. The pad's reset button puts it back above."
+          and "One icon row centered above the HUD, growing from the center: haste/burst procs (Bloodlust, Drums, Rapid Fire, Quick Shots, The Beast Within, Haste Potion, racials, trinket procs) plus utility buffs (Feign Death, Misdirection, Mend/Feed Pet, Intimidation, Windfury enchant, Leader of the Pack / Grace of Air range, the pet's Frenzy, the MOVE IN alert, the weave coach's stage). While on, it replaces the classic Buff Tracker and Totem panels.\n\nThe row is movable: unlock the HUD (/nock unlock) and drag it anywhere — below the HUD, off to one side — or use its nudge pad for exact placement. The position is relative to the HUD, so it follows scale and drags. The pad's reset button puts it back above."
           or fluffy
-          and "The proc row welded above the FluffyHUD cluster: haste/burst procs (Bloodlust, Drums, Rapid Fire, Quick Shots, The Beast Within, Haste Potion, racials, trinket procs) plus utility buffs (Feign Death, Misdirection, Mend/Feed Pet, Intimidation, Windfury enchant, Leader of the Pack / Grace of Air range, the pet's Frenzy, the MOVE IN alert). While on, it replaces the classic Buff Tracker and Totem panels.\n\nThe row is movable: unlock the HUD (/nock unlock) and drag it anywhere, or use its nudge pad for exact placement. The position is relative to the cluster, so it follows scale and drags; the pad's reset puts it back above the cluster."
-          or  "The React HUD's proc row above the Classic HUD, in the React look: haste/burst procs (Bloodlust, Drums, Rapid Fire, Quick Shots, The Beast Within, Haste Potion, racials, trinket procs) plus utility buffs (Feign Death, Misdirection, Mend/Feed Pet, Intimidation, Windfury enchant, Leader of the Pack / Grace of Air range, the pet's Frenzy, the MOVE IN alert).\n\nIt floats just above the cast bar by default. Unlock the HUD (/nock unlock) and drag it anywhere, or use its nudge pad; the position is relative to the HUD, so it follows scale and drags, and the pad's reset puts it back above the cast bar. Its own scale is under Layout → Per-element scaling. Same switch as Layout → HUD elements → Buff row.",
+          and "The proc row welded above the FluffyHUD cluster: haste/burst procs (Bloodlust, Drums, Rapid Fire, Quick Shots, The Beast Within, Haste Potion, racials, trinket procs) plus utility buffs (Feign Death, Misdirection, Mend/Feed Pet, Intimidation, Windfury enchant, Leader of the Pack / Grace of Air range, the pet's Frenzy, the MOVE IN alert, the weave coach's stage). While on, it replaces the classic Buff Tracker and Totem panels.\n\nThe row is movable: unlock the HUD (/nock unlock) and drag it anywhere, or use its nudge pad for exact placement. The position is relative to the cluster, so it follows scale and drags; the pad's reset puts it back above the cluster."
+          or  "The React HUD's proc row above the Classic HUD, in the React look: haste/burst procs (Bloodlust, Drums, Rapid Fire, Quick Shots, The Beast Within, Haste Potion, racials, trinket procs) plus utility buffs (Feign Death, Misdirection, Mend/Feed Pet, Intimidation, Windfury enchant, Leader of the Pack / Grace of Air range, the pet's Frenzy, the MOVE IN alert, the weave coach's stage).\n\nIt floats just above the cast bar by default. Unlock the HUD (/nock unlock) and drag it anywhere, or use its nudge pad; the position is relative to the HUD, so it follows scale and drags, and the pad's reset puts it back above the cast bar. Its own scale is under Layout → Per-element scaling. Same switch as Layout → HUD elements → Buff row.",
         order = 70.5,
         width = "full",
         disabled = notMode,
@@ -5997,6 +6020,7 @@ local function buildOptionsTable()
         { key = "windfury",     id = nil,                              fallback = "Windfury (weapon enchant)" },
         { key = "frenzy",       id = CN.REACT_BUFFS.FRENZY,            fallback = "Frenzy (pet proc)" },
         { key = "movein",       id = nil,                              fallback = "MOVE IN (target out of Auto Shot range)" },
+        { key = "weave",        id = nil,                              fallback = "Weave stage (GO IN / HOLD / BACK OUT / RELEASE, Raptor Strike icon)" },
       }
       local bo = 72
       for _, be in ipairs(BUFF_ENTRIES) do
@@ -6598,6 +6622,13 @@ local function buildOptionsTable()
       disabled = notFluffy,
       get = function() return Nock.db.profile.reactKcProcGlow == true end,
       set = function(_, v) visualsSet(_, "reactKcProcGlow", v) end,
+    }
+    fGridArgs.reactRaptorGoGlow = {
+      type = "toggle", name = "Raptor Strike glow on GO IN", order = 21.5, width = "full",
+      desc = "The action-button glow on the Raptor Strike slot while the weave coach says GO IN (hold-to-weave key enabled).",
+      disabled = notFluffy,
+      get = function() return Nock.db.profile.reactRaptorGoGlow == true end,
+      set = function(_, v) visualsSet(_, "reactRaptorGoGlow", v) end,
     }
     fGridArgs.reactRangeTint = {
       type = "select", name = "Out-of-range tint", order = 22, width = 1.6,

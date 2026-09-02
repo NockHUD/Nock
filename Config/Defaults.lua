@@ -661,6 +661,7 @@ Nock.Defaults = {
     -- React mode (see CHANGELOG).
     reactShowAutoBar     = true,        -- converge Auto Shot bar
     reactShowMeleeBar    = true,        -- melee swing bar
+    reactMeleeStageCue   = false,       -- weave-coach stage takes over the melee bar (fill + marching triangles + word); off = small text only (opt-in, user 2026-09-02)
     reactShowRangeBar    = true,        -- slide range finder
     reactShowManaBar     = true,        -- thin mana bar
     reactManaText        = "percent",   -- mana bar center text: "none" | "percent" | "value" | "both"
@@ -678,6 +679,7 @@ Nock.Defaults = {
     reactConsumablesAlways = false,     -- row 3: always show slots (ignore the whenActive auto-hide)
     -- Reference-WA extras (React HUD -> Cooldowns). All off by default (user, 2026-08-29).
     reactKcProcGlow        = false,     -- KC slot: Blizzard action-button overlay glow while the proc is up (else the static border)
+    reactRaptorGoGlow      = false,     -- Raptor slot: the same overlay glow while the weave coach says GO (move-in cue)
     kcActionBarGlow        = false,     -- glow the real action-bar button(s) holding Kill Command while the proc is up (any HUD mode)
     reactRangeTint         = "off",     -- React grid slots whose spell is out of range: "off" | "red" | "grey"
     reactTileDim           = false,     -- a tile on cooldown or not usable: desaturated at 60% (the WA's condition 1)
@@ -706,7 +708,7 @@ Nock.Defaults = {
     -- inherits reactScale); false = the default weld above the cluster. Written
     -- by drag / nudge pad in /nock unlock; the pad's reset re-welds.
     reactBuffRowPos      = false,
-    reactBuffDisabled    = {},          -- ["mendPet"|"feedPet"|"intimidation"|"lotp"|"feign"|"misdirect"|"grace"|"windfury"|"frenzy"|"movein"] = true → hide
+    reactBuffDisabled    = {},          -- ["mendPet"|"feedPet"|"intimidation"|"lotp"|"feign"|"misdirect"|"grace"|"windfury"|"frenzy"|"movein"|"weave"] = true → hide
     reactBuffCustom      = {},          -- extra proc buff spellIDs (array), exact-ID matched like IMPORTANT_IDS
     -- React corner status icons (UI/Frame_ReactCorners.lua): the reference
     -- WeakAura's aspect (top-left) and Hunter's Mark (top-right) flanking the

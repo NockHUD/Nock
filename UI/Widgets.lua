@@ -1479,6 +1479,11 @@ function Nock.UI.ReactSlotLook(cd, out, opts, res)
   else
     res.glow = nil
   end
+  -- React move-in cue: the Raptor slot lights with the overlay glow while the
+  -- weave coach says GO (Frame_ReactCooldowns sets goGlow for that slot only).
+  -- Independent of the slot's own state -- the coach already folded Raptor's
+  -- cooldown, the swing and the range in (Modules/WeaveCoach.lua).
+  if opts.goGlow then res.glow = "overlay" end
   local desat = (opts.whenActive and vis == "cd") or false
   local tint, alpha = nil, 1
   if opts.dim and vis ~= "proc" and (vis == "cd" or cd.usable == false) then
@@ -1496,6 +1501,76 @@ function Nock.UI.ReactSlotLook(cd, out, opts, res)
 end
 
 -- One string per distinct look, for the painter's change guard.
+----------------------------------------------------------------------------
+-- React melee bar weave-stage cue (UI/Frame_ReactCluster.lua). Pure helpers:
+-- the stage -> takeover look, the marching chevrons' slide and the RELEASE
+-- flash. Stage semantics live in Modules/WeaveCoach.lua.
+----------------------------------------------------------------------------
+
+-- One shared look per stage (never allocated per call -- the tick reads it).
+--   text   the takeover word
+--   fill   the bar's fill colour while the stage is up (also the legacy
+--          9px text colour when the takeover is switched off)
+--   march  1 = chevrons run toward the centre (step in), -1 = outward
+--          (back out), 0 = still
+--   flash  one bright flash on entry
+local REACT_STAGE_LOOK = {
+  GO      = { text = "GO IN",    fill = { 0.20, 0.90, 0.30, 1.00 }, march =  1 },
+  HOLD    = { text = "HOLD",     fill = { 1.00, 0.70, 0.00, 1.00 }, march =  0 },
+  STRUCK  = { text = "BACK OUT", fill = { 0.40, 0.70, 1.00, 1.00 }, march = -1 },
+  RELEASE = { text = "RELEASE",  fill = { 0.20, 0.90, 0.30, 1.00 }, march =  0, flash = true },
+}
+
+function Nock.UI.ReactStageLook(stage)
+  return stage and REACT_STAGE_LOOK[stage] or nil
+end
+
+-- LEFT-anchor x offset of a glyph run that repeats every `pitch` units and
+-- slides one pitch per `period` seconds. dir 1 slides right (-pitch -> 0),
+-- dir -1 slides left (0 -> -pitch); the wrap is seamless because the run is
+-- periodic, and the offset never leaves [-pitch, 0], so a run built two
+-- pitches longer than its clip frame always covers it.
+function Nock.UI.MarchOffset(now, pitch, dir, period)
+  period = period or 0.7
+  pitch = tonumber(pitch) or 0
+  if pitch <= 0 or period <= 0 or not dir or dir == 0 then return 0 end
+  local phase = (now / period) % 1
+  if dir < 0 then return -phase * pitch end
+  return (phase - 1) * pitch
+end
+
+-- Settings preview (SESSION-ONLY, Nock.UI.stagePreview, never a profile key):
+-- cycles the four stages so the takeover and the Raptor glow can be styled
+-- without a fight. One stage per `period` seconds, in coach order.
+local PREVIEW_STAGES = { "GO", "HOLD", "STRUCK", "RELEASE" }
+function Nock.UI.PreviewStage(now, period)
+  period = period or 1.5
+  if period <= 0 then return PREVIEW_STAGES[1] end
+  local i = math.floor(now / period) % #PREVIEW_STAGES
+  return PREVIEW_STAGES[i + 1]
+end
+
+-- THE stage every React consumer reads (melee takeover, Raptor glow): the
+-- coach's committed stage, or the preview cycle while it is ticked and the
+-- player is out of combat (the preview never overrides a live fight).
+function Nock.UI.StagePreviewOn()
+  return (Nock.UI.stagePreview and not (InCombatLockdown and InCombatLockdown())) and true or false
+end
+function Nock.UI.CoachStage(state, now)
+  if Nock.UI.StagePreviewOn() then
+    return Nock.UI.PreviewStage(now or GetTime())
+  end
+  return state and state.weave and state.weave.stage or nil
+end
+
+-- 1 on entry, decaying linearly to 0 at `duration`; clamped both ways.
+function Nock.UI.FlashMix(elapsed, duration)
+  if not duration or duration <= 0 then return 0 end
+  local m = 1 - (elapsed / duration)
+  if m < 0 then return 0 elseif m > 1 then return 1 end
+  return m
+end
+
 function Nock.UI.ReactLookKey(r)
   return r.vis .. "|" .. tostring(r.glow) .. "|" .. (r.desat and "d" or "-") .. tostring(r.tint)
          .. "|" .. tostring(r.alpha)
