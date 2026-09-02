@@ -21,13 +21,49 @@ local info = {
 
 -- Dedicated table for the Feign Death bar so a feign in progress never clobbers
 -- (or is clobbered by) a real cast's `info`. Rendered as a channel so the bar
--- depletes right-to-left over the remaining feign duration. `kickAt`/`_auraSeen`
--- gate the immediate-kickstart grace (see COMBAT_LOG + Refresh below).
+-- depletes right-to-left over the remaining feign duration.
+--
+-- Whether the feign is ON is this module's own bookkeeping (`_active`), not a
+-- reading of state.player.feign: that record is a 10 Hz, revision-gated aura
+-- scan, and projecting it into `casting` unconditionally meant one stale scan
+-- put a six-minute lockout in the field that re-lodged after every later cast
+-- (2026-09-02 report). The combat log's SPELL_CAST_SUCCESS / SPELL_AURA_APPLIED
+-- start it; any of three independent signals ends it — SPELL_AURA_REMOVED, the
+-- aura record vanishing after it was seen, the client's UnitIsFeignDeath flag
+-- dropping after it was seen — plus the hard cap. `removedAt` stamps the last
+-- end we saw, so an aura record applied BEFORE it is stale and cannot restart
+-- the bar; one applied after it (a /reload mid-feign, a missed edge) can.
 local fdInfo = {
   name = nil, spellId = nil, icon = nil,
   startTime = 0, endTime = 0, isChannel = true, fd = true,
-  kickAt = 0, _auraSeen = false,
+  _active = false, removedAt = 0, _auraSeen = false, _flagSeen = false,
 }
+
+-- When the aura record says the feign was applied, or nil when it can't say
+-- (no duration reported).
+local function feignAppliedAt(feign)
+  if feign and feign.duration and feign.duration > 0
+     and feign.expirationTime and feign.expirationTime > 0 then
+    return feign.expirationTime - feign.duration
+  end
+  return nil
+end
+
+local function feignStart(now)
+  fdInfo._active   = true
+  fdInfo._auraSeen = false
+  fdInfo._flagSeen = false
+  fdInfo.startTime = now
+  fdInfo.endTime   = now + Nock.Constants.FEIGN_DEATH_DURATION
+end
+
+local function feignEnd(now)
+  fdInfo._active   = false
+  fdInfo.removedAt = now
+  if Nock.state.player.casting == fdInfo then
+    Nock.state.player.casting = nil
+  end
+end
 
 -- Dedicated table for the UNIT_SPELLCAST_START path: mounts, Hearthstone, First
 -- Aid, professions — casts the combat log never logs, so CLEU (this module's
@@ -241,8 +277,25 @@ end
 
 function CastBar:COMBAT_LOG_EVENT_UNFILTERED()
   if Nock.state.sim.active then return end   -- practice mode owns the cast
-  local _, subEvent, _, sourceGUID, _, _, _, _, _, _, _, spellId, spellName = CombatLogGetCurrentEventInfo()
+  local _, subEvent, _, sourceGUID, _, _, _, destGUID, _, _, _, spellId, spellName = CombatLogGetCurrentEventInfo()
   if sourceGUID ~= self.playerGUID then return end
+
+  -- The feign's own edges. APPLIED is a second start signal behind CAST_SUCCESS
+  -- (harmless when both arrive); REMOVED is the authoritative end — the stand-up
+  -- is logged in the same frame it happens, no scan in between.
+  if spellId == Nock.Constants.SpellID.FEIGN_DEATH and destGUID == self.playerGUID then
+    if subEvent == "SPELL_AURA_APPLIED" then
+      if not fdInfo._active then
+        feignStart(GetTime())
+        if not fdInfo.name then fdInfo.name = feignName() end
+        fdInfo.spellId = spellId
+      end
+      return
+    elseif subEvent == "SPELL_AURA_REMOVED" then
+      feignEnd(GetTime())
+      return
+    end
+  end
 
   if subEvent == "SPELL_CAST_START" then
     -- The wind-up goes to its own field, so it can neither clobber a real cast
@@ -278,18 +331,14 @@ function CastBar:COMBAT_LOG_EVENT_UNFILTERED()
     -- max duration); Refresh() then hands off to the real aura timing once the
     -- next UNIT_AURA scan populates state.player.feign.
     if subEvent == "SPELL_CAST_SUCCESS" and spellId == Nock.Constants.SpellID.FEIGN_DEATH then
-      local now = GetTime()
       local icon
       if GetSpellInfo then local _, _, ic = GetSpellInfo(spellId); icon = ic end
+      feignStart(GetTime())
       fdInfo.name      = feignName()
       fdInfo.spellId   = spellId
       fdInfo.icon      = icon or fdInfo.icon
-      fdInfo.startTime = now
-      fdInfo.endTime   = now + Nock.Constants.FEIGN_DEATH_DURATION
       fdInfo.isChannel = true
       fdInfo.fd        = true
-      fdInfo.kickAt    = now
-      fdInfo._auraSeen = false
       Nock.state.player.casting = fdInfo
       return
     end
@@ -311,11 +360,18 @@ function CastBar:UNIT_SPELLCAST_START(event, unit)
   if Nock.state.sim.active then return end   -- practice mode owns the cast
   if unit ~= "player" then return end
   if not unitCastPathEnabled() then return end
-  -- Never clobber a cast the CLEU or Feign Death path already owns. Combat casts
-  -- are the primary product and their timing is already correct; for a spell where
-  -- both paths fire (Steady Shot), whichever arrives first wins and the other is
-  -- a no-op — so the rendered result is identical to today either way.
-  if Nock.state.player.casting then return end
+  -- Never clobber a cast the CLEU path already owns. Combat casts are the
+  -- primary product and their timing is already correct; for a spell where both
+  -- paths fire (Steady Shot), whichever arrives first wins and the other is a
+  -- no-op — so the rendered result is identical to today either way.
+  --
+  -- The Feign Death record is the exception: a cast is what BREAKS a feign, so
+  -- a START while it sits in the field is a real cast the bar must show. It used
+  -- to be refused like any other occupant, and a mount pressed right after a
+  -- quick feign (the aggro drop) never got a bar (2026-09-02 report) — the
+  -- stand-up's SPELL_AURA_REMOVED can land after this event.
+  local c = Nock.state.player.casting
+  if c and not c.fd then return end
   if not applyFromUnitCastingInfo(unitInfo) then return end
   -- Auto Shot must never reach `casting` — that field means "locked out", and the
   -- wind-up is the opposite. UnitCastingInfo is not believed to return spell 75
@@ -443,30 +499,52 @@ function CastBar:Refresh(state)
   -- fdInfo into the field the simulator is publishing into.
   if Nock.state.sim.active then return end
 
-  -- Feign Death bar: project state.player.feign into the cast bar as a channel
-  -- so it depletes right-to-left. The live aura's expirationTime drives the
-  -- true remaining time; the bar clears the moment the buff drops (stand up).
+  -- Feign Death bar. The feign is ON per fdInfo._active (combat-log edges, see
+  -- the table's comment); state.player.feign only supplies the timing, and only
+  -- when it is not a record from before the last end we saw. Each end signal
+  -- below stands alone — whichever the client delivers first wins, and a
+  -- missed one costs nothing but latency.
   local feign = state.player.feign
-  if feign then
-    local dur = (feign.duration and feign.duration > 0) and feign.duration
-                or Nock.Constants.FEIGN_DEATH_DURATION
-    local exp = (feign.expirationTime and feign.expirationTime > 0) and feign.expirationTime
-                or (now + dur)
+  local applied = feignAppliedAt(feign)
+  local stale = applied ~= nil and applied <= fdInfo.removedAt
+  if feign and stale then feign = nil end
+
+  if fdInfo._active then
+    if feign then
+      fdInfo._auraSeen = true
+    elseif fdInfo._auraSeen then
+      feignEnd(now)                       -- aura seen, then gone: stood up
+    end
+    if UnitIsFeignDeath then
+      if UnitIsFeignDeath("player") then
+        fdInfo._flagSeen = true
+      elseif fdInfo._flagSeen then
+        feignEnd(now)                     -- the client's own flag dropped
+      end
+    end
+    if now > fdInfo.endTime then feignEnd(now) end   -- hard cap
+  elseif feign and applied ~= nil then
+    -- A fresh record with no edge seen: /reload mid-feign, or a missed start.
+    feignStart(now)
+    fdInfo._auraSeen = true
+  end
+
+  if fdInfo._active then
+    if feign then
+      local dur = (feign.duration and feign.duration > 0) and feign.duration
+                  or Nock.Constants.FEIGN_DEATH_DURATION
+      local exp = (feign.expirationTime and feign.expirationTime > 0) and feign.expirationTime
+                  or (now + dur)
+      fdInfo.icon      = feign.icon or fdInfo.icon
+      fdInfo.startTime = exp - dur
+      fdInfo.endTime   = exp
+    end
     if not fdInfo.name then fdInfo.name = feignName() end
     fdInfo.spellId   = Nock.Constants.SpellID.FEIGN_DEATH
-    fdInfo.icon      = feign.icon or fdInfo.icon
-    fdInfo.startTime = exp - dur
-    fdInfo.endTime   = exp
     fdInfo.isChannel = true
     fdInfo.fd        = true
-    fdInfo._auraSeen = true
     state.player.casting = fdInfo
   elseif c and c.fd then
-    -- No feign aura present. Clear once the aura has been seen and dropped
-    -- (stood up), once the kickstart grace lapses with no aura ever appearing
-    -- (e.g. the cast was resisted), or at the hard FD-duration cap.
-    if fdInfo._auraSeen or now > fdInfo.kickAt + 0.6 or now > fdInfo.endTime then
-      state.player.casting = nil
-    end
+    state.player.casting = nil
   end
 end
