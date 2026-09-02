@@ -84,23 +84,14 @@ function HelpersClick:OnRegen()
 end
 
 -- Sets the secure attributes for one row. Out of combat only (caller checks).
+-- Always a macro: the text carries the unit, so a scroll never lands on the
+-- current target (see Helpers.ClickMacro).
 local function arm(b, row)
   local id, kind, slot = row.applyItem, row.applyKind, row.applySlot or 16
   if b._itemId == id and b._kind == kind and b._slot == slot then return end
-  if kind == "pet" then
-    b:SetAttribute("type", "macro")
-    b:SetAttribute("item", nil)
-    -- [target=pet] works on this client; [@pet] silently does not.
-    b:SetAttribute("macrotext", "/use [target=pet] item:" .. id)
-  elseif kind == "weapon" then
-    b:SetAttribute("type", "macro")
-    b:SetAttribute("item", nil)
-    b:SetAttribute("macrotext", "/use item:" .. id .. "\n/use " .. slot)
-  else
-    b:SetAttribute("type", "item")
-    b:SetAttribute("macrotext", nil)
-    b:SetAttribute("item", "item:" .. id)
-  end
+  b:SetAttribute("type", "macro")
+  b:SetAttribute("item", nil)
+  b:SetAttribute("macrotext", Nock:GetModule("Helpers").ClickMacro(kind, id, slot))
   b._itemId, b._kind, b._slot = id, kind, slot
 end
 

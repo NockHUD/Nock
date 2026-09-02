@@ -208,6 +208,7 @@ Nock.state = {
     --            unit = "player"|"pet"|"mh"|"oh"|nil (the YOU / PET / MAIN / OFF strip),
     --            sub = "agi"|"str"|"mh"|"oh"|nil (which scroll / hand is missing),
     --            applyItem = item ID a click would use or nil,
+    --            cdStart, cdDuration = the refill item's cooldown (0, 0 when none),
     --            applyKind = "item"|"pet"|"weapon", applySlot = 16|17 for weapon,
     --            applyName }
   },

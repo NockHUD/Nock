@@ -195,6 +195,8 @@ function HelpersView:OnInitialize()
     slot:Hide()
     slot._lastIcon, slot._lastText, slot._lastLabel = nil, "", nil
     slot._lastPhase, slot._lastTag, slot._lastClick = nil, nil, nil
+    slot._lastCdStart, slot._lastCdDur = nil, nil
+    if slot.cooldown then slot.cooldown.noCooldownCount = true end
     self.slots[i] = slot
   end
   self._slotX = {}          -- per-slot TOPLEFT x offsets, read by SlotOffset
@@ -440,6 +442,14 @@ function HelpersView:Refresh(state)
         slot.ptr:Hide()
         slot._lastClick = false
         slot._lastPhase = nil   -- re-apply the phase border next tick
+      end
+
+      -- The refill item's cooldown (and the GCD it triggers) sweeps the badge,
+      -- so a click that "did nothing" reads as "not ready yet" instead.
+      local cs, cd = h.cdStart or 0, h.cdDuration or 0
+      if cs ~= slot._lastCdStart or cd ~= slot._lastCdDur then
+        slot.cooldown:SetCooldown(cs, cd)
+        slot._lastCdStart, slot._lastCdDur = cs, cd
       end
 
       local txt = (h.phase == "expiring") and formatDur(h.remaining) or ""

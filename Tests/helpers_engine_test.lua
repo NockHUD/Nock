@@ -259,8 +259,17 @@ buffs.player = {
   { name = "Strength", exp = now + 1200, spellId = 33082 },
 }
 h = refresh()
-ok(h.scrollPlayer and h.scrollPlayer.sub == nil and h.scrollPlayer.label == "SCROLLS"
-   and h.scrollPlayer.phase == "expiring", "both up, expiring -> SCROLLS")
+-- Both up: the sooner scroll is the sub, so the badge names the one to
+-- reapply and a click uses exactly that scroll.
+ok(h.scrollPlayer and h.scrollPlayer.sub == "agi" and h.scrollPlayer.label == "AGI"
+   and h.scrollPlayer.phase == "expiring", "both up, expiring -> names the sooner (AGI)")
+buffs.player = {
+  { name = "Agility",  exp = now + 1200, spellId = 33077 },
+  { name = "Strength", exp = now + 100,  spellId = 33082 },
+}
+h = refresh()
+ok(h.scrollPlayer and h.scrollPlayer.sub == "str" and h.scrollPlayer.applyItem == 27503,
+   "both up, Strength sooner -> STR row, click applies Strength")
 ok(h.flask and h.flask.unit == nil, "flask has no unit tag")
 ok(h.kibler and h.kibler.unit == "pet" and h.kibler.applyKind == "pet", "pet food is pet-targeted")
 
@@ -296,8 +305,14 @@ resetWorld()
 bags[27655] = 1
 buffs.player = { { name = "Food", exp = now + 20, spellId = 43180 } }
 h = refresh()
+-- Eating stays clickable: the channel may be mage food (no Well Fed), and
+-- a click on the real food replaces it.
 ok(h.food and h.food.phase == "eating" and h.food.label == "EATING"
-   and h.food.applyItem == nil, "eating channel -> EATING, not clickable")
+   and h.food.applyItem == 27655, "eating channel -> EATING, still clickable")
+bags[27655] = nil
+h = refresh()
+ok(h.food and h.food.phase == "eating" and h.food.applyItem == nil,
+   "eating with no food in bags -> EATING, not clickable")
 resetWorld()
 bags[23529] = 1
 Nock.state.player.casting = { name = "Use23529" }
@@ -336,8 +351,9 @@ ok(h.sharpeningStone and h.sharpeningStone.sub == "oh" and h.sharpeningStone.uni
    and h.sharpeningStone.applySlot == 17, "MH stoned -> off hand, slot 17")
 ohEnchant, ohExpMs = true, 100 * 1000
 h = refresh()
-ok(h.sharpeningStone and h.sharpeningStone.status == "expiring" and h.sharpeningStone.sub == nil
-   and math.abs(h.sharpeningStone.remaining - 100) < 1, "both stoned -> sooner expiry counts down")
+ok(h.sharpeningStone and h.sharpeningStone.status == "expiring" and h.sharpeningStone.sub == "oh"
+   and h.sharpeningStone.applySlot == 17
+   and math.abs(h.sharpeningStone.remaining - 100) < 1, "both stoned -> sooner (OH) counts down, click restones it")
 ohEnchant, ohExpMs = true, 1500 * 1000
 h = refresh()
 ok(h.sharpeningStone == nil, "both stoned, both long -> invisible")
@@ -416,6 +432,61 @@ ok(okCall and type(dump) == "string" and dump:find("food", 1, true),
    "DebugDump produces a report")
 ok(okCall and dump:find("27659 x5", 1, true), "DebugDump reports bag contents")
 ok(okCall and dump:find("33077", 1, true), "DebugDump reports the matched scroll buff")
+
+-- 14a. An EXPIRING buff is clickable when the refill is in bags: the
+-- countdown badge is a "reapply now" cue, not a cooldown.
+resetWorld()
+Nock.db.profile.parseMode = true
+bags[27498] = 1
+buffs.player = {
+  { name = "Agility",  exp = now + 100,  spellId = 33077 },
+  { name = "Strength", exp = now + 1200, spellId = 33082 },
+}
+h = refresh()
+ok(h.scrollPlayer and h.scrollPlayer.status == "expiring"
+   and h.scrollPlayer.applyItem == 27498, "expiring scroll with a scroll in bags -> clickable")
+bags[27498] = nil
+h = refresh()
+ok(h.scrollPlayer and h.scrollPlayer.status == "expiring"
+   and h.scrollPlayer.applyItem == nil and h.scrollPlayer.label == "AGI",
+   "expiring scroll with none in bags -> not clickable, label unchanged")
+Nock.db.profile.helpersClickToApply = false
+bags[27498] = 1
+h = refresh()
+ok(h.scrollPlayer and h.scrollPlayer.applyItem == nil, "expiring + click toggle off -> not clickable")
+Nock.db.profile.helpersClickToApply = nil
+
+-- 14b. The item's own cooldown (which is also where the GCD shows for an
+-- item that triggers one) rides on the row so the badge can sweep it.
+resetWorld()
+bags[27498] = 1
+buffs.player = { { name = "Strength", exp = now + 1200, spellId = 33082 } }
+_G.GetItemCooldown = function(id) if id == 27498 then return 900, 1.5, 1 end return 0, 0, 1 end
+h = refresh()
+ok(h.scrollPlayer and h.scrollPlayer.cdStart == 900 and h.scrollPlayer.cdDuration == 1.5,
+   "item cooldown published on the row")
+_G.GetItemCooldown = function() return 0, 0, 1 end
+h = refresh()
+ok(h.scrollPlayer and h.scrollPlayer.cdStart == 0 and h.scrollPlayer.cdDuration == 0,
+   "no cooldown -> zeros")
+_G.GetItemCooldown = nil
+h = refresh()
+ok(h.scrollPlayer and h.scrollPlayer.cdStart == 0 and h.scrollPlayer.cdDuration == 0,
+   "no cooldown API -> zeros")
+
+-- 14. ClickMacro: every click helper is a self-targeted macro. A plain
+-- consumable (scroll, food) must go to the player, never the current
+-- target; pet food to the pet; a stone to the named hand.
+ok(Helpers.ClickMacro("item", 27659) == "/use [target=player] item:27659",
+   "ClickMacro item -> player-targeted /use")
+ok(Helpers.ClickMacro("pet", 27661) == "/use [target=pet] item:27661",
+   "ClickMacro pet -> pet-targeted /use")
+ok(Helpers.ClickMacro("weapon", 23529, 17) == "/use item:23529\n/use 17",
+   "ClickMacro weapon -> stone on the given slot")
+ok(Helpers.ClickMacro("weapon", 23529) == "/use item:23529\n/use 16",
+   "ClickMacro weapon defaults to the main hand")
+ok(Helpers.ClickMacro(nil, 27659) == "/use [target=player] item:27659",
+   "ClickMacro unknown kind falls back to the player")
 
 print(("%d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

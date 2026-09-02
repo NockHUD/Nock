@@ -101,13 +101,17 @@ end
 
 -- Which scroll is missing, if any. Both missing reads as Agility first (the
 -- bigger hunter stat); both up returns the sooner expiry. The third value is
--- the sub-state the row publishes ("agi" / "str"), nil once both are up.
+-- the sub-state the row publishes ("agi" / "str"): the missing one, or the
+-- sooner one once both are up.
 local function scrollState(unit)
   local a = findUnitBuffIn(unit, CD.scrollAgility)
   local s = findUnitBuffIn(unit, CD.scrollStrength)
   if not a then return "missing", nil, "agi" end
   if not s then return "missing", nil, "str" end
-  return statusFromExp(math.min(a, s))
+  -- Both up: the sooner one is the sub, so an expiring badge names it and a
+  -- click reapplies THAT scroll (the entry's own data would always pick Agility).
+  local status, remaining = statusFromExp(math.min(a, s))
+  return status, remaining, (a <= s) and "agi" or "str"
 end
 
 local function isParseMode()
@@ -160,16 +164,16 @@ local function wieldingTwoHand()
 end
 
 -- Which hand is missing its stone: main hand first, then the off hand while
--- dual wielding. Both up returns the sooner expiry. Same three-value shape
--- as scrollState, so the row publishes "mh" / "oh" as its sub-state.
+-- dual wielding. Both up returns the sooner expiry and that hand. Same
+-- three-value shape as scrollState, so the row publishes "mh" / "oh".
 local function stoneState()
   local hasMH, mhLeft, hasOH, ohLeft = handStoneInfo()
   local dual = not wieldingTwoHand()
   if not hasMH then return "missing", nil, "mh" end
   if dual and not hasOH then return "missing", nil, "oh" end
-  local left = mhLeft
-  if dual and hasOH then left = math.min(mhLeft, ohLeft) end
-  return "active", left > 0 and left or nil
+  local left, sub = mhLeft, "mh"
+  if dual and hasOH and ohLeft < mhLeft then left, sub = ohLeft, "oh" end
+  return "active", left > 0 and left or nil, sub
 end
 
 local function isBossTarget()
@@ -187,6 +191,19 @@ local function targetCreatureType()
   if Nock.state.helpersTestCreature then return Nock.state.helpersTestCreature end
   if not UnitCreatureType then return nil end
   return UnitCreatureType("target")
+end
+
+-- Pure: the macro one click helper runs. Every kind is a macro with an
+-- explicit unit, because a bare `type="item"` click uses the item on the
+-- CURRENT TARGET when the item is targetable -- a scroll buffed the mob.
+-- `[target=unit]` works on this client; `[@unit]` silently does not.
+function Helpers.ClickMacro(kind, id, slot)
+  if kind == "pet" then
+    return "/use [target=pet] item:" .. id
+  elseif kind == "weapon" then
+    return "/use item:" .. id .. "\n/use " .. (slot or 16)
+  end
+  return "/use [target=player] item:" .. id
 end
 
 -- Pure: the item a click would use for a ConsumeData category. Preferred
@@ -261,6 +278,19 @@ local function isApplying(itemId)
   return cast.name == GetItemSpell(itemId)
 end
 
+-- The item's own cooldown; for an item whose use triggers the global
+-- cooldown this is where that shows too, exactly as on an action button.
+local function itemCooldown(itemId)
+  if not itemId then return 0, 0 end
+  local s, d
+  if C_Container and C_Container.GetItemCooldown then s, d = C_Container.GetItemCooldown(itemId)
+  elseif C_Item and C_Item.GetItemCooldown then s, d = C_Item.GetItemCooldown(itemId)
+  elseif GetItemCooldown then s, d = GetItemCooldown(itemId)
+  end
+  if s and d and d > 0 then return s, d end
+  return 0, 0
+end
+
 local function clickToApplyEnabled()
   local p = Nock.db and Nock.db.profile
   return not (p and p.helpersClickToApply == false)
@@ -290,7 +320,7 @@ Helpers.Catalog = {
     enabledKey    = "helperFoodEnabled",
     iconFn        = function() return itemIcon(27655) or itemIcon(27659) or 132922 end,  -- Ravager Dog
     description   = "Tracks the 'Well Fed' food buff on the player. Best hunter options: Ravager Dog (+40 AP), Spicy Hot Talbuk (+20 hit), Warp Burger / Grilled Mudfish (+20 agi).",
-    logic         = "Matched by buff spell ID against the hunter food list, with the aura name 'Well Fed' as a fallback so an unlisted food can't nag you forever. Missing when nothing is up; shows a countdown once it drops under the expiring threshold. Reads NO FOOD when you have none in your bags, EATING while the channel runs.",
+    logic         = "Matched by buff spell ID against the hunter food list, with the aura name 'Well Fed' as a fallback so an unlisted food can't nag you forever. Missing when nothing is up; shows a countdown once it drops under the expiring threshold. Reads NO FOOD when you have none in your bags, EATING while the channel runs -- still clickable then, so mage food can be swapped for the real thing.",
     check         = function() return statusFromExp(playerBuffExp("food")) end,
   },
   {
@@ -409,7 +439,7 @@ Helpers.Catalog = {
       return itemIcon(27498) or itemIcon(10309) or 134941
     end,
     description   = "Parse-mode helper: Scroll of Agility + Scroll of Strength on the player (matched by spell ID — the scroll auras are named just 'Agility' / 'Strength'). The badge carries a YOU tag.",
-    logic         = "Visible only when Parse Mode is enabled AND you're inside a raid instance (10/25-man). The badge names the scroll that is missing (AGI first, then STR) and a click applies exactly that one; once both are up the sooner expiry drives the expiring countdown as SCROLLS. Reads NO SCROLL when the missing scroll isn't in bags.",
+    logic         = "Visible only when Parse Mode is enabled AND you're inside a raid instance (10/25-man). The badge names the scroll that is missing (AGI first, then STR) and a click applies exactly that one; once both are up the sooner expiry drives the expiring countdown and names that scroll. A click also works while the countdown runs (reapply now). Reads NO SCROLL when the missing scroll isn't in bags.",
     check         = function()
       if not isParseMode() then return "hidden" end
       if not isInRaidInstance() then return "hidden" end
@@ -433,7 +463,7 @@ Helpers.Catalog = {
       return itemIcon(27498) or itemIcon(10309) or 134941
     end,
     description   = "Parse-mode helper: Scroll of Agility + Scroll of Strength on the pet (matched by spell ID). The badge carries a PET tag.",
-    logic         = "Visible only when Parse Mode is enabled, you're in a raid instance (10/25-man), AND a pet is summoned/alive. The badge names the scroll that is missing on the pet (AGI first, then STR) and a click applies exactly that one to the pet; once both are up the sooner expiry drives the expiring countdown as SCROLLS.",
+    logic         = "Visible only when Parse Mode is enabled, you're in a raid instance (10/25-man), AND a pet is summoned/alive. The badge names the scroll that is missing on the pet (AGI first, then STR) and a click applies exactly that one to the pet; once both are up the sooner expiry drives the expiring countdown and names that scroll. A click also works while the countdown runs (reapply now).",
     check         = function()
       if not isParseMode() then return "hidden" end
       if not isInRaidInstance() then return "hidden" end
@@ -588,20 +618,22 @@ function Helpers:Refresh(state)
         -- there is nothing in bags (only for MISSING — if it's merely expiring
         -- you already own the buff, and the nag is "refresh it", not "go get
         -- one"); EATING / APPLYING while the consumable is on its way.
+        -- The click: whenever the refill is in bags, MISSING or EXPIRING
+        -- alike (the countdown badge is a "reapply now" cue). EATING keeps
+        -- it, since the channel may be mage food that gives no Well Fed and
+        -- the real food replaces it; APPLYING drops it -- the item's own
+        -- cast is running and a second press would only restart it.
         local label = entry.subLabel and sub and entry.subLabel[sub] or entry.shortLabel
         local phase = surface
-        local applyItem = nil
-        if surface == "missing" then
-          if entry.phases and isEating() then
-            phase, label = "eating", "EATING"
-          elseif inBags and isApplying(inBags) then
-            phase, label = "applying", "APPLYING"
-          elseif not inBags then
-            label = entry.noLabel or label
-          elseif click then
-            applyItem = inBags
-          end
+        local applyItem = (click and inBags) or nil
+        if entry.phases and isEating() then
+          phase, label = "eating", "EATING"
+        elseif inBags and isApplying(inBags) then
+          phase, label, applyItem = "applying", "APPLYING", nil
+        elseif not inBags and surface == "missing" then
+          label = entry.noLabel or label
         end
+        local cdStart, cdDuration = itemCooldown(inBags)
 
         local n = #list + 1
         local r = ROWS[n]
@@ -619,6 +651,7 @@ function Helpers:Refresh(state)
         r.applySlot = entry.subSlot and sub and entry.subSlot[sub]
           or (entry.applyKind == "weapon" and 16) or nil
         r.applyName = applyItem and GetItemInfo and GetItemInfo(applyItem) or nil
+        r.cdStart, r.cdDuration = cdStart, cdDuration
         list[n] = r
       end
     end

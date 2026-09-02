@@ -4,6 +4,19 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 ## Unreleased
 
+- **Fix: Helpers click-to-apply used a scroll on your target.** A plain
+  consumable click was a bare item use, which the client aims at the
+  current target when the item can be targeted -- with a mob selected the
+  scroll went to the mob. Every click is now a macro with an explicit unit:
+  scrolls and food on you, pet food on the pet, stones on the named hand.
+- **Helpers click-to-apply: expiring badges click too.** A countdown badge
+  (buff about to run out) now takes a click and reapplies, like a missing
+  one; with both scrolls or both stones up it names the sooner one and the
+  click refreshes exactly that. EATING keeps the click (mage food gives no
+  Well Fed, the real food replaces it); APPLYING still does not.
+- **Helpers badges sweep the item's cooldown.** The refill item's cooldown
+  (and the global cooldown it triggers) runs on the badge, so a click that
+  did nothing reads as not-ready instead of silence.
 - **React HUD: move-in cue on the melee bar.** The weave coach's stage now
   takes over the melee bar instead of swapping its 9px text: the bar fills
   in the stage colour, triangles march the way to move (in on GO IN, out on
@@ -50,6 +63,15 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
   says MAIN or OFF, the click applies to that hand, and the stone offered
   matches the weapon (sharpening stone on a blade, weightstone on a mace).
   2H weapons stay skipped: that hand carries Windfury.
+- **Cast bar: the Feign Death bar no longer outlives the feign.** After
+  standing up, the six-minute feign bar could stay in place and come back
+  after every later cast, and the shot bars treated it as a six-minute
+  lockout; a mount pressed right after a quick feign (the aggro drop) got
+  no bar at all. The bar's on/off now follows the combat log's own
+  apply/remove edges for Feign Death (with the client's feign flag and the
+  aura scan as fall-backs) instead of trusting the aura scan alone, and a
+  cast started while the feign record is still up displaces it, since a
+  cast is what breaks a feign.
 
 ## 1.1.7
 
