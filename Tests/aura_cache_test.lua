@@ -89,6 +89,26 @@ local r1 = AC.Rev("player")
 AC.OnUnitAura("player", { isFullUpdate = false })
 ok(AC.Rev("player") == r1, "an empty update does not move rev")
 
+-- 2b. One event, both lists (2026-09-04 report): a Food channel clicked while
+--     running is applied and cancelled inside one frame, and the client folds
+--     both edges into a single UNIT_AURA that names the instance under
+--     addedAuras AND removedAuraInstanceIDs. The net result is "gone"; taking
+--     the removal first left the add behind as a record nothing ever removed
+--     (the EATING pill stuck at zero). Blizzard's own aura frames and
+--     WeakAuras go added -> updated -> removed.
+local food = aura(9, true, "Food", 433, 1, 30, 1030)
+local rBefore = AC.Rev("player")
+AC.OnUnitAura("player", { isFullUpdate = false, addedAuras = { food }, removedAuraInstanceIDs = { 9 } })
+ok(AC.ByName("player", "Food") == nil, "added + removed in one event: the record is gone")
+ok(AC.Rev("player") ~= rBefore, "rev moved for the same-event add/remove")
+-- updated + removed in one event: gone as well (the removal is the later edge)
+auras.player[9] = food
+AC.OnUnitAura("player", { isFullUpdate = false, addedAuras = { food } })
+ok(AC.ByName("player", "Food") ~= nil, "food record present")
+auras.player[9] = nil
+AC.OnUnitAura("player", { isFullUpdate = false, updatedAuraInstanceIDs = { 9 }, removedAuraInstanceIDs = { 9 } })
+ok(AC.ByName("player", "Food") == nil, "updated + removed in one event: the record is gone")
+
 -- 3. Full update flag / invalidate -> dirty, rebuilt on next read ----------------
 auras.player[7] = aura(7, true, "Ferocious Inspiration", 34456)
 AC.OnUnitAura("player", { isFullUpdate = true })

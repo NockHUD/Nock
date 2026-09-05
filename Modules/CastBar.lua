@@ -33,6 +33,16 @@ local info = {
 -- dropping after it was seen — plus the hard cap. `removedAt` stamps the last
 -- end we saw, so an aura record applied BEFORE it is stale and cannot restart
 -- the bar; one applied after it (a /reload mid-feign, a missed edge) can.
+--
+-- The ghost feign (1.1.8 report): a feign broken in the same instant it lands —
+-- an FD+trap macro, or a queued ability right behind a plain FD. Nobody ever
+-- sees the player down (no aura record, no flag), and the REMOVED edge is
+-- missing or lands before the SUCCESS, so none of the "seen, then gone" signals
+-- can arm and the bar sat on the six-minute cap (the Classic shot bars clip at
+-- that lockout and went black). A real feign is confirmed by the flag on the
+-- first tick and by the aura scan within ~0.2 s, so a record with NO evidence
+-- after FEIGN_GRACE never happened and is ended.
+local FEIGN_GRACE = 0.6
 local fdInfo = {
   name = nil, spellId = nil, icon = nil,
   startTime = 0, endTime = 0, isChannel = true, fd = true,
@@ -491,12 +501,9 @@ function CastBar:Refresh(state)
     state.player.autoShotCast = nil
   end
 
-  -- A real (non-FD) cast always wins; never let the feign bar override it.
-  if c and not c.fd then return end
-
   -- Practice mode owns state.player.casting while it is active; the stale-cast
-  -- cleanup above still runs, but the feign projection below must never lodge
-  -- fdInfo into the field the simulator is publishing into.
+  -- cleanup above still runs, but the feign bookkeeping and projection below
+  -- must never lodge fdInfo into the field the simulator is publishing into.
   if Nock.state.sim.active then return end
 
   -- Feign Death bar. The feign is ON per fdInfo._active (combat-log edges, see
@@ -504,10 +511,15 @@ function CastBar:Refresh(state)
   -- when it is not a record from before the last end we saw. Each end signal
   -- below stands alone — whichever the client delivers first wins, and a
   -- missed one costs nothing but latency.
+  --
+  -- The bookkeeping runs even while a real cast holds the field (the cast that
+  -- BROKE the feign, see UNIT_SPELLCAST_START): a ghost feign left un-ended
+  -- behind a Steady Shot re-lodged the moment the Steady landed.
   local feign = state.player.feign
   local applied = feignAppliedAt(feign)
   local stale = applied ~= nil and applied <= fdInfo.removedAt
   if feign and stale then feign = nil end
+  local realCast = c and not c.fd
 
   if fdInfo._active then
     if feign then
@@ -522,12 +534,19 @@ function CastBar:Refresh(state)
         feignEnd(now)                     -- the client's own flag dropped
       end
     end
+    if not fdInfo._auraSeen and not fdInfo._flagSeen
+       and now > fdInfo.startTime + FEIGN_GRACE then
+      feignEnd(now)                       -- ghost: no evidence of a feign at all
+    end
     if now > fdInfo.endTime then feignEnd(now) end   -- hard cap
-  elseif feign and applied ~= nil then
+  elseif feign and applied ~= nil and not realCast then
     -- A fresh record with no edge seen: /reload mid-feign, or a missed start.
     feignStart(now)
     fdInfo._auraSeen = true
   end
+
+  -- A real (non-FD) cast always wins; never let the feign bar override it.
+  if realCast then return end
 
   if fdInfo._active then
     if feign then

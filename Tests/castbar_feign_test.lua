@@ -252,5 +252,92 @@ cleu("SPELL_AURA_REMOVED", FD)
 CB:Refresh(state)
 ok(state.player.casting == nil, "6: cleanup")
 
+--------------------------------------------------------------------------------
+-- 7. THE GHOST FEIGN (1.1.8 report): a feign broken in the same instant it
+--    lands -- an FD+trap macro, or a queued ability right behind a plain FD.
+--    Nobody ever sees the player down: no aura record, no feign flag, and the
+--    combat log's REMOVED is missing or lands before the SUCCESS. None of the
+--    "seen, then gone" signals can arm, and the bar sat on the 6-minute cap
+--    (the Classic shot bars clipped at that lockout and went black). A feign
+--    with no evidence at all after the grace never happened -- end it.
+--------------------------------------------------------------------------------
+local TRAP = 13809   -- Frost Trap; any instant fired right behind the feign
+local function tickTo(t1, t2)
+  for t = t1, t2 + 1e-9, 0.05 do now = t; CB:Refresh(state) end
+end
+
+-- 7a. SUCCESS, APPLIED, trap SUCCESS; no REMOVED ever; nothing seen.
+now = 1000
+feignFlag = false
+state.player.feign = nil
+state.player.casting = nil
+cleu("SPELL_CAST_SUCCESS", FD)
+cleu("SPELL_AURA_APPLIED", FD)
+cleu("SPELL_CAST_SUCCESS", TRAP)
+tickTo(1000.05, 1000.5)
+ok(feignBarUp(), "7a: inside the grace the provisional bar is still up")
+tickTo(1000.55, 1005)
+ok(state.player.casting == nil, "7a: FD+trap with no evidence of a feign ends at the grace, not the cap")
+
+-- 7b. The edges in the other order: APPLIED, REMOVED, then the SUCCESS.
+now = 1100
+cleu("SPELL_AURA_APPLIED", FD)
+cleu("SPELL_AURA_REMOVED", FD)
+cleu("SPELL_CAST_SUCCESS", FD)
+cleu("SPELL_CAST_SUCCESS", TRAP)
+tickTo(1100.05, 1105)
+ok(state.player.casting == nil, "7b: a REMOVED before the SUCCESS still does not leave a ghost feign")
+
+-- 7c. Plain FD with a queued Steady Shot behind it: the cast displaces the
+--     feign record; no REMOVED; the ghost must not come back when it lands.
+now = 1200
+cleu("SPELL_CAST_SUCCESS", FD)
+ok(feignBarUp(), "7c: feign bar up")
+now = 1200.05
+castingInfo = { name = "Steady Shot", spellId = STEADY, startMs = 1200050, endMs = 1201550 }
+cleu("SPELL_CAST_START", STEADY)
+ok(state.player.casting and state.player.casting.spellId == STEADY, "7c: the queued Steady displaces the feign record")
+tickTo(1200.1, 1201.5)
+ok(state.player.casting and state.player.casting.spellId == STEADY, "7c: the Steady bar is left alone")
+now = 1201.55
+castingInfo = nil
+cleu("SPELL_CAST_SUCCESS", STEADY)
+tickTo(1201.6, 1206)
+ok(state.player.casting == nil, "7c: after the Steady the ghost feign does not re-lodge")
+
+-- 7d. The grace never cuts a real feign: the flag is up on the first tick even
+--     when the aura scan is late, and the bar outlives the grace.
+now = 1300
+feignFlag = true
+cleu("SPELL_CAST_SUCCESS", FD)
+tickTo(1300.05, 1301)
+ok(feignBarUp(), "7d: a feign the client's flag confirms outlives the grace without an aura record")
+now = 1301.1
+auraUp(1300)
+CB:Refresh(state)
+ok(feignBarUp() and state.player.casting.endTime == 1300 + FD_DUR, "7d: the late aura record is adopted")
+now = 1302
+feignFlag = false
+cleu("SPELL_AURA_REMOVED", FD)
+state.player.feign = nil
+CB:Refresh(state)
+ok(state.player.casting == nil, "7d: cleanup")
+feignFlag = nil
+
+-- 7e. Same with the aura record alone (flag API absent), arriving inside the grace.
+now = 1400
+state.player.feign = nil
+cleu("SPELL_CAST_SUCCESS", FD)
+now = 1400.3
+auraUp(1400)
+CB:Refresh(state)
+tickTo(1400.35, 1402)
+ok(feignBarUp(), "7e: a feign the aura scan saw inside the grace stays up")
+now = 1403
+cleu("SPELL_AURA_REMOVED", FD)
+state.player.feign = nil
+CB:Refresh(state)
+ok(state.player.casting == nil, "7e: cleanup")
+
 print(string.format("castbar_feign_test: %d passed, %d failed", pass, fail))
 if fail > 0 then os.exit(1) end

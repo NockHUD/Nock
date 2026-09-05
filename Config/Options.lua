@@ -5478,7 +5478,7 @@ local function buildOptionsTable()
     sizeArgs.reactShowAutoBar  = reactToggle("reactShowAutoBar",  "Auto Shot bar",  "The converge Auto Shot bar (clip ticks, delay readout, notation).", 21)
     sizeArgs.reactShowMeleeBar = reactToggle("reactShowMeleeBar", "Melee swing bar", "Melee swing bar with the READY text and weave-coach cues.", 22)
     sizeArgs.reactMeleeStageCue = reactOptInToggle("reactMeleeStageCue", "Weave cue takes over the melee bar",
-      "While the weave coach has a stage (GO IN / HOLD / BACK OUT / RELEASE; needs the hold-to-weave key), the melee bar fills in the stage colour with chevrons marching the way to move and the word in a bigger font. Off: the stage is only the small text in the bar.", 22.1)
+      "While the weave coach has a stage (GO IN / HOLD / BACK OUT / RELEASE; needs the hold-to-weave key), the melee bar fills in the stage colour with chevrons marching the way to move and the word in a bigger font, and the buff row carries the stage as its weave slot. Off: the stage is only the small text in the bar and the row shows no weave slot.", 22.1)
     -- SESSION-ONLY (Nock.UI.stagePreview, never a profile key): cycles the
     -- four coach stages on the melee bar (and the Raptor tile's GO glow) so
     -- the cue can be looked at without a fight. Suspended in combat.
@@ -6020,7 +6020,7 @@ local function buildOptionsTable()
         { key = "windfury",     id = nil,                              fallback = "Windfury (weapon enchant)" },
         { key = "frenzy",       id = CN.REACT_BUFFS.FRENZY,            fallback = "Frenzy (pet proc)" },
         { key = "movein",       id = nil,                              fallback = "MOVE IN (target out of Auto Shot range)" },
-        { key = "weave",        id = nil,                              fallback = "Weave stage (GO IN / HOLD / BACK OUT / RELEASE, Raptor Strike icon)" },
+        { key = "weave",        id = nil,                              fallback = "Weave stage (GO IN / HOLD / BACK OUT / RELEASE, Raptor Strike icon; needs \"Weave cue takes over the melee bar\")" },
       }
       local bo = 72
       for _, be in ipairs(BUFF_ENTRIES) do

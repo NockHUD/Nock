@@ -2,6 +2,33 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
+## Unreleased
+
+- **Fix: the EATING pill could stick after a food click while moving.** A
+  food used on the run is applied and cancelled inside one frame, and the
+  client reports both edges in a single aura event. The aura cache took the
+  removal before the addition, so the addition stayed behind as a record
+  nothing ever removed, and the pill sat at zero until the next full aura
+  rebuild. The cache now applies additions, then updates, then removals
+  (the order the client's own aura frames use), and an eating or drinking
+  record whose time has run out no longer counts as eating at all.
+- **Fix: a feign broken the instant it lands no longer leaves a six-minute
+  bar (and black Classic shot bars).** An FD + trap macro, or an ability
+  queued right behind Feign Death, stands you up before anything has seen you
+  down, so 1.1.8's end signals (the combat log's removal, the aura seen then
+  gone, the client's feign flag seen then dropped) never armed and the feign
+  record sat on its six-minute cap. The Classic shot bars clip at that
+  lockout, hence a bar with nothing on it. A feign record with no evidence of
+  a feign after 0.6 s is now ended, and the bookkeeping runs even while the
+  cast that broke the feign holds the cast bar, so the ghost cannot come back
+  when that cast lands.
+- **Fix: the React buff row's weave slot now follows the move-in cue toggle.**
+  1.1.8 showed the GO IN / HOLD / BACK OUT / RELEASE slot whenever the weave
+  coach ran, even with "Weave cue takes over the melee bar" off. That toggle
+  (React HUD → Size & elements, off by default) is the one switch for the
+  whole cue: off hides the slot too, on shows it, and the Buff Row entry
+  stays the per-slot hide under it.
+
 ## 1.1.8
 
 - **Fix: Helpers click-to-apply used a scroll on your target.** A plain

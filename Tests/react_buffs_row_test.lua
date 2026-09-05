@@ -159,9 +159,19 @@ ok(#painted == 0, "dead target -> no alert")
 -- settings preview (Nock.UI.stagePreview) drives it out of combat; the
 -- ranged MOVE IN is NOT part of the preview (it is a different cue).
 --------------------------------------------------------------------------------
+-- The slot is part of the move-in cue and rides the same switch as the
+-- melee-bar takeover (reactMeleeStageCue, off by default): toggle off, no
+-- slot, whatever the coach says. (1.1.8 shipped it ungated -- user, 2026-09-03.)
 targetDead = false
 st.target.rangeZone = "SWEET"
 st.weave.stage = "GO"
+Nock.db.profile.reactMeleeStageCue = nil
+refresh()
+ok(#painted == 0, "stage GO but the melee-bar cue toggle is off -> no weave slot (" .. labels() .. ")")
+Nock.db.profile.reactMeleeStageCue = false
+refresh()
+ok(#painted == 0, "toggle explicitly false -> no weave slot")
+Nock.db.profile.reactMeleeStageCue = true
 refresh()
 ok(#painted == 1 and painted[1].label == "GO IN" and painted[1].icon == "icon-27014" and painted[1].desat == false,
    "stage GO -> GO IN slot with the Raptor Strike icon, full colour (" .. labels() .. ")")
@@ -212,6 +222,9 @@ Nock.db.profile.reactBuffDisabled.weave = true
 refresh()
 ok(#painted == 0, "weave entry disabled -> the preview shows nothing either")
 Nock.db.profile.reactBuffDisabled.weave = nil
+Nock.db.profile.reactMeleeStageCue = nil
+refresh()
+ok(#painted == 0, "cue toggle off -> the preview shows no slot either")
 Nock.UI.stagePreview = nil
 -- Back to the state the next section expects (dead target, zone OUT).
 st.target.rangeZone = "OUT"

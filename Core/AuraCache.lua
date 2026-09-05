@@ -132,14 +132,13 @@ function AC.OnUnitAura(unit, info)
     return
   end
   if st.dirty then return end
+  -- Added, then updated, then removed -- the order Blizzard's own aura frames
+  -- and WeakAuras use, and the only one whose net result is right when a
+  -- single event names one instance in two lists. A Food channel clicked
+  -- while running is applied and cancelled inside one frame; taking the
+  -- removal first found nothing, and the add then left a record nothing ever
+  -- removed (the EATING pill stuck at zero, 2026-09-04 report).
   local byInstance, changed = st.byInstance, false
-  local removed = info.removedAuraInstanceIDs
-  if removed then
-    for i = 1, #removed do
-      local id = removed[i]
-      if byInstance[id] then byInstance[id] = nil; changed = true end
-    end
-  end
   local added = info.addedAuras
   if added then
     for i = 1, #added do
@@ -154,6 +153,13 @@ function AC.OnUnitAura(unit, info)
       local a = CU.GetAuraDataByAuraInstanceID(unit, id)
       byInstance[id] = a or nil
       changed = true
+    end
+  end
+  local removed = info.removedAuraInstanceIDs
+  if removed then
+    for i = 1, #removed do
+      local id = removed[i]
+      if byInstance[id] then byInstance[id] = nil; changed = true end
     end
   end
   if changed then reindex(st) end

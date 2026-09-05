@@ -604,8 +604,11 @@ function ReactBuffs:Refresh(state)
     -- the stage word (GO IN / HOLD / BACK OUT / RELEASE), the row's part of
     -- the React move-in cue. Nock.UI.CoachStage is THE stage reading (the
     -- coach's committed stage, or the settings preview cycle out of combat),
-    -- the same one the melee bar and the Raptor tile draw from.
-    local stage = not dis.weave and Nock.UI.CoachStage(state)
+    -- the same one the melee bar and the Raptor tile draw from. The cue is
+    -- ONE switch: reactMeleeStageCue (the melee-bar takeover, off by
+    -- default) gates this slot too; the Buff Row entry is the per-slot hide
+    -- under it. (1.1.8 shipped the slot outside the switch -- user, 2026-09-03.)
+    local stage = (p.reactMeleeStageCue == true) and not dis.weave and Nock.UI.CoachStage(state)
     local stageLook = stage and Nock.UI.ReactStageLook(stage)
     if stageLook then
       -- Icon = what the weave is, the melee bar's own green/blue rule: Raptor
