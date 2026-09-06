@@ -50,7 +50,7 @@ _G.GetItemCooldown = function(id)
 end
 
 local sent = {}
-_G.SendChatMessage = function(msg, ch) sent[#sent + 1] = { msg = msg, ch = ch } end
+_G.SendChatMessage = function(msg, ch, _, to) sent[#sent + 1] = { msg = msg, ch = ch, to = to } end
 local inRaid = true
 _G.IsInRaid  = function() return inRaid end
 _G.IsInGroup = function() return true end
@@ -289,6 +289,60 @@ md("Robhunter", "Tankos", 5)
 fire("SPELL_CAST_SUCCESS", "Robhunter", 30486)
 ok(#sent == 0, "announce: off means off")
 ok(entry("Robhunter") ~= nil, "announce: the cooldown is still tracked with announce off")
+
+--------------------------------------------------------------------------------
+-- 6a. Whisper the next hunter (alphabetical, wrapping) after your OWN opener.
+--     Off by default; independent of the raid announce and its scope.
+--------------------------------------------------------------------------------
+local function whispers()
+  local out = {}
+  for _, s in ipairs(sent) do if s.ch == "WHISPER" then out[#out + 1] = s end end
+  return out
+end
+reset()
+md("Robhunter", "Tankos", 5)
+md("Otherhunter", "Tankos", 400)
+fire("SPELL_CAST_SUCCESS", "Robhunter", 30486)
+ok(#whispers() == 0, "whisper: off by default")
+
+reset({ mdSapperWhisperNext = true })
+md("Robhunter", "Tankos", 5)
+md("Otherhunter", "Tankos", 400)
+md("Zedhunter", "Tankos", 400)
+fire("SPELL_CAST_SUCCESS", "Robhunter", 30486)
+local w1 = whispers()[1]
+ok(#whispers() == 1 and w1.to == "Zedhunter", "whisper: the next hunter by name gets it")
+ok(w1 and w1.msg:find("next", 1, true) ~= nil and w1.msg:find("Robhunter", 1, true) ~= nil,
+   "whisper: says they are next and after whom")
+ok(#sent == 2, "whisper: rides alongside the raid announce")
+
+reset({ mdSapperWhisperNext = true })
+md("Robhunter", "Tankos", 5)
+md("Otherhunter", "Tankos", 400)
+fire("SPELL_CAST_SUCCESS", "Robhunter", 30486)
+ok(#whispers() == 1 and whispers()[1].to == "Otherhunter", "whisper: last in the list wraps to the first")
+
+reset({ mdSapperWhisperNext = true })
+md("Robhunter", "Tankos", 5)
+fire("SPELL_CAST_SUCCESS", "Robhunter", 30486)
+ok(#whispers() == 0, "whisper: the only hunter whispers nobody")
+
+reset({ mdSapperWhisperNext = true })
+md("Otherhunter", "Tankos", 5)
+md("Zedhunter", "Tankos", 400)
+fire("SPELL_CAST_SUCCESS", "Otherhunter", 30486)
+ok(#whispers() == 0, "whisper: another hunter's opener sends nothing (their own Nock does)")
+
+reset({ mdSapperWhisperNext = true, mdSapperAnnounce = false })
+md("Robhunter", "Tankos", 5)
+md("Zedhunter", "Tankos", 400)
+fire("SPELL_CAST_SUCCESS", "Robhunter", 30486)
+ok(#sent == 1 and sent[1].ch == "WHISPER", "whisper: goes out even with the raid announce off")
+
+reset({ mdSapperWhisperNext = true })
+md("Zedhunter", "Tankos", 400)
+fire("SPELL_CAST_SUCCESS", "Robhunter", 30486)
+ok(#whispers() == 0, "whisper: a bare sapper with no MD behind it is not an opener")
 
 --------------------------------------------------------------------------------
 -- 6b. The "next up in the rotation" call-out. Fired by the per-hunter button on

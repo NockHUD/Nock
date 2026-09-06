@@ -12,6 +12,9 @@ local registered
 local libs = {}
 libs["AceAddon-3.0"] = { GetAddon = function() return _G.NockStub end }
 libs["AceConfig-3.0"] = { RegisterOptionsTable = function(_, _, opts) registered = opts end }
+local notified = 0
+libs["AceConfigRegistry-3.0"] = { NotifyChange = function() notified = notified + 1 end,
+  GetOptionsTable = function() return function() return registered end end, RegisterCallback = function() end }
 libs["AceDBOptions-3.0"] = { GetOptionsTable = function() return { type = "group", name = "Profiles", args = {} } end }
 local dialogClosed = 0
 libs["AceConfigDialog-3.0"] = { AddToBlizOptions = function() return {} end, Close = function() dialogClosed = dialogClosed + 1 end }
@@ -81,7 +84,7 @@ local root = registered.args
 
 -- Family tree at the root
 local expectedRoot = {
-  general = true, hud = true, alerts = true, trackers = true,
+  general = true, hud = true, alerts = true, trackers = true, pvp = true,
   utilities = true, experimental = true, profiles = true,
 }
 for k in pairs(expectedRoot) do ok(root[k] ~= nil, "root has " .. k) end
@@ -115,16 +118,19 @@ ok(classicChild("rotation") and classicChild("rotation").name == "Shot Bars",
 -- (parity with the React landing).
 ok(CB.intro and CB.intro.type == "description", "classic landing has an intro line")
 ok(CB.hudMode and CB.hudMode.type == "select", "classic landing has the HUD look picker")
-for _, key in ipairs({ "warnings", "helpers" }) do
+for _, key in ipairs({ "warnings", "aggro", "helpers", "sounds" }) do
   ok(child("alerts", key), "alerts family holds " .. key)
 end
-for _, key in ipairs({ "buffTracker", "debuffTracker", "totemTracker", "misdirect" }) do
+for _, key in ipairs({ "buffTracker", "debuffTracker", "misdirect" }) do
   ok(child("trackers", key), "trackers family holds " .. key)
 end
-for _, key in ipairs({ "shopping", "mailbox", "weaveBind", "garment", "tonk", "practice" }) do
+ok(child("trackers", "totemTracker") == nil and CB.totemTracker and CB.totemTracker.type == "group", "Totem Tracker is a Classic HUD tab, not a Trackers page")
+for _, key in ipairs({ "qol", "shopping", "mailbox", "weaveBind", "garment", "tonk", "practice" }) do
   ok(child("utilities", key), "utilities family holds " .. key)
 end
-for _, fam in ipairs({ "hud", "alerts", "trackers", "utilities" }) do
+-- (the per-debuff pvpdbf_* rows come from the real Constants, stubbed here; options_ux_test sees them)
+ok(child("pvp", "pvpMode") and child("pvp", "pvpMode").args.pvpMode and child("pvp", "pvpMode").args.pvpWeaveNoMovePad, "pvp family holds the PvP mode page")
+for _, fam in ipairs({ "hud", "alerts", "trackers", "pvp", "utilities" }) do
   ok(root[fam].childGroups == "tree", fam .. " renders children as a tree")
   ok(root[fam].args.intro, fam .. " has an intro line")
 end
@@ -169,6 +175,10 @@ for _, key in ipairs({ "grpLook", "grpVisibility", "grpCastBar", "grpMedia", "gr
   ok(g[key] and not g[key].inline, "general: " .. key .. " is a sidebar child, not inline")
 end
 ok(g.grpSetup and g.grpSetup.args.setupCheckIntro, "general: setup-check tab holds the intro")
+ok(g.settingsScale and g.settingsScale.type == "select" and g.settingsScale.values["0.75"] and g.settingsScale.values["1.5"], "general: settingsScale is a four-step select")
+for k, v in pairs(g.grpSetup and g.grpSetup.args or {}) do
+  if k:find("^setup_") then ok(type(v.hidden) == "function", "setup check card carries a live hidden predicate: " .. k) end
+end
 ok(g.setupCheckHeader == nil and g.setupCheckIntro == nil, "general: setup-check entries moved off the top level")
 ok(g.reactHeader == nil and g.bgHeader == nil and g.mediaHeader == nil, "general: headers gone")
 ok(g.hudMode == nil and g.opacity == nil, "general: no duplicates left at tab level")
@@ -303,13 +313,16 @@ ok(wa.cat_other and wa.cat_other.args.warning_test2,
    "warnings: category-less warning falls back to the Other node")
 ok(wa.settings.order < wa.cat_pet.order and wa.cat_pet.order < wa.cat_other.order,
    "warnings: settings first, Other last")
-local hg = child("alerts", "helpers").args.helper_htest1
+local hg = child("alerts", "helpers").args.tabBuffs.args.helper_htest1
 ok(hg and hg.inline == true and hg.name == "Test Helper",
    "helpers: still flat inline boxes with a plain name")
 
 -- Helpers overhaul: the expiring-warning threshold plus the layout knobs the
 -- panel gained when it became a standard movable/styled floating panel.
-local ha = child("alerts", "helpers").args
+local ha = child("alerts", "helpers").args.tabSettings.args
+ok(child("alerts", "helpers").args.tabBuffs.type == "group" and child("alerts", "helpers").args.tabSettings.type == "group"
+   and child("alerts", "helpers").args.intro ~= nil,
+   "helpers: Buffs and Settings tabs, intro left on the page")
 ok(ha.helpersExpiringThreshold and ha.helpersExpiringThreshold.type == "range"
    and ha.helpersExpiringThreshold.min == 0 and ha.helpersExpiringThreshold.max == 1800,
    "helpers: expiring threshold slider 0..1800")
@@ -335,17 +348,15 @@ ok(ha.helpersResetPos and ha.helpersResetPos.type == "execute",
 -- (Config/Defaults.lua), never in prose the user reads.
 ok(ha.helpersHideWA and not ha.helpersHideWA.desc:find("Fojji", 1, true),
    "helpers: WA auto-hide desc carries no third-party name")
-ok(ha.intro and not ha.intro.name:find("32px", 1, true),
+local hintro = child("alerts", "helpers").args.intro
+ok(hintro and not hintro.name:find("32px", 1, true),
    "helpers: intro rewritten (no stale 32px copy)")
 
--- Experimental sub-pages: one sidebar child per experiment (the countdown
--- dial rides with the medallion — it's the same experiment). Landing page
+-- Experimental sub-pages: one sidebar child per experiment. Landing page
 -- keeps only the opt-in disclaimer.
 local ex = root.experimental.args
 ok(root.experimental.childGroups == "tree", "experimental: children are sidebar sub-pages")
-ok(ex.grpMedallion and not ex.grpMedallion.inline
-   and ex.grpMedallion.args.medallionEnabled and ex.grpMedallion.args.medallionRingColorHold,
-   "experimental: medallion page holds the icon AND ring controls")
+ok(ex.grpMedallion == nil, "experimental: the V3 medallion is gone")
 ok(ex.grpSapper and ex.grpSapper.args.mdSapperAnnounceScope,
    "experimental: sapper column page")
 ok(ex.grpZoom and ex.grpZoom.args.rangeZoomLevel,
@@ -566,11 +577,12 @@ local function onlyKeys(args, allowed, label, prefixes)
   end
 end
 onlyKeys(root.general.args,
-  { "intro", "lockState", "lockAll", "unlockAll", "editGridHeader", "editGridShow", "editGridSize", "editGridSnap", "editSnapBy", "minimapIcon", "perfPanel", "runWizard", "resetPos", "scale",
+  { "intro", "lockState", "lockAll", "unlockAll", "editGridHeader", "editGridShow", "editGridSize", "editGridSnap", "editSnapBy", "minimapIcon", "perfPanel", "runWizard", "resetPos", "scale", "settingsScale",
     "grpLook", "grpVisibility", "grpCastBar", "grpMedia", "grpSetup" },
   "general")
 onlyKeys(root.hud.args, { "intro", "hudMode", "classic", "react", "fluffy" }, "hud family")
-onlyKeys(root.experimental.args, { "intro", "grpMedallion", "grpSapper", "grpZoom", "grpRelease" }, "experimental")
+onlyKeys(root.experimental.args, { "intro", "grpSapper", "grpZoom", "grpStrip", "grpRelease" }, "experimental")
+ok(ex.grpStrip and ex.grpStrip.args.reactRangeStrip and ex.grpStrip.args.reactRangeStripH, "experimental: React position strip page")
 onlyKeys(wa, { "masterToggle", "intro", "settings" }, "warnings", { "cat_" })
 onlyKeys(wa.settings and wa.settings.args or {},
   { "appearanceHeader", "warningsPositionNote", "warningsResetPosition",
@@ -597,7 +609,7 @@ onlyKeys(classicChild("rotation").args,
 -- React subtab whitelists: the dynamic rebuilders write keys by prefix into
 -- their OWN subtab table — a key surfacing anywhere else means a rebuilder
 -- is still aiming at the react root (it would render on the landing page).
-onlyKeys(ra, { "intro", "hudMode", "tabSize", "tabBars", "tabRange", "tabGrid", "tabBuff", "tabSkin" },
+onlyKeys(ra, { "intro", "hudMode", "useLook", "tabSize", "tabBars", "tabRange", "tabGrid", "tabBuff", "tabSkin" },
   "react root")
 onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "elementsNote",
   "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview", "reactShowRangeBar", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
@@ -689,7 +701,7 @@ ok(fnode.name():find("active", 1, true)
    and not child("hud", "classic").name():find("active", 1, true),
    "fluffy mode badges only the fluffy branch")
 Nock.db.profile.hudMode = nil
-onlyKeys(fa, { "intro", "hudMode", "tabSize", "tabBars", "tabGrid", "tabBuff", "tabSkin" }, "fluffy root")
+onlyKeys(fa, { "intro", "hudMode", "useLook", "tabSize", "tabBars", "tabGrid", "tabBuff", "tabSkin" }, "fluffy root")
 local faSize = fa.tabSize and fa.tabSize.args or {}
 local faBars = fa.tabBars and fa.tabBars.args or {}
 local faGrid = fa.tabGrid and fa.tabGrid.args or {}
@@ -838,7 +850,7 @@ local styled = {
   { args = child("trackers", "debuffTracker").args, prefix = "debuffTracker" },
   { args = child("utilities", "shopping").args,     prefix = "shopping" },
   { args = cc,                                      prefix = "castBar" },
-  { args = child("alerts", "helpers").args,         prefix = "helpers" },
+  { args = child("alerts", "helpers").args.tabSettings.args, prefix = "helpers" },
 }
 for _, s in ipairs(styled) do
   local a, p = s.args, s.prefix
@@ -1175,6 +1187,13 @@ end
 -- The panel block on the cast bar page still exists alongside the track block.
 ok(CB.castBar and CB.castBar.args.castBarBgColor and CB.castBar.args.castBarTrackBgColor,
    "cast bar page carries BOTH the panel background and the bar track blocks")
+
+-- RebuildOptionsArgs: the dynamic rows follow the profile (settings window, 2026-09).
+Nock.db.profile.cooldownCustom = { { id = 34026, label = "KC" } }
+ok(type(Nock.RebuildOptionsArgs) == "function", "Nock:RebuildOptionsArgs exists")
+local beforeNotify = notified
+Nock:RebuildOptionsArgs()
+ok(notified > beforeNotify, "RebuildOptionsArgs notifies the registry")
 
 print(("%d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

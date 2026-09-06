@@ -655,7 +655,7 @@ function T.Strip(events, n, live, opts, out)
   -- A hit note behind the cursor is not re-drawn -- the event stream already
   -- draws the cast that took it -- but a PENDING note stays on the strip past
   -- its time, wearing NEXT, until the grader sweeps it: that is the note the
-  -- medallion is still asking for. An unplayable note (cooldown) keeps its slot,
+  -- rotation row is still asking for. An unplayable note (cooldown) keeps its slot,
   -- dimmed (`oncd`). With no plan in hand (a fixture) nothing is projected.
   if plan and plan.live then
     local nextIdx = plan.nextIdx

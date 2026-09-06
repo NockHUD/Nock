@@ -25,10 +25,17 @@ Rotations\Profiles.lua
 
 Config\Defaults.lua
 Config\Options.lua
+Config\OptionsAdvanced.lua
+Config\OptionsLayoutData.lua
+Config\OptionsLayout.lua
+Config\Presets.lua
+Core\OptionsWalk.lua
 
 UI\IconAtlas.lua
 UI\Skin.lua
 UI\Widgets.lua
+UI\KeyCapture.lua
+UI\ScrollColumn.lua
 UI\PracticeTransport.lua
 UI\PracticePalette.lua
 UI\EditMode.lua
@@ -36,6 +43,10 @@ UI\Frame_EditGrid.lua
 UI\Frame_EditList.lua
 UI\AceGUI_LSMDropdown.lua
 UI\AceGUI_BarLegends.lua
+UI\SettingsControls.lua
+UI\Frame_Settings.lua
+UI\SettingsLauncher.lua
+UI\SettingsLayouts.lua
 UI\HUD.lua
 
 Modules\SwingTimer.lua
@@ -50,6 +61,7 @@ Modules\ActionGlow.lua
 Modules\RangeEngine.lua
 Modules\RangeFinder.lua
 Modules\RangeSounds.lua
+Modules\WeaveSounds.lua
 Modules\TonkEngine.lua
 Modules\BossMarkEngine.lua
 Modules\SlammerEngine.lua
@@ -75,6 +87,7 @@ Modules\TotemTracker.lua
 Modules\ShoppingList.lua
 Modules\Durability.lua
 Modules\Mailbox.lua
+Modules\QoL.lua
 Modules\SetupCheck.lua
 Modules\Onboarding.lua
 Modules\WeaveBind.lua
@@ -83,11 +96,13 @@ Modules\WeaveCoach.lua
 Modules\PetTrainer.lua
 Modules\PetTrainer_ListFilter.lua
 Modules\Profiler.lua
+Modules\AggroWarning.lua
+Modules\PvPMode.lua
+Modules\CCAlert.lua
 
 UI\Frame_CastBar.lua
 UI\Frame_Rotation.lua
 UI\Frame_ShotBars.lua
-UI\Frame_Medallion.lua
 UI\Frame_SwingTimers.lua
 UI\Frame_ReleaseBar.lua
 UI\Frame_ManaBar.lua
@@ -103,6 +118,8 @@ UI\Frame_FluffyCooldowns.lua
 UI\Frame_InfoRow.lua
 UI\Frame_PetStatus.lua
 UI\Frame_Warnings.lua
+UI\Frame_AggroWarning.lua
+UI\Frame_PvPBadge.lua
 UI\Frame_TonkDial.lua
 UI\Frame_BossBanner.lua
 UI\Frame_SlammerButton.lua

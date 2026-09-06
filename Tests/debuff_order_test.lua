@@ -75,7 +75,9 @@ local function keysOf(list)
 end
 
 local function catalogKeys()
-  return keysOf(C.DEBUFF_CURATED)
+  local out = {}
+  for _, e in ipairs(C.DEBUFF_CURATED) do if not e.pvpOnly then out[#out + 1] = e.key end end
+  return out
 end
 
 --------------------------------------------------------------------------------
@@ -91,7 +93,7 @@ ok(byKey.iswarm and byKey.iswarm.defaultOff == true, "iswarm ships OFF")
 ok(byKey.iswarm and byKey.iswarm.names[1] == "Insect Swarm", "iswarm matches by name")
 local anyOtherOff = false
 for _, e in ipairs(C.DEBUFF_CURATED) do
-  if e.defaultOff and e.key ~= "scorpid" and e.key ~= "iswarm" then anyOtherOff = true end
+  if e.defaultOff and e.key ~= "scorpid" and e.key ~= "iswarm" and e.key ~= "serpent" and e.key ~= "scorpidPoison" then anyOtherOff = true end
 end
 ok(not anyOtherOff, "no other preset went default-off")
 
@@ -112,7 +114,9 @@ ok(eq(R("junk", elig), elig), "non-table stored -> eligible order")
 --------------------------------------------------------------------------------
 DT:InvalidateCatalog(); DT:Refresh(addon.state)
 local pub = keysOf(addon.state.debufftracker)
-ok(#pub == #C.DEBUFF_CURATED - 2, "default: every preset but the two default-off ones is listed")
+local expectOn = 0
+for _, e in ipairs(C.DEBUFF_CURATED) do if not e.pvpOnly and not e.defaultOff then expectOn = expectOn + 1 end end
+ok(#pub == expectOn, "default: every raid preset but the default-off ones is listed (PvP-only ones never)")
 local hasScorpid = false
 for _, k in ipairs(pub) do if k == "scorpid" then hasScorpid = true end end
 ok(not hasScorpid, "scorpid not listed by default")

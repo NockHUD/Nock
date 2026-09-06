@@ -7,7 +7,7 @@ local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 local SetupCheck = Nock:NewModule("SetupCheck", "AceEvent-3.0", "AceConsole-3.0")
 
 local SPELL_QUEUE_RECOMMENDED_MAX = 200  -- ms, weaving stays clean at/below this
-local SPELL_QUEUE_FIX_VALUE       = 100  -- ms, value the "Fix" button writes
+local SPELL_QUEUE_FIX_VALUE       = 200  -- ms, the value the check recommends
 
 local function isAddOnLoaded(name)
   if C_AddOns and C_AddOns.IsAddOnLoaded then return C_AddOns.IsAddOnLoaded(name) end
@@ -79,7 +79,7 @@ SetupCheck.Checks = {
   {
     key  = "spellQueueWindow",
     name = "Spell queue window",
-    desc = ("Hidden CVar — controls how far ahead the client queues spell input. Higher values increase the chance of accidentally clipping Auto Shot during weaving. The hunter community typically recommends %d-%d ms."):format(SPELL_QUEUE_FIX_VALUE, SPELL_QUEUE_RECOMMENDED_MAX),
+    desc = ("Hidden CVar — controls how far ahead the client queues spell input. Higher values increase the chance of accidentally clipping Auto Shot during weaving. The hunter community typically recommends %d ms."):format(SPELL_QUEUE_FIX_VALUE),
     check = function()
       local v = getSpellQueueWindow()
       return v <= SPELL_QUEUE_RECOMMENDED_MAX, v
@@ -88,7 +88,6 @@ SetupCheck.Checks = {
     -- Multi-button row: pick from common values. The currently-active value's
     -- button is disabled so the user knows where they stand at a glance.
     actions = {
-      { label = "100 ms",       value = 100 },
       { label = "200 ms",       value = 200 },
       { label = "400 ms (Blizzard default)", value = 400 },
     },

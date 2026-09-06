@@ -353,6 +353,7 @@ function HelpersView:Refresh(state)
   -- unlocked, in which case it stays up to be positioned.
   local p = Nock.db and Nock.db.profile
   local suppressed = (p and p.showHelpers == false)
+    or Nock.PvPHides(p, "pvpHideHelpers")
     or Nock.state.helpersHiddenByWA
     or Nock.state.player.inCombat
   if suppressed and not unlocked then

@@ -15,6 +15,10 @@ function Nock:OnInitialize()
   self.db.RegisterCallback(self, "OnProfileChanged", "OnProfileSwitched")
   self.db.RegisterCallback(self, "OnProfileCopied",  "OnProfileSwitched")
   self.db.RegisterCallback(self, "OnProfileReset",   "OnProfileSwitched")
+  -- A new or deleted profile changes the Profiles page's lists, nothing else:
+  -- poke the registry so the settings window re-reads them.
+  self.db.RegisterCallback(self, "OnNewProfile",     "OnProfileListChanged")
+  self.db.RegisterCallback(self, "OnProfileDeleted", "OnProfileListChanged")
   self:MigrateProfile()
   local _, class = UnitClass("player")
   self.isHunter = (class == "HUNTER")
@@ -89,6 +93,11 @@ function Nock:ProbeGcd()
   end
 end
 
+function Nock:OnProfileListChanged()
+  local reg = LibStub("AceConfigRegistry-3.0", true)
+  if reg then reg:NotifyChange("Nock") end
+end
+
 function Nock:OnProfileSwitched()
   self:MigrateProfile()
   -- A profile switch invalidates the setup wizard's context (its previews and
@@ -100,6 +109,9 @@ function Nock:OnProfileSwitched()
   self:SendMessage("NOCK_LOCK_CHANGED", self.IsLocked())
   self:SendMessage("NOCK_VISUALS_CHANGED")
   if self.ApplyMinimapIcon then self:ApplyMinimapIcon() end
+  -- The options table's dynamic rows (cooldown grid, custom lists, debuff
+  -- rows) were baked from the old profile: refill them for the new one.
+  if self.RebuildOptionsArgs then self:RebuildOptionsArgs() end
 end
 
 -- Global lock accessors — the ONLY read/write path for profile.locked outside
@@ -478,6 +490,12 @@ function Nock:UpdateLatency()
   self.state.network.latencyMs = math.max(home or 0, world or 0)
 end
 
+-- A slash command that writes a profile key the settings window shows.
+function Nock:NotifyOptions()
+  local reg = LibStub("AceConfigRegistry-3.0", true)
+  if reg then reg:NotifyChange("Nock") end
+end
+
 function Nock:HandleSlashCommand(input)
   input = (input or ""):lower():match("^%s*(.-)%s*$")
   if input == "" or input == "config" then
@@ -503,6 +521,7 @@ function Nock:HandleSlashCommand(input)
   elseif input == "autoshot" then
     self.db.profile.showAutoShotCast = not self.db.profile.showAutoShotCast
     self:Print(("Auto Shot cast bar: %s"):format(self.db.profile.showAutoShotCast and "ON" or "OFF"))
+    self:NotifyOptions()
   elseif input == "tonk" then
     local tg = self:GetModule("TonkGuard", true)
     if tg then tg:PanicCancel() else self:Print("Steam Tonk guard is not loaded.") end
@@ -654,7 +673,7 @@ function Nock:HandleSlashCommand(input)
     -- loop, so every setting below it never renders and the user just sees a
     -- tab that "goes blank". Knowing which widget (and which vintage of a
     -- foreign AceGUI-3.0-SharedMediaWidgets) is in play answers that in one
-    -- line. See LSM_WIDGET_PREFERENCE in Config/Options.lua.
+    -- line. See MEDIA_WIDGET_PREFERENCE in UI/AceGUI_LSMDropdown.lua.
     -- Shown in the shared copy box (chat text can't be copied), so the whole
     -- report pastes back in one Ctrl+C. Plain text on purpose — colour
     -- escapes would come along with the paste.
@@ -670,6 +689,29 @@ function Nock:HandleSlashCommand(input)
       lines[#lines + 1] = "registry: " .. Nock.UI.DumpMediaWidgets()
     else
       lines[#lines + 1] = "UI/AceGUI_LSMDropdown.lua did not load — Nock's own media dropdowns are unavailable, so a foreign LSM30_* widget may be rendering them."
+    end
+    -- The colour swatch in the settings window uses whichever picker shape
+    -- this client exposes; neither means Nock's own RGBA panel is in use.
+    local cpf = _G.ColorPickerFrame
+    lines[#lines + 1] = ("ColorPickerFrame %s  |  SetupColorPickerAndShow %s  |  legacy SetColorRGB %s  |  OpacitySliderFrame %s"):format(
+      tostring(cpf ~= nil), tostring(cpf ~= nil and cpf.SetupColorPickerAndShow ~= nil),
+      tostring(cpf ~= nil and cpf.SetColorRGB ~= nil), tostring(_G.OpacitySliderFrame ~= nil))
+    if Nock.Settings and Nock.Settings.frame then
+      local st = Nock.Settings.state or {}
+      local rows = 0
+      for _, c in ipairs(Nock.Settings.cards or {}) do if c:IsShown() then rows = rows + #(c.ctls or {}) end end
+      lines[#lines + 1] = ("settings window: open=%s page=%s tab=%s mode=%s query=%q rows=%d lastError=%s"):format(
+        tostring(Nock.Settings.frame:IsShown()), tostring(st.page), tostring(st.page and st.tab and st.tab[st.page]),
+        Nock.Settings:IsAdvanced() and "advanced" or "simple", tostring(st.q or ""), rows, tostring(Nock.Settings._lastError))
+      local SC = Nock.UI and Nock.UI.SettingsControls
+      if SC and SC.PoolCounts then
+        local parts, counts = {}, SC.PoolCounts()
+        local keys = {}
+        for k in pairs(counts) do keys[#keys + 1] = k end
+        table.sort(keys)
+        for _, k in ipairs(keys) do parts[#parts + 1] = ("%s %d/%d"):format(k, counts[k].free, counts[k].total) end
+        lines[#lines + 1] = "control pools (free/total): " .. table.concat(parts, "  ")
+      end
     end
     lines[#lines + 1] = ("hudMode=%s  reactFont=%q  reactBarTexture=%q"):format(
       tostring(self.db.profile.hudMode),
@@ -718,31 +760,24 @@ function Nock:HandleSlashCommand(input)
         self:Print(("%s (altItem) resolved icon=%s"):format(entry.label, tostring(resolved)))
       end
     end
-  elseif input == "v3" then
-    -- Experimental V3 medallion. (Its companion simplified Shot Bars are the
-    -- baseline since 1.0.14 — this no longer touches them; the legacy bar
-    -- lives behind Rotation → "Use legacy Shot Bars".)
+  elseif input == "pvp" or input:sub(1, 4) == "pvp " then
+    -- PvP mode: /nock pvp toggles On/Off, /nock pvp on|off|auto sets it.
+    local m = self:GetModule("PvPMode", true)
+    if m and m.Slash then m:Slash(input:sub(5)) end
+  elseif input == "classic" or input == "react" or input == "fluffy" then
+    -- HUD look, set outright (they used to toggle back to classic, which
+    -- read as "off"): the same setting as General -> HUD look.
     local p = self.db.profile
-    local on = not p.medallionEnabled
-    p.medallionEnabled = on
-    self:SendMessage("NOCK_VISUALS_CHANGED")
-    self:Print(("V3 next-action medallion (experimental): %s%s"):format(
-      on and "ON" or "OFF",
-      on and " — medallion below your character (unlock with /nock unlock to move it)" or ""))
-  elseif input == "react" then
-    -- React HUD mode: fixed-skin replica of the React hunter WA (Options →
-    -- General → React HUD). Swaps the whole classic bar cluster.
-    local p = self.db.profile
-    p.hudMode = (p.hudMode == "react") and "classic" or "react"
-    self:SendMessage("NOCK_VISUALS_CHANGED")
-    self:Print(("React HUD mode: %s"):format(p.hudMode == "react" and "ON" or "OFF — classic look"))
-  elseif input == "fluffy" then
-    -- FluffyHUD mode: the compact third look (cast slot, swing, fluffy shot
-    -- lanes, range finder). Swaps the whole classic bar cluster.
-    local p = self.db.profile
-    p.hudMode = (p.hudMode == "fluffy") and "classic" or "fluffy"
-    self:SendMessage("NOCK_VISUALS_CHANGED")
-    self:Print(("FluffyHUD mode: %s"):format(p.hudMode == "fluffy" and "ON" or "OFF — classic look"))
+    local names = { classic = "Classic", react = "React", fluffy = "FluffyHUD" }
+    if (p.hudMode or "classic") == input then
+      self:Print(("HUD look already %s."):format(names[input]))
+    else
+      p.hudMode = input
+      self:SendMessage("NOCK_VISUALS_CHANGED")
+      local reg = LibStub("AceConfigRegistry-3.0", true)
+      if reg then reg:NotifyChange("Nock") end
+      self:Print(("HUD look: %s."):format(names[input]))
+    end
   elseif input == "weavelog" or input:match("^weavelog%s") then
     -- Weave diagnostics. Plain: only the weave-delay metrics (ability→weave /
     -- weave→ability / total, aerthax weave-delay definitions) with a divider
@@ -866,10 +901,13 @@ function Nock:HandleSlashCommand(input)
     else
       self:Print("Practice not loaded.")
     end
+  elseif input == "settingslog" then
+    if self.Settings and self.Settings.ShowLog then self.Settings:ShowLog() end
   elseif input == "minimap" then
     local shown = not self:IsMinimapShown()
     self:SetMinimapShown(shown)
     self:Print(("Minimap icon %s."):format(shown and "shown" or "hidden"))
+    self:NotifyOptions()
   else
     self:Print(("unknown subcommand: '%s' — try /nock for the config panel, or setup/lock/unlock/reset/minimap/autoshot/arrows/binds/trinkets/shopping/totemsim/range/profile/helpers/fonts/diag/v3/react/weavelog/shirt/pettrain/mail/practice/version"):format(input))
   end

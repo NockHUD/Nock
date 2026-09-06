@@ -42,3 +42,7 @@ the people and projects whose ideas, techniques and components it builds on.
   — SIL Open Font License 1.1, see `Media/FONTS-LICENSE.txt`.
 - **Pixel icons** rasterised into `Media/PixelIcons.tga` and `Media/Icons/` —
   from the Nucleo icon set, used under its licence.
+- **Sound** `Media/NockWindfury.mp3` (the Windfury proc cue) — "Lightsaber
+  Ignition" by freesound_community on Pixabay
+  (https://pixabay.com/sound-effects/film-special-effects-lightsaber-ignition-6816/),
+  Pixabay Content License.

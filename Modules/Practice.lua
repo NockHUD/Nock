@@ -1968,7 +1968,7 @@ function Practice:ReplayAt(t)
     end
   end
   rp.rev = rp.rev + 1
-  -- The oracle reads as it did then: the medallion, the rotation row and the
+  -- The oracle reads as it did then: the rotation row and the
   -- coach read Nock.state.sim.plan. Copied INTO the live plan object (its
   -- notes are pooled; PublishPlan writes into it again at the next Start).
   local dst = Nock.state.sim.plan

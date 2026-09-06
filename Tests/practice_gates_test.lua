@@ -1746,7 +1746,7 @@ end
 -- else names the next press. Armed: the drill's paper is seated on the
 -- provisional t0 and the strip has a NEXT, but the HUD gets no spell. Pulled:
 -- NEXT is the earliest pending playable note -- and a note left unplayed inside
--- its grace STAYS next (the medallion used to blank here).
+-- its grace STAYS next (the next-action display used to blank here).
 do
   local C = Nock.Constants
   local T0 = 5000
@@ -1856,8 +1856,8 @@ do
   _G.GetTime = realGT
 end
 
--- 32. THE MEDALLION READS THE PLAN: Rotation:Refresh never scores in a sim
--- fight. It copies plan.nextSpellId / nextNextSpellId, so the medallion, the
+-- 32. THE ROTATION ROW READS THE PLAN: Rotation:Refresh never scores in a sim
+-- fight. It copies plan.nextSpellId / nextNextSpellId, so the rotation row, the
 -- rotation row and WeaveCoach's GO can only ever name the press the strip does.
 do
   dofile("Modules/Rotation.lua")
@@ -1878,26 +1878,26 @@ do
   st.network.latencyMs = 0
   st.rotation.profile = nil
   rot:Refresh(st)
-  ok(st.rotation.nextAction == nil and st.rotation.nextNextAction == nil, "medallion: armed - blank")
+  ok(st.rotation.nextAction == nil and st.rotation.nextNextAction == nil, "rotation row: armed - blank")
   pracMod:OnKey({ "steady" })
   for _ = 1, 90 do T = T + 1 / 30; pracMod:Step(st, T) end
   -- Make the live scorers WANT Arcane (off cooldown, plenty of swing left); the plan says Steady.
   st.ranged.swingRemaining = 2.0
   st.cooldowns.Arc.remaining = 0
   rot:Refresh(st)
-  ok(st.rotation.nextAction == st.sim.plan.nextSpellId, "medallion: in a sim fight nextAction IS plan.nextSpellId")
+  ok(st.rotation.nextAction == st.sim.plan.nextSpellId, "rotation row: in a sim fight nextAction IS plan.nextSpellId")
   ok(st.rotation.nextAction == C.SpellID.STEADY_SHOT,
-     "medallion: ...and the 1:1 plan says Steady, not the scorers' Arcane (" .. tostring(st.rotation.nextAction) .. ")")
-  ok(st.rotation.nextNextAction == st.sim.plan.nextNextSpellId, "medallion: nextNextAction IS plan.nextNextSpellId")
+     "rotation row: ...and the 1:1 plan says Steady, not the scorers' Arcane (" .. tostring(st.rotation.nextAction) .. ")")
+  ok(st.rotation.nextNextAction == st.sim.plan.nextNextSpellId, "rotation row: nextNextAction IS plan.nextNextSpellId")
   st.network.latencyMs = 400
   rot:Refresh(st)
-  ok(st.rotation.nextAction == st.sim.plan.nextSpellId, "medallion: live latency does not change sim advice")
+  ok(st.rotation.nextAction == st.sim.plan.nextSpellId, "rotation row: live latency does not change sim advice")
   pracMod:StopFight()
   -- Practice ON but no fight: the live scorers run again (no paper = no scope).
   st.ranged.swingRemaining = 2.0
   st.network.latencyMs = 0
   rot:Refresh(st)
-  ok(st.rotation.nextAction ~= nil, "medallion: no fight - live scoring resumes")
+  ok(st.rotation.nextAction ~= nil, "rotation row: no fight - live scoring resumes")
   st.sim.active = false
   st.rotation.nextAction, st.rotation.nextNextAction = nil, nil
   pracMod:ResetLadder()

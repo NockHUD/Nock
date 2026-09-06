@@ -47,6 +47,7 @@ local function enabled()
   local p = Nock.db and Nock.db.profile
   if not p then return false end
   if p.showWarnings == false then return false end
+  if Nock.PvPHides and Nock.PvPHides(p, "pvpMuteRaidWarnings") then return false end  -- PvP mode: raid furniture
   return p.warnSlammerEnabled ~= false
 end
 

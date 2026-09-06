@@ -56,6 +56,7 @@ end
 local function practice() return Nock:GetModule("Practice", true) end
 
 local function openOptions()
+  if Nock.Settings then Nock.Settings:SelectGroup("utilities", "practice") return end
   local dialog = LibStub("AceConfigDialog-3.0", true)
   if dialog then
     dialog:Open("Nock")

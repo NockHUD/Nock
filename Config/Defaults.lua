@@ -8,10 +8,14 @@ local C = Nock.Constants  -- Core/Constants.lua loads first (see Nock.toc)
 Nock.Defaults = {
   profile = {
     position         = { point = "CENTER", relPoint = "CENTER", x = 0, y = -150 },
-    -- One global lock for every movable Nock frame (HUD, medallion, misdirect
+    -- One global lock for every movable Nock frame (HUD, misdirect
     -- panel, buff/debuff trackers, shopping list, free-layout rows). The setup
     -- wizard unlocks while it is open and locks again on close.
     locked           = true,
+    -- Settings window: Simple (false, the default) hides the tuning rows;
+    -- Advanced (true) shows everything. Config/OptionsAdvanced.lua decides which is which.
+    settingsAdvanced = false,
+    settingsPos      = false,   -- where the settings window was dragged to { point, relPoint, x, y }; false = screen centre
     -- Edit-mode grid (/nock unlock): the raster overlay and its control panel.
     editGridShow     = true,        -- draw the grid while unlocked
     editGridSize     = 16,          -- raster in screen units (4..64, step 2)
@@ -210,6 +214,7 @@ Nock.Defaults = {
     warnPetGrowlRaidOnly     = false,
     warnWrongTrinketEnabled = true, -- nag when a "bad trinket" (riding crop, carrot, etc.) is equipped
     warnWrongTrinketRaidOnly = false,
+    warnNoPvpTrinketEnabled = true,  -- PvP mode only: a PvP escape trinket in the bags, none equipped
     -- Comma/newline separated EXTRA item IDs the wrong-trinket warning flags,
     -- unioned with the built-in PvP insignia/medallion family
     -- (C.WRONG_TRINKET_IDS — every class/faction variant, so it can't go
@@ -360,6 +365,12 @@ Nock.Defaults = {
     misdirectWidth    = 200,
     misdirectPosition = { point = "CENTER", relPoint = "CENTER", x = 250, y = 0 },
     mdShowHeader      = true,   -- the MISDIRECTION title; off gives its height back to the panel
+    -- Show-when rule (Nock.PanelShowApplies "md"): hide in an inn/city, hide
+    -- while solo, and which group types count as "in a group".
+    mdHideRested      = false,
+    mdHideSolo        = false,
+    mdShowParty       = true,
+    mdShowRaid        = true,
     -- Panel background alpha. 0.85 = the shared C.COLORS.BG look (unchanged
     -- default); 0 makes the black panel disappear behind the rows.
     mdBackgroundOpacity = 0.85,
@@ -390,11 +401,18 @@ Nock.Defaults = {
     mdSapperEnabled       = false,
     mdSapperAnnounce      = true,
     mdSapperAnnounceScope = "all",  -- "all" = every tracked hunter | "self" = only your own openers
+    mdSapperWhisperNext   = false,  -- after your own opener, whisper the next hunter by name (wrapping)
 
     -- Buff tracker grids (player + pet). OmniCC-friendly.
     buffTrackerEnabled        = false,
     buffTrackerCols           = 5,
     buffTrackerIconSize       = 24,
+    -- Show-when rule (Nock.BuffTrackerShowApplies): hide in an inn/city, hide
+    -- while solo, and which group types count as "in a group".
+    buffTrackerHideRested     = false,
+    buffTrackerHideSolo       = false,
+    buffTrackerShowParty      = true,
+    buffTrackerShowRaid       = true,
     buffTrackerPlayerEnabled  = true,
     buffTrackerPlayerPosition = { point = "CENTER", relPoint = "CENTER", x = -100, y = 100 },
     buffTrackerPetEnabled     = true,
@@ -504,6 +522,13 @@ Nock.Defaults = {
     -- (rangeZone "TOO_CLOSE"). Fires on any real zone transition, including a
     -- tank repositioning the boss; target loss stays silent. "None" = silent.
     deadZoneEnterEnabled = true,
+    -- Weave outcome cues (Modules/WeaveSounds.lua; Alerts -> Sounds -> Weaving):
+    -- a Raptor Strike that lands, a Windfury proc. Same output channel as the
+    -- dead-zone cues. Off, "None" = silent.
+    weaveRaptorHitEnabled = false,
+    weaveRaptorHitSound   = "None",
+    weaveWfProcEnabled    = false,
+    weaveWfProcSound      = "Nock Windfury",  -- the bundled ignition clip; the switch above is what stays off
     deadZoneEnterSound   = "None",  -- LSM "sound" name
     deadZoneExitEnabled  = true,
     deadZoneExitSound    = "None",  -- LSM "sound" name
@@ -529,6 +554,16 @@ Nock.Defaults = {
     -- rangeZoomLevel times bigger (2x = the outer 25% per side shaven off).
     rangeZoomedGlide = false,
     rangeZoomLevel = 2,
+    -- EXPERIMENTAL -- React position strip: a two-segment strip welded under
+    -- the React range bar (melee probe | can-shoot probe) that stays readable
+    -- while the bar says RESYNC. Look in Nock.UI.ReactRangeStripLook.
+    reactRangeStrip  = false,
+    reactRangeStripH = 10,  -- strip height px (2..14); labels need 9+
+    reactRangeStripLabels = true,   -- RANGED / MELEE centred in the segments (needs 9 px+)
+    reactStripColorRanged = { 0.00, 0.83, 0.75, 1.00 },  -- left: Auto Shot usable (RANGE_CLOSE teal)
+    reactStripColorMelee  = { 0.68, 0.18, 0.20, 1.00 },  -- right: in melee (RANGE_MELEE red)
+    reactStripColorDead   = { 0.35, 0.10, 0.11, 1.00 },  -- right: the dead gap
+    reactStripColorOff    = { 0.16, 0.16, 0.16, 1.00 },  -- a segment not in range
     rangeInRedMigrated = false,  -- one-time deadzone-red default migration latch
 
     -- Rotation tunables.
@@ -742,7 +777,7 @@ Nock.Defaults = {
     -- Per-icon free positions ({ point, relPoint, x, y } CLUSTER-relative, so
     -- a moved icon still follows the HUD and inherits reactScale); false = the
     -- mirrored corner weld above. Written by drag / nudge pad in /nock unlock;
-    -- the pad's reset re-welds (medallionPos convention).
+    -- the pad's reset re-welds (`false` = default spot).
     reactAspectIconPos   = false,
     reactMarkIconPos     = false,
     -- React fill directions. Auto bar's reference look is the two halves
@@ -907,10 +942,9 @@ Nock.Defaults = {
     shotBarsWindow     = 6.0,             -- lookahead seconds
     shotBarsRotationText = true,          -- rotation notation label on the Shot Bars (far-right)
     shotBarsHeight     = 28,              -- row height in px
-    -- Melee/weave strip height INSIDE that row (simplified bar only). The pixels
+    -- Melee/weave strip height INSIDE that row. The pixels
     -- come out of the ranged lane, so shotBarsHeight — and therefore the HUD grid
     -- row and everything below it — never moves. 4 = the old fixed strip.
-    -- Legacy Shot Bars split the two lanes proportionally and ignore this.
     shotBarsMeleeHeight = 4,
     shotBarsReverse    = false,           -- false = time flows right→left (now/fire at LEFT, default); true = left→right (now/fire at RIGHT)
     shotBarsShowMulti  = true,
@@ -940,26 +974,6 @@ Nock.Defaults = {
     shotBarsColorQueueLive = { 0.20, 0.90, 0.35, 0.90 },
     shotBarsColorSpark  = { 1.00,  1.00,  1.00,  1.00 },  -- white
 
-    -- EXPERIMENTAL — "V3" next-action display (feature-flagged, all off by
-    -- default; toggle both at once with /nock v3). Picked from the design-bench
-    -- mockups: the medallion owns WHAT to press, the simplified bar owns WHEN.
-    medallionEnabled   = false,  -- big center-screen next-action icon: spell to press,
-                                 -- native cooldown swipe for GCD/cast lockout, glow at
-                                 -- the press moment, red HOLD state during the clip zone
-    medallionSize      = 64,     -- medallion icon size in px
-    medallionRing      = true,   -- countdown ring around the icon (drains to empty at the
-                                 -- press moment; red = time until the auto fires in HOLD)
-    -- Countdown-dial (ring) colors. Defaults reproduce the previously hardcoded
-    -- look; customizable in the Experimental tab.
-    medallionRingColorPress = { 1, 1, 1, 0.85 },       -- lockout / "press soon" swipe (white)
-    medallionRingColorHold  = { 0.85, 0.12, 0.12, 0.9 }, -- HOLD (Auto Shot wind-up) swipe (red)
-    medallionRingTrackColor = { 1, 1, 1, 0.08 },       -- static background ring (faint white)
-    medallionPos       = false,  -- saved drag position { point, relPoint, x, y }; false = default (screen center, below character)
-    shotBarsSimplified = true,   -- BASELINE since 1.0.14: tall ranged lane, GCD/cast shade
-                                 -- sweeping from the fire edge, hard clip-breakpoint tick,
-                                 -- melee lane squeezed to a 4px timeline strip, notation
-                                 -- text dropped. false = the legacy multi-lane bar
-                                 -- (Rotation tab → "Use legacy Shot Bars").
     -- EXPERIMENTAL — Release bar (UI/Frame_ReleaseBar.lua): the Aerthax retry
     -- grid drawn live under the HUD (both looks) while the weave key is held.
     -- Cost math is Nock.ReleaseCost in Core/State.lua; the model is unverified
@@ -997,6 +1011,47 @@ Nock.Defaults = {
     weaveCoachStruckSound   = "None",
     weaveCoachReleaseSound  = "None",
     weaveCoachSoundsRetired = false,  -- one-time latch for the disable-on-upgrade migration
+    -- Aggro warning (Modules/AggroWarning.lua + UI/Frame_AggroWarning.lua):
+    -- a red starburst + a cue while UnitThreatSituation("player") is 2 or 3.
+    aggroEnabled     = true,
+    aggroGroupOnly   = true,      -- solo, everything you fight is on you
+    aggroSize        = 300,
+    aggroColor       = { 1, 0.07, 0.11, 1 },
+    aggroPulse       = true,
+    aggroRotation    = 180,
+    aggroTexture     = "",        -- "" = the client's starburst; a path to use your own art
+    aggroSoundMode   = "auto",    -- auto | file | speech | sound | none (see AggroWarning.PlayCue)
+    aggroSoundFile   = "Interface\\AddOns\\WeakAuras\\PowerAurasMedia\\Sounds\\aggro.ogg",
+    aggroSpeechText  = "Aggro",
+    aggroSound       = "None",    -- LSM "sound" name, the tier after speech
+    aggroSoundChannel = "Master",
+    aggroPosition    = false,     -- false = screen centre, 15 px up; a table once dragged
+    -- Baseline conveniences (Modules/QoL.lua; Utilities -> General). All off.
+    qolNoGlow     = false,  -- ffxGlow 0 at login (the full-screen glow / drunk blur)
+    qolAutoRepair = false,  -- repair everything at a repair vendor, own money only
+    qolSellGreys  = false,  -- sell every poor-quality item at any vendor
+    -- PvP mode (Modules/PvPMode.lua; sidebar PvP). The mode itself is off;
+    -- each pvp* switch says what the mode changes while it is on.
+    pvpMode             = "off",   -- "off" | "on" | "auto" (auto = battleground / arena)
+    pvpAutoWorldFlag    = false,   -- auto also counts a PvP flag in the open world
+    pvpBadge            = true,    -- the PVP tag on screen while the mode is active
+    pvpBadgePosition    = false,   -- false = top centre; a table once dragged
+    pvpHideMisdirect    = true,    -- the MD tracker (and its sapper column)
+    pvpHideBuffTracker  = false,
+    pvpHideHelpers      = false,   -- the consumable / stone / drums row
+    pvpMuteRaidWarnings = true,    -- C.PVP_MUTED_WARNINGS stay quiet
+    pvpNoAggro          = true,    -- no aggro flash
+    pvpWeaveNoMovePad   = true,    -- the live weave macro loses /click MovePadBackward
+    pvpShowDebuffTracker = true,   -- the target debuff grid runs even if it is off in general
+    pvpDebuffPartyFilter = true,   -- only debuffs a class in your group can apply
+    pvpDebuffDisabled   = {},      -- PvP set, tri-state like debuffTrackerDisabled (nil = on)
+    -- Incoming-CC alert (Modules/CCAlert.lua): a hostile casts Fear / Polymorph /
+    -- ... at you -> warning square + sound, so you can Feign Death.
+    pvpCcEnabled   = true,
+    pvpCcOnlyAtYou = true,          -- only casts whose caster targets you
+    -- Each built-in spell: pvpCc_<key> (nil = on) and pvpCc_<key>_sound (nil =
+    -- "Phone", WeakAuras' LSM registration; silent when nothing registers it).
+    pvpCcCustom    = {},            -- your own: { { spell = name|id, sound = "Phone", enabled = true }, ... }
     -- Mailbox module (Modules/Mailbox.lua): snowball mail logistics.
     mailboxEnabled   = true,
     mailboxKeepCount = 0,   -- snowballs kept in bags on a send run (whole stacks, rounded up)
@@ -1146,6 +1201,7 @@ Nock.Defaults = {
     -- ApplyPracticeScale (UI/Widgets.lua) with SetScale on the top-level
     -- frame only; children inherit.
     practiceScale          = 1.0,
+    settingsScale          = 1.0,   -- the settings window (UI/Frame_Settings.lua), 0.75-2; it also shrinks to fit the screen
     -- EARLY is the OPENER verdict: a cooldown fired before its anchor. It is
     -- not the "pressed too early" counter — a press made before a shot is
     -- ready is a scorecard number (NOT_READY), never a verdict, so that one

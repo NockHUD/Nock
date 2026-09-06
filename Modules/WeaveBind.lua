@@ -171,6 +171,18 @@ local function resolveGarmentLines(text)
   return out
 end
 
+-- The live macro text: the garment conditionals resolved, then PvP mode's
+-- own edit (sidebar PvP -> Weave bind): the Movement Pad backpedal line goes
+-- while the mode is on. The stored bodies are never touched.
+local function resolveLiveLines(text)
+  text = resolveGarmentLines(text)
+  if text and text ~= "" and Nock.PvPHides and Nock.PvPHides(Nock.db and Nock.db.profile, "pvpWeaveNoMovePad") then
+    local WM = Nock.WeaveMacro
+    if WM and WM.HasMovePad(text) then text = WM.WithoutMovePad(text) end
+  end
+  return text
+end
+
 -- Practice mode parses the same resolved bodies the live button runs, so the
 -- simulated weave key does exactly what your real one would right now.
 WeaveBind.ResolveGarmentLines = resolveGarmentLines
@@ -326,6 +338,7 @@ function WeaveBind:OnEnable()
   end
   self:RegisterMessage("NOCK_WEAVEBIND_CHANGED", "ApplyBind")
   self:RegisterMessage("NOCK_PRACTICE_CHANGED", "ApplyBind")
+  self:RegisterMessage("NOCK_PVP_CHANGED", "ApplyBind")   -- the backpedal line comes and goes with PvP mode
   self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnRegenEnabled")
   self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnEnteringWorld")
   self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", "OnEquipmentChanged")
@@ -873,8 +886,8 @@ function WeaveBind:ApplyBind(msg)
   if featureActive() then
     self:EnsureMovePad()
     local button = self:EnsureButton()
-    button:SetAttribute("macrotextDown", resolveGarmentLines(p.weaveBindMacroDown or ""))
-    button:SetAttribute("macrotextUp",   resolveGarmentLines(p.weaveBindMacroUp or ""))
+    button:SetAttribute("macrotextDown", resolveLiveLines(p.weaveBindMacroDown or ""))
+    button:SetAttribute("macrotextUp",   resolveLiveLines(p.weaveBindMacroUp or ""))
     -- The drill's state, read by the secure wrapper on every click: while
     -- practice is on (and out of combat) the button runs the practice bodies —
     -- just the MovePad step-out, if the macros carry one and the drill reads
@@ -925,8 +938,8 @@ function WeaveBind:VerifyGarmentLines()
   if InCombatLockdown and InCombatLockdown() then return end
   if not (self.button and featureActive()) then return end
   local p = Nock.db.profile
-  if self.button:GetAttribute("macrotextDown") ~= resolveGarmentLines(p.weaveBindMacroDown or "")
-     or self.button:GetAttribute("macrotextUp") ~= resolveGarmentLines(p.weaveBindMacroUp or "") then
+  if self.button:GetAttribute("macrotextDown") ~= resolveLiveLines(p.weaveBindMacroDown or "")
+     or self.button:GetAttribute("macrotextUp") ~= resolveLiveLines(p.weaveBindMacroUp or "") then
     self:ApplyBind()
   end
 end

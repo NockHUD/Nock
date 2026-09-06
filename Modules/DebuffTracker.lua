@@ -81,6 +81,35 @@ end
 
 local function isDisabled(key) return not DebuffTracker.IsEntryEnabled(key) end
 
+-- PvP mode (state.player.pvp): its own tri-state set in profile.pvpDebuffDisabled
+-- (nil = ON for a built-in entry, the normal rule for a custom one), and a
+-- class filter over the group's classes (state.group.classes).
+local function pvpActive()
+  local st = Nock.state and Nock.state.player
+  return st ~= nil and st.pvp == true
+end
+
+function DebuffTracker.IsEntryEnabledPvP(key)
+  local p = Nock.db and Nock.db.profile
+  local t = p and p.pvpDebuffDisabled
+  local v = t and t[key]
+  if v == true then return false end
+  if v == false then return true end
+  if key:sub(1, 7) == "custom:" then return DebuffTracker.IsEntryEnabled(key) end
+  return true
+end
+
+-- Pure: an entry with no class tag always passes; a tagged one needs one of
+-- its classes in `classes` (engine tokens -> true).
+function DebuffTracker.ClassAllowed(entry, classes)
+  if not entry or not entry.classes then return true end
+  if not classes then return false end
+  for _, c in ipairs(entry.classes) do
+    if classes[c] then return true end
+  end
+  return false
+end
+
 -- Pure: the stored order (profile.debuffTrackerOrder) first — unknown and
 -- duplicate keys dropped — then every eligible key not yet placed, in the
 -- order given. Same contract as Cooldowns:GetOrderedGridKeys.
@@ -125,11 +154,14 @@ local function parseCustom(str)
 end
 
 -- Every entry the tracker knows (presets + customs), keyed, in catalog order.
-local function allEntries()
+-- PvP-only presets (`pvpOnly`) join only when asked (the PvP set).
+local function allEntries(withPvpOnly)
   local p = Nock.db and Nock.db.profile
   local byKey, keys = {}, {}
   for _, entry in ipairs(C.DEBUFF_CURATED or {}) do
-    byKey[entry.key] = entry; keys[#keys + 1] = entry.key
+    if withPvpOnly or not entry.pvpOnly then
+      byKey[entry.key] = entry; keys[#keys + 1] = entry.key
+    end
   end
   for _, e in ipairs(parseCustom(p and p.debuffTrackerCustom)) do
     if not byKey[e.key] then byKey[e.key] = e; keys[#keys + 1] = e.key end
@@ -147,7 +179,7 @@ end
 
 -- Label for a key the way the options page names it (custom keys are self-describing).
 function DebuffTracker:Describe(key)
-  local byKey = allEntries()
+  local byKey = allEntries(true)
   local e = byKey[key]
   return e and (e.label or (e.names and e.names[1])) or key
 end
@@ -160,10 +192,15 @@ local _catalog
 local function effectiveCatalog()
   if _catalog then return _catalog end
   local p = Nock.db and Nock.db.profile
-  local byKey, keys = allEntries()
+  local pvp = pvpActive()
+  local byKey, keys = allEntries(pvp)
   local list = {}
+  local filter = pvp and p ~= nil and p.pvpDebuffPartyFilter == true
+  local classes = Nock.state and Nock.state.group and Nock.state.group.classes
   for _, k in ipairs(DebuffTracker.ResolveOrder(p and p.debuffTrackerOrder, keys)) do
-    if not isDisabled(k) then list[#list + 1] = byKey[k] end
+    local on
+    if pvp then on = byKey[k].pvp ~= false and DebuffTracker.IsEntryEnabledPvP(k) else on = not isDisabled(k) end
+    if on and (not filter or DebuffTracker.ClassAllowed(byKey[k], classes)) then list[#list + 1] = byKey[k] end
   end
   _catalog = list
   return list
@@ -180,12 +217,15 @@ DebuffTracker.refreshInterval = 0.1
 
 local function trackerEnabled()
   local p = Nock.db and Nock.db.profile
+  if p and pvpActive() and p.pvpShowDebuffTracker == true then return true end
   return not (p and p.debuffTrackerEnabled == false)
 end
 
 function DebuffTracker:OnEnable()
   if self.RegisterMessage then
     self:RegisterMessage("NOCK_VISUALS_CHANGED", "InvalidateCatalog")
+    self:RegisterMessage("NOCK_PVP_CHANGED", "InvalidateCatalog")
+    self:RegisterMessage("NOCK_GROUP_CLASSES_CHANGED", "InvalidateCatalog")
   end
 end
 

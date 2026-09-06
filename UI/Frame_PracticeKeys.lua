@@ -22,6 +22,7 @@ local function practice() return Nock:GetModule("Practice", true) end
 local function workbench() return Nock:GetModule("PracticeWorkbench", true) end
 
 local function openOptions()
+  if Nock.Settings then Nock.Settings:SelectGroup("utilities", "practice", "keys") return end
   local dialog = LibStub("AceConfigDialog-3.0", true)
   if dialog then
     dialog:Open("Nock")
@@ -115,12 +116,21 @@ end
 
 function View:OnKeyDown(key)
   if not self._waiting then return end
-  if key == "ESCAPE" then self:Commit("") return end
   if IGNORE[key] then return end
-  local out = key
-  if IsShiftKeyDown and IsShiftKeyDown() then out = "SHIFT-" .. out end
-  if IsControlKeyDown and IsControlKeyDown() then out = "CTRL-" .. out end
-  if IsAltKeyDown and IsAltKeyDown() then out = "ALT-" .. out end
+  -- The binding string is the shared one (UI/KeyCapture.lua), so a key bound
+  -- here and one bound in the settings window read identically.
+  local KC = Nock.UI.KeyCapture
+  local out
+  if type(KC) == "table" and KC.Format then
+    out = KC.Format(key, IsShiftKeyDown and IsShiftKeyDown(), IsControlKeyDown and IsControlKeyDown(), IsAltKeyDown and IsAltKeyDown())
+  else
+    if key == "ESCAPE" then self:Commit("") return end
+    out = key
+    if IsShiftKeyDown and IsShiftKeyDown() then out = "SHIFT-" .. out end
+    if IsControlKeyDown and IsControlKeyDown() then out = "CTRL-" .. out end
+    if IsAltKeyDown and IsAltKeyDown() then out = "ALT-" .. out end
+  end
+  if out == nil then return end
   self:Commit(out)
 end
 

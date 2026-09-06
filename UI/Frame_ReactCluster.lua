@@ -49,6 +49,10 @@ local REACT = {
   RANGE_CLOSE = { 0.00, 0.83, 0.75, 1.00 },  -- CLOSE (closeRangeColor)
   RANGE_DIM   = { 0.30, 0.30, 0.30, 1.00 },  -- no valid target
   RANGE_RESYNC = { 1.00, 0.58, 0.10, 1.00 }, -- estimate degraded (matches classic bar)
+  STRIP_OFF   = { 0.16, 0.16, 0.16, 1.00 },  -- position strip: segment not in range
+  STRIP_DEAD  = { 0.35, 0.10, 0.11, 1.00 },  -- position strip: the dead gap (melee segment)
+  STRIP_H     = 4,                           -- position strip height px
+  STRIP_LABEL_MIN = 9,                       -- strip height from which RANGED / MELEE labels fit
   RANGE_DIVIDER   = { 1.00, 1.00, 1.00, 0.90 },  -- centre tick (melee boundary)
   RANGE_DIVIDER_W = 1,                           -- centre tick width px
   TEXT         = { 1.00, 1.00, 1.00, 1.00 },
@@ -252,6 +256,28 @@ function ReactCluster:OnInitialize()
   range.label = makeText(range, REACT.FONT_SMALL, "CENTER")
   self.range = range
 
+  -- Position strip (experimental, reactRangeStrip): two bordered segments
+  -- welded under the range bar, LEFT = can-shoot probe (RANGED), RIGHT = melee
+  -- probe (MELEE), matching the bar's own left-far / right-close reading.
+  -- Colours and the reading come from Nock.UI.ReactRangeStripLook on the tick;
+  -- centred labels draw once the strip is tall enough (reactRangeStripLabels).
+  local strip = CreateFrame("Frame", "NockReactRangeStrip", container)
+  strip:SetHeight(REACT.STRIP_H)
+  strip.ranged = createReactBar(strip, nil, REACT.STRIP_H)
+  strip.melee  = createReactBar(strip, nil, REACT.STRIP_H)
+  strip.ranged:SetPoint("TOPLEFT", strip, "TOPLEFT", 0, 0)
+  strip.ranged:SetPoint("BOTTOMRIGHT", strip, "BOTTOM", 0, 0)
+  strip.melee:SetPoint("TOPRIGHT", strip, "TOPRIGHT", 0, 0)
+  strip.melee:SetPoint("BOTTOMLEFT", strip, "BOTTOM", -1, 0)
+  for _, seg in ipairs({ strip.ranged, strip.melee }) do
+    seg.fill = seg:CreateTexture(nil, "ARTWORK"); seg.fill:SetTexture(WHITE8X8)
+    seg.fill:SetPoint("TOPLEFT", seg, "TOPLEFT", 1, -1); seg.fill:SetPoint("BOTTOMRIGHT", seg, "BOTTOMRIGHT", -1, 1)
+    seg.label = makeText(seg, REACT.FONT_SMALL, "CENTER")
+  end
+  strip.ranged.label:SetText("RANGED"); strip.melee.label:SetText("MELEE")
+  strip:Hide()
+  self.strip = strip
+
   -- Mana bar: thin fill + centered percent.
   local mana = createReactBar(container, "NockReactMana", REACT.MANA_H)
   mana.fill = makeFill(mana, REACT.MANA_FILL)
@@ -296,6 +322,10 @@ function ReactCluster:Geometry()
     mana  = skinNum("reactManaH",  REACT.MANA_H),
   }
 
+  -- the position strip rides under the range bar, sharing its border seam
+  local showStrip = show.range and p.reactRangeStrip == true
+  local hStrip = showStrip and math.max(2, math.min(14, tonumber(p.reactRangeStripH) or REACT.STRIP_H)) or 0
+
   local order = Nock.UI.ResolveReactBarOrder(p.reactBarOrder)
   local ys = {}
   local y = 0
@@ -305,15 +335,20 @@ function ReactCluster:Geometry()
       if y > 0 then y = y + REACT.GAP end
       ys[k] = y
       y = y + h[k]
+      if k == "range" and showStrip then
+        y = y + REACT.GAP
+        ys.strip = y
+        y = y + hStrip
+      end
     end
   end
 
   return {
     w = w,
     showAuto = show.auto, showMelee = show.melee,
-    showRange = show.range, showMana = show.mana,
-    yAuto = ys.auto, yMelee = ys.melee, yRange = ys.range, yMana = ys.mana,
-    hAuto = h.auto, hMelee = h.melee, hRange = h.range, hMana = h.mana,
+    showRange = show.range, showMana = show.mana, showStrip = showStrip,
+    yAuto = ys.auto, yMelee = ys.melee, yRange = ys.range, yMana = ys.mana, yStrip = ys.strip,
+    hAuto = h.auto, hMelee = h.melee, hRange = h.range, hMana = h.mana, hStrip = hStrip,
     total = math.max(y, 1),
   }
 end
@@ -347,6 +382,12 @@ function ReactCluster:ApplyLayout()
   placeBar(self.melee, g.yMelee, g.hMelee, g.showMelee)
   placeBar(self.range, g.yRange, g.hRange, g.showRange)
   placeBar(self.mana,  g.yMana,  g.hMana,  g.showMana)
+  placeBar(self.strip, g.yStrip or 0, math.max(1, g.hStrip), g.showStrip)
+  self.strip.ranged:SetHeight(math.max(1, g.hStrip)); self.strip.melee:SetHeight(math.max(1, g.hStrip))
+  -- labels only when they fit (the small font needs about 9 px)
+  local labels = p.reactRangeStripLabels == true and g.hStrip >= REACT.STRIP_LABEL_MIN
+  self.strip.ranged.label:SetShown(labels); self.strip.melee.label:SetShown(labels)
+  self._lastStripLook = nil
 
   self._halfW  = (g.w - 2) / 2
   self._innerW = innerW
@@ -974,6 +1015,21 @@ function ReactCluster:RefreshRange(state)
   end
 end
 
+-- Position strip: the probes' reading, diffed on the look key so the two
+-- segments repaint only when a reading changes.
+function ReactCluster:RefreshStrip(state)
+  local look = Nock.UI.ReactRangeStripLook(state.target)
+  local key = look.melee .. "|" .. look.ranged
+  if key == self._lastStripLook then return end
+  self._lastStripLook = key
+  local off = skinColor("reactStripColorOff", REACT.STRIP_OFF)
+  local m = look.melee == "melee" and skinColor("reactStripColorMelee", REACT.RANGE_MELEE)
+         or look.melee == "dead" and skinColor("reactStripColorDead", REACT.STRIP_DEAD) or off
+  local r = look.ranged == "ranged" and skinColor("reactStripColorRanged", REACT.RANGE_CLOSE) or off
+  self.strip.melee.fill:SetVertexColor(m[1], m[2], m[3], m[4] or 1)
+  self.strip.ranged.fill:SetVertexColor(r[1], r[2], r[3], r[4] or 1)
+end
+
 function ReactCluster:RefreshMana(state)
   local mana = self.mana
   local pl = state.player
@@ -1021,5 +1077,6 @@ function ReactCluster:Refresh(state)
   if self.auto:IsShown()  then self:RefreshAuto(state)  end
   if self.melee:IsShown() then self:RefreshMelee(state) end
   if self.range:IsShown() then self:RefreshRange(state) end
+  if self.strip:IsShown() then self:RefreshStrip(state) end
   if self.mana:IsShown()  then self:RefreshMana(state)  end
 end

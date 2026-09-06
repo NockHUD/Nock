@@ -94,8 +94,7 @@ function ShotBars:OnInitialize()
   sep:SetVertexColor(0, 0, 0, 0.6)
   self.sep = sep
 
-  -- V3 simplified-mode extras (created up front, painted only while the
-  -- shotBarsSimplified flag is on):
+  -- Ranged-lane extras (created up front):
   --   shadeEdge — 1px line marking where the GCD/cast lockout ends (GCD bar
   --               color). The ranged windows themselves are CLIPPED at this
   --               point (Fluffy-style "bars drop during the cast"): nothing is
@@ -156,10 +155,9 @@ function ShotBars:Relayout()
     self.label:SetPoint("RIGHT", self.frame, "RIGHT", -3, 0)
   end
 
-  self._simplified = profile("shotBarsSimplified", false) and true or false
   local showMelee = profile("shotBarsShowRaptor", true)
-  if self._simplified then
-    -- V3: tall ranged lane; the melee lane stays a REAL timeline (upcoming weave
+  do
+    -- Tall ranged lane; the melee lane stays a REAL timeline (upcoming weave
     -- windows remain visible in the prediction range) but squeezed to a thin edge
     -- strip. Its height is user-set and comes OUT of the ranged lane, so the frame
     -- height — and the HUD grid row below it — never moves.
@@ -191,28 +189,6 @@ function ShotBars:Relayout()
     local er, eg, eb = color("gcdBarColor", { 0.65, 0.45, 1.00, 1.00 })
     self.shadeEdge:SetVertexColor(er, eg, eb, 1)
     for i = 1, #self.clipTex do self.clipTex[i]:SetSize(2, self._rangedH) end
-  elseif showMelee then
-    -- Ranged ~62%, 1px gap, melee the rest.
-    self._rangedH  = math.max(MIN_LANE, math.floor((self._h - 1) * 0.62))
-    self._meleeH   = math.max(MIN_LANE, self._h - 1 - self._rangedH)
-    self._rangedY  = 1
-    self._meleeY   = 1 + self._rangedH + 1
-    self.sep:ClearAllPoints()
-    self.sep:SetPoint("TOPLEFT",  self.frame, "TOPLEFT",  self._x0, -(1 + self._rangedH))
-    self.sep:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", -self._x0, -(1 + self._rangedH))
-    self.sep:SetHeight(1)
-    self.sep:Show()
-  else
-    self._rangedH = self._h
-    self._meleeH  = 0
-    self._rangedY = 1
-    self._meleeY  = 1
-    self.sep:Hide()
-  end
-
-  if not self._simplified then
-    self.shadeEdge:Hide()
-    for i = 1, #self.clipTex do self.clipTex[i]:Hide() end
   end
 
   for _, k in ipairs(ALL) do
@@ -307,11 +283,8 @@ function ShotBars:Refresh(state)
     return
   end
 
-  -- The notation label rides the quiet edge in BOTH modes. The simplified bar
-  -- used to drop it unconditionally — a leftover from when V3 was an off-by-
-  -- default experiment — which left the "Rotation text label" toggle enabled but
-  -- inert for everyone once simplified became the baseline. The toggle is the
-  -- only thing that decides now; turn it off for the geometry-only look.
+  -- The notation label rides the quiet edge; the "Rotation text label" toggle
+  -- is the only thing that decides. Turn it off for the geometry-only look.
   local lbl = sp.profileName or ""
   if not profile("shotBarsRotationText", true) then lbl = "" end
   if lbl ~= self._lastLabel then
@@ -342,11 +315,11 @@ function ShotBars:Refresh(state)
   if not winSec or winSec <= 0 then winSec = 3.4 end
   local scale = W / winSec
 
-  -- V3: ranged windows are clipped at the GCD/cast lockout edge (Fluffy-style
+  -- Ranged windows are clipped at the GCD/cast lockout edge (Fluffy-style
   -- "bars drop while you can't press") — windows touching the fire edge means
   -- the GCD is free. Melee lane stays unclipped (Raptor isn't GCD-bound).
   local lockPx = nil
-  if self._simplified then
+  do
     local lock = (state.gcd and state.gcd.remaining) or 0
     -- Real casts only — the Auto Shot wind-up lives in state.player.autoShotCast
     -- because it does not lock you out (the press queues), and clipping the
@@ -359,13 +332,11 @@ function ShotBars:Refresh(state)
     if lockPx > W then lockPx = W end
     if lockPx <= 0 then lockPx = nil end
     self._lockPx = lockPx
-  else
-    self._lockPx = nil
   end
 
   for _, k in ipairs(RANGED) do self:DrawWindowKey(state, k, self._rangedY, self._rangedH, now, scale, lockPx) end
   for _, k in ipairs(MELEE)  do self:DrawWindowKey(state, k, self._meleeY,  self._meleeH,  now, scale) end
-  if self._simplified then self:RefreshSimplifiedExtras(state, now, scale) end
+  self:RefreshSimplifiedExtras(state, now, scale)
 
   -- Auto Shot sparks, full height, on top.
   local ns = sp.nSparks or 0
@@ -387,7 +358,7 @@ function ShotBars:Refresh(state)
 end
 
 ----------------------------------------------------------------------------
--- V3 simplified-mode extras (GCD/cast shade, clip ticks, melee strip).
+-- Ranged-lane extras (GCD/cast shade edge, clip ticks).
 ----------------------------------------------------------------------------
 
 function ShotBars:HideSimplifiedExtras()

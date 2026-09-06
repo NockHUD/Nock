@@ -21,7 +21,7 @@ local DIRS = {
 -- live position, return a NEW position table moved one step in `dir`. Never
 -- mutates its inputs — the caller hands the result to spec.set, which owns the
 -- write. Seeds from `live` when `stored` is absent or has no anchor point:
--- medallionPos starts `false` and free rows are unseeded until first layout, and
+-- a `false` position starts unseeded and free rows are unseeded until first layout, and
 -- nudging from a missing table would teleport the frame to {0, 0}.
 function Nock.UI.ComputeNudge(stored, live, dir, step)
   local d = DIRS[dir]
@@ -370,7 +370,7 @@ function EditMode:ResetEntry(entry)
   -- nil means the spec reset itself as a side effect and has nothing to write
   -- back — that is how a free-mode row resets, by clearing its elementPositions
   -- entry and letting the layout re-seed it. `false` is a real value (the
-  -- medallion's "fall back to screen centre") and must reach set().
+  -- a `false` default's "fall back to screen centre") and must reach set().
   if d == nil then return end
   if type(d) == "table" then
     -- Copy: default() may hand back the live Nock.Defaults table, and storing

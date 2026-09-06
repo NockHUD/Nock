@@ -513,6 +513,7 @@ function View:RenderFinish(page)
     f.weaveBtn = button(f.body, 128, 22, "Set my weave key")
     f.weaveBtn:SetPoint("LEFT", f.openBtn, "RIGHT", 8, 0)
     f.weaveBtn:SetScript("OnClick", function()
+      if Nock.Settings then Nock.Settings:SelectGroup("utilities", "weaveBind") return end
       local dialog = LibStub("AceConfigDialog-3.0", true)
       if not dialog then return end
       dialog:Open("Nock")

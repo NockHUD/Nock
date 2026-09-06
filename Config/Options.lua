@@ -11,6 +11,75 @@ local function visualsSet(_, key, value)
   Nock:SendMessage("NOCK_VISUALS_CHANGED")
 end
 
+-- Custom shopping items: the stored text ("id:threshold:label" per line) as a
+-- list and back. The form scratch (`shopAdd`) is not saved.
+local shopAdd = { id = "", thr = 1, label = "" }
+local function shopCustomList()
+  local list = {}
+  for line in tostring(Nock.db.profile.shoppingCustom or ""):gmatch("[^,\r\n]+") do
+    local body = line:gsub("^%s+", ""):gsub("%s+$", "")
+    local idStr, rest = body:match("^(%d+)%s*:?%s*(.*)$")
+    local id = tonumber(idStr)
+    if id then
+      local thrStr, label = rest:match("^(%d+)%s*:?%s*(.*)$")
+      list[#list + 1] = { id = id, threshold = tonumber(thrStr) or 1, label = (label and label ~= "" and label) or nil }
+    end
+  end
+  return list
+end
+-- PvP mode's incoming-CC list: the profile keeps your own spells as a list
+-- ({ spell = name|id, sound, enabled }); the built-ins live in
+-- C.PVP_CC_CASTS with pvpCc_<key> / pvpCc_<key>_sound profile keys.
+local ccAdd = { spell = "", sound = "Phone" }
+local function ccCustomList()
+  local p = Nock.db.profile
+  if type(p.pvpCcCustom) ~= "table" then p.pvpCcCustom = {} end
+  return p.pvpCcCustom
+end
+local function ccCustomSave(list)
+  Nock.db.profile.pvpCcCustom = list
+  Nock:SendMessage("NOCK_VISUALS_CHANGED")
+  Nock:RebuildOptionsArgs()
+end
+local function ccSoundValues()
+  local lsm = LibStub("LibSharedMedia-3.0", true)
+  local out = { ["None"] = "None" }
+  if lsm then for _, name in ipairs(lsm:List("sound")) do out[name] = name end end
+  -- the stock "Phone" is WeakAuras' registration: name it even when absent
+  if not out["Phone"] then out["Phone"] = "Phone (not installed)" end
+  return out
+end
+local function ccSpellIcon(spell)
+  return function()
+    local id = tonumber(spell)
+    if C_Spell and C_Spell.GetSpellTexture then
+      local okt, tex = pcall(C_Spell.GetSpellTexture, id or spell)
+      if okt and tex then return tex end
+    end
+    if GetSpellInfo then
+      local okt, _, _, tex = pcall(GetSpellInfo, id or spell)
+      if okt and tex then return tex end
+    end
+    return "Interface\\Icons\\INV_Misc_QuestionMark"
+  end
+end
+
+local function shopCustomSave(list)
+  local lines = {}
+  for _, e in ipairs(list) do
+    lines[#lines + 1] = e.label and ("%d:%d:%s"):format(e.id, e.threshold, e.label) or ("%d:%d"):format(e.id, e.threshold)
+  end
+  Nock.db.profile.shoppingCustom = table.concat(lines, "\n")
+  Nock:SendMessage("NOCK_VISUALS_CHANGED")
+  Nock:RebuildOptionsArgs()
+end
+local function shopItemName(id)
+  local n
+  if C_Item and C_Item.GetItemNameByID then n = C_Item.GetItemNameByID(id) end
+  if not n and GetItemInfo then n = GetItemInfo(id) end
+  return n
+end
+
 -- Reusable "global on/off" toggle bound to a profile show* flag. The same key
 -- is surfaced both in Layout → HUD elements and at the top of each subsystem's own
 -- tab; both stay in sync since they read/write the one profile field.
@@ -901,6 +970,9 @@ local function buildSetupCheckGroup(check, baseOrder)
     name   = check.name,
     order  = baseOrder,
     inline = true,
+    -- live: a check that stops applying (an addon loaded later, a CVar
+    -- flipped) drops off the page on the next repaint instead of at /reload
+    hidden = function() return check.applies ~= nil and not check.applies() end,
     args   = args,
   }
 end
@@ -911,7 +983,13 @@ end
 -- lookup at click time would miss it).
 local dbfRebuildEntries
 
+-- Every dynamic-args rebuilder, so a profile switch can refill the rows that
+-- were baked from the old profile (debuff rows, cooldown grids, custom lists,
+-- buff custom lists). Filled by buildOptionsTable; run by RebuildOptionsArgs.
+local ARG_REBUILDERS = {}
+
 local function buildOptionsTable()
+  for i = #ARG_REBUILDERS, 1, -1 do ARG_REBUILDERS[i] = nil end
   -- The HUD look picker appears in three homes: General → HUD look
   -- (canonical), the HUD & Bars landing page, and the React HUD landing
   -- page. One builder so the copies cannot drift; a fresh table per home so
@@ -930,6 +1008,23 @@ local function buildOptionsTable()
       get = function() return Nock.db.profile.hudMode or "classic" end,
       set = function(_, v)
         visualsSet(_, "hudMode", v)
+        local reg = LibStub("AceConfigRegistry-3.0", true)
+        if reg then reg:NotifyChange("Nock") end
+      end,
+    }
+  end
+
+  -- "Use this look" button for each HUD branch's landing page: switches
+  -- hudMode to that branch and greys out while it is already the active look.
+  local function useLookButton(look, label, order)
+    return {
+      type = "execute",
+      name = "Use " .. label,
+      desc = "Switch the HUD to the " .. label .. " look. Same setting as General → HUD look.",
+      order = order,
+      disabled = function() return (Nock.db.profile.hudMode or "classic") == look end,
+      func = function()
+        visualsSet(nil, "hudMode", look)
         local reg = LibStub("AceConfigRegistry-3.0", true)
         if reg then reg:NotifyChange("Nock") end
       end,
@@ -1126,6 +1221,29 @@ local function buildOptionsTable()
             get = get,
             set = function(_, v) visualsSet(_, "scale", v) end,
           },
+          settingsScale = {
+            -- four steps, not a slider: the window rescales under the pointer
+            -- while it is dragged, which stutters
+            type = "select",
+            name = "Settings window scale",
+            desc = "Size of this settings window. It also shrinks on its own to fit a small screen.",
+            order = 10.5,
+            values = { ["0.75"] = "75 %", ["1"] = "100 %", ["1.25"] = "125 %", ["1.5"] = "150 %" },
+            sorting = { "0.75", "1", "1.25", "1.5" },
+            dialogControl = lsmWidget(nil, "plain"),
+            get = function()
+              local v, best, bestD = Nock.db.profile.settingsScale or 1, "1", math.huge
+              for _, k in ipairs({ "0.75", "1", "1.25", "1.5" }) do
+                local d = math.abs(tonumber(k) - v)
+                if d < bestD then best, bestD = k, d end
+              end
+              return best
+            end,
+            set = function(_, v)
+              Nock.db.profile.settingsScale = tonumber(v) or 1
+              if Nock.Settings and Nock.Settings.ApplyScale then Nock.Settings:ApplyScale() end
+            end,
+          },
           opacityNote = {
             type = "description",
             name = function()
@@ -1190,7 +1308,7 @@ local function buildOptionsTable()
           lockAll = {
             type = "execute",
             name = "Lock all frames",
-            desc = "Freeze every movable frame in place: the HUD, medallion, Misdirection panel, buff/debuff trackers, shopping list, and free-layout rows. Same as /nock lock.",
+            desc = "Freeze every movable frame in place: the HUD, Misdirection panel, buff/debuff trackers, shopping list, and free-layout rows. Same as /nock lock.",
             order = 30,
             width = 1.2,
             disabled = function() return Nock.IsLocked() end,
@@ -1204,7 +1322,7 @@ local function buildOptionsTable()
           unlockAll = {
             type = "execute",
             name = "Unlock all frames",
-            desc = "Unlock every movable frame so you can drag it — green edit borders appear on the HUD, medallion, Misdirection panel, buff/debuff trackers, shopping list, and free-layout rows. Same as /nock unlock.",
+            desc = "Unlock every movable frame so you can drag it — green edit borders appear on the HUD, Misdirection panel, buff/debuff trackers, shopping list, and free-layout rows. Same as /nock unlock.",
             order = 30.05,
             width = 1.2,
             disabled = function() return not Nock.IsLocked() end,
@@ -1275,6 +1393,7 @@ local function buildOptionsTable()
             desc = "Replay the first-run setup. All frames unlock while it is open (drag them into place) and lock again when it closes. Your existing choices are kept. Opens out of combat only.",
             order = 30.2,
             func = function()
+              if Nock.Settings then Nock.Settings:Close() end
               LibStub("AceConfigDialog-3.0"):Close("Nock")
               -- Launched from the Blizzard AddOns panel, that fullscreen window
               -- would otherwise stay up over the wizard's live HUD previews.
@@ -2213,6 +2332,118 @@ local function buildOptionsTable()
           -- built — see the loop further down in buildOptionsTable.
         },
       },
+      aggro = {
+        type = "group",
+        name = "Aggro",
+        order = 2.5,
+        args = {
+          intro = {
+            type = "description",
+            name = "A red flash at screen centre and a spoken cue the moment a mob turns on you (threat status: tanking). Drag the flash while frames are unlocked.\n",
+            order = 1,
+            fontSize = "medium",
+          },
+          flashHeader = { type = "header", name = "Flash", order = 10 },
+          aggroEnabled = {
+            type = "toggle", name = "Aggro warning", order = 11, width = "full",
+            desc = "The flash and the cue while you have aggro.",
+            get = function() return Nock.db.profile.aggroEnabled ~= false end,
+            set = function(_, v) Nock.db.profile.aggroEnabled = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+          aggroGroupOnly = {
+            type = "toggle", name = "Only in a group", order = 12, width = "full",
+            desc = "Solo, everything you fight turns on you; keep the warning for parties and raids.",
+            get = function() return Nock.db.profile.aggroGroupOnly ~= false end,
+            set = function(_, v) Nock.db.profile.aggroGroupOnly = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+          aggroSize = {
+            type = "range", name = "Size", desc = "Width and height of the flash in pixels.", order = 13,
+            min = 100, max = 600, step = 10,
+            get = function() return Nock.db.profile.aggroSize or 300 end,
+            set = function(_, v) visualsSet(_, "aggroSize", v) end,
+          },
+          aggroColor = {
+            type = "color", name = "Colour", desc = "Tint of the flash.", hasAlpha = true, order = 14,
+            get = getColor, set = setColor,
+          },
+          aggroPulse = {
+            type = "toggle", name = "Pulse", desc = "Breathe between 90 and 100 % four times a second.", order = 15,
+            get = function() return Nock.db.profile.aggroPulse ~= false end,
+            set = function(_, v) Nock.db.profile.aggroPulse = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+          aggroTexture = {
+            type = "input", name = "Texture path", order = 16, width = "full",
+            desc = "Empty uses the client's starburst. Any texture path works, for example a Power Auras texture from an addon you have installed: Interface\\AddOns\\WeakAuras\\PowerAurasMedia\\Auras\\Aura7",
+            get = function() return Nock.db.profile.aggroTexture or "" end,
+            set = function(_, v) visualsSet(_, "aggroTexture", (v or ""):gsub("^%s+", ""):gsub("%s+$", "")) end,
+          },
+          aggroPreviewFlash = {
+            type = "execute", name = "Preview", order = 16.5, width = "half",
+            desc = "Show the flash for three seconds, as it looks now.",
+            func = function()
+              local v = Nock:GetModule("AggroWarningView", true)
+              if v and v.Demo then v:Demo(3) end
+            end,
+          },
+          aggroResetPos = {
+            type = "execute", name = "Reset position", order = 17,
+            desc = "Put the flash back at screen centre.",
+            func = function() Nock.db.profile.aggroPosition = false; Nock:SendMessage("NOCK_POSITION_RESET") end,
+          },
+          voiceHeader = { type = "header", name = "Voice", desc = "Auto tries WeakAuras' aggro clip (if that addon is installed), then the game's text-to-speech, then the sound below, then the raid-warning kit.", order = 20 },
+          aggroSoundMode = {
+            type = "select", name = "Cue", order = 21,
+            desc = "Auto: the WeakAuras clip if it plays, else speech, else the sound below, else the raid-warning kit. The other choices use that one tier only.",
+            values = { auto = "Auto", file = "Sound file only", speech = "Speech only", sound = "Picked sound only", none = "Silent" },
+            sorting = { "auto", "file", "speech", "sound", "none" },
+            dialogControl = lsmWidget(nil, "plain"),
+            get = function() return Nock.db.profile.aggroSoundMode or "auto" end,
+            set = function(_, v) Nock.db.profile.aggroSoundMode = v end,
+          },
+          aggroSound = {
+            type = "select", name = "Sound", order = 22,
+            desc = "The LibSharedMedia sound used when neither the clip nor speech is available (or in Picked sound only).",
+            dialogControl = lsmWidget(nil, "plain"),
+            values = function()
+              local lsm = LibStub("LibSharedMedia-3.0", true)
+              local out = { ["None"] = "None" }
+              if lsm then for _, name in ipairs(lsm:List("sound")) do out[name] = name end end
+              return out
+            end,
+            get = function() return Nock.db.profile.aggroSound or "None" end,
+            set = function(_, v) Nock.db.profile.aggroSound = v end,
+          },
+          aggroPreview = {
+            type = "execute", name = "Preview", order = 23, width = "half",
+            desc = "Play the cue as it would sound now.",
+            func = function()
+              local m = Nock:GetModule("AggroWarning", true)
+              local tier = m and m.PlayCue and m.PlayCue(Nock.db.profile) or nil
+              Nock:Print(("Aggro cue: %s"):format(tier and ({ file = "sound file", speech = "speech", sound = "picked sound", kit = "raid-warning kit" })[tier] or "silent"))
+            end,
+          },
+          aggroSoundFile = {
+            type = "input", name = "Sound file path", order = 24, width = "full",
+            desc = "The file Auto and Sound file only try first. Nock ships no clip: this points at one you installed (WeakAuras' Power Auras aggro clip by default).",
+            get = function() return Nock.db.profile.aggroSoundFile or "" end,
+            set = function(_, v) Nock.db.profile.aggroSoundFile = (v or ""):gsub("^%s+", ""):gsub("%s+$", "") end,
+          },
+          aggroSpeechText = {
+            type = "input", name = "Spoken text", order = 25,
+            desc = "What text-to-speech says.",
+            get = function() return Nock.db.profile.aggroSpeechText or "Aggro" end,
+            set = function(_, v) Nock.db.profile.aggroSpeechText = (v and v ~= "") and v or "Aggro" end,
+          },
+          aggroSoundChannel = {
+            type = "select", name = "Output channel", order = 26,
+            desc = "Which audio channel the clip and the sound play through.",
+            dialogControl = lsmWidget(nil, "plain"),
+            values = soundChannelValues, sorting = SOUND_CHANNELS,
+            get = function() return Nock.db.profile.aggroSoundChannel or "Master" end,
+            set = function(_, v) Nock.db.profile.aggroSoundChannel = v end,
+          },
+        },
+      },
       helpers = {
         type = "group",
         name = "Helpers",
@@ -2366,7 +2597,7 @@ local function buildOptionsTable()
             fontSize = "medium",
           },
 
-          trackerHeader = { type = "header", name = "Tracker (party/raid MD cooldowns)", order = 10 },
+          trackerHeader = { type = "header", name = "Tracker", desc = "Party and raid Misdirection cooldowns.", order = 10 },
           trackerEnabled = {
             type = "toggle",
             name = "Enable tracker section",
@@ -2438,6 +2669,44 @@ local function buildOptionsTable()
             width = "full",
             get = function() return Nock.db.profile.mdCastDebug == true end,
             set = function(_, v) Nock.db.profile.mdCastDebug = v end,
+          },
+
+          showWhenHeader = { type = "header", name = "Show when", desc = "Hide the panel where it is no use; an unlocked panel always shows so you can place it.", order = 30 },
+          mdHideRested = {
+            type = "toggle",
+            name = "Hide while rested",
+            desc = "Put the panel away in an inn or a city. General → Hide out of combat does the same for every panel; this one is the panel's own switch.",
+            order = 31,
+            width = "full",
+            get = function() return Nock.db.profile.mdHideRested == true end,
+            set = function(_, v) Nock.db.profile.mdHideRested = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+          mdHideSolo = {
+            type = "toggle",
+            name = "Hide when not in a group",
+            desc = "Put the panel away while you are solo; the two switches below say which group types bring it back.",
+            order = 32,
+            width = "full",
+            get = function() return Nock.db.profile.mdHideSolo == true end,
+            set = function(_, v) Nock.db.profile.mdHideSolo = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+          mdShowParty = {
+            type = "toggle",
+            name = "Dungeon group counts",
+            desc = "A party counts as a group.",
+            order = 33,
+            disabled = function() return not Nock.db.profile.mdHideSolo end,
+            get = function() return Nock.db.profile.mdShowParty ~= false end,
+            set = function(_, v) Nock.db.profile.mdShowParty = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+          mdShowRaid = {
+            type = "toggle",
+            name = "Raid group counts",
+            desc = "A raid counts as a group.",
+            order = 34,
+            disabled = function() return not Nock.db.profile.mdHideSolo end,
+            get = function() return Nock.db.profile.mdShowRaid ~= false end,
+            set = function(_, v) Nock.db.profile.mdShowRaid = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
           },
 
           panelHeader = { type = "header", name = "Panel", order = 40 },
@@ -2530,6 +2799,44 @@ local function buildOptionsTable()
               Nock.db.profile.buffTrackerIconSize = v
               Nock:SendMessage("NOCK_VISUALS_CHANGED")
             end,
+          },
+
+          showWhenHeader = { type = "header", name = "Show when", order = 5 },
+          buffTrackerHideRested = {
+            type = "toggle",
+            name = "Hide while rested",
+            desc = "Put both panels away in an inn or a city. General → Hide out of combat does the same for every panel; this one is the tracker's own switch.",
+            order = 5.1,
+            width = "full",
+            get = function() return Nock.db.profile.buffTrackerHideRested == true end,
+            set = function(_, v) Nock.db.profile.buffTrackerHideRested = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+          buffTrackerHideSolo = {
+            type = "toggle",
+            name = "Hide when not in a group",
+            desc = "Put both panels away while you are solo; the two switches below say which group types bring them back.",
+            order = 5.2,
+            width = "full",
+            get = function() return Nock.db.profile.buffTrackerHideSolo == true end,
+            set = function(_, v) Nock.db.profile.buffTrackerHideSolo = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+          buffTrackerShowParty = {
+            type = "toggle",
+            name = "Show in a dungeon group",
+            desc = "A party counts as a group.",
+            order = 5.3,
+            disabled = function() return not Nock.db.profile.buffTrackerHideSolo end,
+            get = function() return Nock.db.profile.buffTrackerShowParty ~= false end,
+            set = function(_, v) Nock.db.profile.buffTrackerShowParty = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+          buffTrackerShowRaid = {
+            type = "toggle",
+            name = "Show in a raid group",
+            desc = "A raid counts as a group.",
+            order = 5.4,
+            disabled = function() return not Nock.db.profile.buffTrackerHideSolo end,
+            get = function() return Nock.db.profile.buffTrackerShowRaid ~= false end,
+            set = function(_, v) Nock.db.profile.buffTrackerShowRaid = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
           },
 
           playerHeader = { type = "header", name = "Player panel", order = 10 },
@@ -2784,6 +3091,239 @@ local function buildOptionsTable()
           },
         },
       },
+      qol = {
+        type = "group",
+        name = "General",
+        order = 11.5,
+        args = {
+          intro = {
+            type = "description",
+            name = "Small conveniences that need no HUD: what happens at a vendor, and the full-screen glow.\n",
+            order = 1,
+            fontSize = "medium",
+          },
+          vendorHeader = { type = "header", name = "At a vendor", desc = "Both run the moment a merchant window opens.", order = 10 },
+          qolAutoRepair = {
+            type = "toggle",
+            name = "Auto repair",
+            desc = "Repair everything at a vendor that repairs, from your own money (never the guild bank); the cost is printed to chat. Skipped when you cannot afford it.",
+            order = 11,
+            width = "full",
+            get = function() return Nock.db.profile.qolAutoRepair == true end,
+            set = function(_, v) Nock.db.profile.qolAutoRepair = v and true or false end,
+          },
+          qolSellGreys = {
+            type = "toggle",
+            name = "Sell grey items",
+            desc = "Sell every poor-quality item in your bags at any vendor, a few at a time; the total is printed to chat.",
+            order = 12,
+            width = "full",
+            get = function() return Nock.db.profile.qolSellGreys == true end,
+            set = function(_, v) Nock.db.profile.qolSellGreys = v and true or false end,
+          },
+          screenHeader = { type = "header", name = "Screen", order = 20 },
+          qolNoGlow = {
+            type = "toggle",
+            name = "Remove the full-screen glow",
+            desc = "Sets the ffxGlow CVar to 0 at login and now: no bloom, and no drunk blur (the Sulfuron Slammer helper reads the same switch). Off restores it.",
+            order = 21,
+            width = "full",
+            get = function() return Nock.db.profile.qolNoGlow == true end,
+            set = function(_, v)
+              local m = Nock:GetModule("QoL", true)
+              if m and m.SetNoGlow then m.SetNoGlow(v) else Nock.db.profile.qolNoGlow = v and true or false end
+            end,
+          },
+        },
+      },
+      pvpMode = {
+        type = "group",
+        name = function()
+          local st = Nock.state and Nock.state.player
+          return (st and st.pvp) and "PvP mode |cff9dc46e(active)|r" or "PvP mode"
+        end,
+        order = 1,
+        args = {
+          intro = {
+            type = "description",
+            name = "Battlegrounds and arenas are a different game: no consumables, no raid tools, and the PvP trinket is the right trinket. PvP mode puts Nock's raid furniture away while it is on and brings it back when it is off. Everything it changes is a switch on this page.\n",
+            order = 1,
+            fontSize = "medium",
+          },
+          modeHeader = { type = "header", name = "Mode", desc = "Off, On, or Auto for battlegrounds and arenas. /nock pvp toggles it.", order = 10 },
+          pvpMode = {
+            type = "select",
+            name = "PvP mode",
+            desc = "Off: nothing changes. On: PvP mode until you switch it off (it survives a relog; the PVP tag reminds you). Auto: on inside a battleground or arena, off outside. /nock pvp toggles On/Off, /nock pvp auto picks Auto.",
+            order = 11,
+            dialogControl = lsmWidget(nil, "plain"),
+            values = { off = "Off", on = "On", auto = "Auto" },
+            sorting = { "off", "on", "auto" },
+            get = function() return Nock.db.profile.pvpMode or "off" end,
+            set = function(_, v)
+              Nock.db.profile.pvpMode = v
+              local m = Nock:GetModule("PvPMode", true)
+              if m and m.Evaluate then m:Evaluate(nil, true) end
+              Nock:SendMessage("NOCK_VISUALS_CHANGED")
+            end,
+          },
+          pvpAutoWorldFlag = {
+            type = "toggle",
+            name = "Auto also counts a world PvP flag",
+            desc = "With Auto, being PvP-flagged in the open world switches the mode on too. Off on purpose: on a PvP realm you are flagged nearly everywhere.",
+            order = 12,
+            width = "full",
+            get = function() return Nock.db.profile.pvpAutoWorldFlag == true end,
+            set = function(_, v)
+              Nock.db.profile.pvpAutoWorldFlag = v and true or false
+              local m = Nock:GetModule("PvPMode", true)
+              if m and m.Evaluate then m:Evaluate(nil, true) end
+            end,
+          },
+          pvpBadge = {
+            type = "toggle",
+            name = "PVP tag on screen",
+            desc = "A small PVP tag while the mode is active, so a manual On is never forgotten. Drag it while frames are unlocked.",
+            order = 13,
+            width = "full",
+            get = function() return Nock.db.profile.pvpBadge ~= false end,
+            set = function(_, v) Nock.db.profile.pvpBadge = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+          panelsHeader = { type = "header", name = "Panels", desc = "What goes away while the mode is on.", order = 20 },
+          pvpHideMisdirect = {
+            type = "toggle",
+            name = "Hide the Misdirection tracker",
+            desc = "The MD panel and its sapper column are raid tools; nothing in a battleground or arena wants them.",
+            order = 21,
+            width = "full",
+            get = function() return Nock.db.profile.pvpHideMisdirect == true end,
+            set = function(_, v) Nock.db.profile.pvpHideMisdirect = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+          pvpHideBuffTracker = {
+            type = "toggle",
+            name = "Hide the buff tracker",
+            desc = "Your own and your pet's buffs stay useful in PvP, so this is off.",
+            order = 22,
+            width = "full",
+            get = function() return Nock.db.profile.pvpHideBuffTracker == true end,
+            set = function(_, v) Nock.db.profile.pvpHideBuffTracker = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+          pvpHideHelpers = {
+            type = "toggle",
+            name = "Hide the helper row",
+            desc = "Food, stones and drums still apply in a battleground; arenas allow none of it.",
+            order = 23,
+            width = "full",
+            get = function() return Nock.db.profile.pvpHideHelpers == true end,
+            set = function(_, v) Nock.db.profile.pvpHideHelpers = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+          alertsHeader = { type = "header", name = "Alerts", desc = "Raid furniture stays quiet; the PvP trinket is the right trinket.", order = 30 },
+          pvpMuteRaidWarnings = {
+            type = "toggle",
+            name = "Mute raid-only warnings",
+            desc = "Boss marks, DO NOT RELEASE, the Sulfuron Slammer, the Ripper countdown, Devilsaur Tooth, Karabor neck, the boss garment gate, drums, lust cooldowns and the sapper AoE count stay quiet. The PvP escape trinkets stop counting as a bad trinket in PvP mode either way.",
+            order = 31,
+            width = "full",
+            get = function() return Nock.db.profile.pvpMuteRaidWarnings == true end,
+            set = function(_, v) Nock.db.profile.pvpMuteRaidWarnings = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+          pvpNoAggro = {
+            type = "toggle",
+            name = "No aggro flash",
+            desc = "Threat is a creature thing; against players the flash could only ever answer a guard.",
+            order = 32,
+            width = "full",
+            get = function() return Nock.db.profile.pvpNoAggro == true end,
+            set = function(_, v) Nock.db.profile.pvpNoAggro = v and true or false end,
+          },
+          warnNoPvpTrinketEnabled = {
+            type = "toggle",
+            name = "Warn when the PvP trinket is in the bags",
+            desc = "The mirror of the bad-trinket check, PvP mode only: nags while an Insignia or Medallion sits in your bags and neither trinket slot holds one. No trinket owned, no nag. Also listed under Alerts → Warnings → Gear & Binds.",
+            order = 33,
+            width = "full",
+            get = function() return Nock.db.profile.warnNoPvpTrinketEnabled ~= false end,
+            set = function(_, v) Nock.db.profile.warnNoPvpTrinketEnabled = v and true or false end,
+          },
+          weaveHeader = { type = "header", name = "Weave bind", desc = "The auto-backpedal is a raid trick.", order = 40 },
+          pvpWeaveNoMovePad = {
+            type = "toggle",
+            name = "Drop the backpedal line",
+            desc = "Strips /click MovePadBackward from the live weave macro while the mode is on; the stored macro is untouched and comes back when it is off. Applied out of combat, like the garment lines.",
+            order = 41,
+            width = "full",
+            get = function() return Nock.db.profile.pvpWeaveNoMovePad == true end,
+            set = function(_, v) Nock.db.profile.pvpWeaveNoMovePad = v and true or false; Nock:SendMessage("NOCK_WEAVEBIND_CHANGED") end,
+          },
+          ccHeader = { type = "header", name = "Incoming CC", desc = "A hostile starts casting crowd control at you: FD! on the warnings row and a sound.", order = 45 },
+          pvpCcEnabled = {
+            type = "toggle",
+            name = "Incoming CC alert",
+            desc = "A hostile you can see (target, focus, arena opponents, nameplates) starts casting a listed spell at you: the warnings row shows FD! with the cast counting down and the sound plays once. Cast starts only: once it lands there is nothing left to press.",
+            order = 45.1,
+            width = "full",
+            get = function() return Nock.db.profile.pvpCcEnabled ~= false end,
+            set = function(_, v) Nock.db.profile.pvpCcEnabled = v and true or false end,
+          },
+          pvpCcOnlyAtYou = {
+            type = "toggle",
+            name = "Only casts aimed at you",
+            desc = "On: the caster must have you targeted. Off: any hostile in view casting a listed spell counts (noisier, but catches a cast you cannot see the target of).",
+            order = 45.2,
+            width = "full",
+            disabled = function() return Nock.db.profile.pvpCcEnabled == false end,
+            get = function() return Nock.db.profile.pvpCcOnlyAtYou ~= false end,
+            set = function(_, v) Nock.db.profile.pvpCcOnlyAtYou = v and true or false end,
+          },
+          pvpCcAddSpell = {
+            type = "input", name = "Spell", order = 45.3, width = 0.9,
+            desc = "Name or id, either works. A name (exactly as the enemy's cast bar shows it) matches every rank of that spell; a spell id matches that one id only, handy for a variant with its own name such as Polymorph: Pig. Find ids on Wowhead (the URL ends with the id).",
+            disabled = function() return Nock.db.profile.pvpCcEnabled == false end,
+            get = function() return ccAdd.spell or "" end,
+            set = function(_, v) ccAdd.spell = v end,
+          },
+          pvpCcAddSound = {
+            type = "select", name = "Sound", order = 45.4, width = 0.9,
+            desc = "The sound for the new spell.",
+            dialogControl = lsmWidget(nil, "plain"),
+            disabled = function() return Nock.db.profile.pvpCcEnabled == false end,
+            values = ccSoundValues,
+            get = function() return ccAdd.sound or "Phone" end,
+            set = function(_, v) ccAdd.sound = v end,
+          },
+          pvpCcAddBtn = {
+            type = "execute", name = "Add spell", order = 45.5, width = 0.6,
+            desc = "Add the spell to the list below with its own sound and switch.",
+            disabled = function() return Nock.db.profile.pvpCcEnabled == false or (ccAdd.spell or ""):match("^%s*$") ~= nil end,
+            func = function()
+              local list = ccCustomList()
+              local s = (ccAdd.spell or ""):gsub("^%s+", ""):gsub("%s+$", "")
+              list[#list + 1] = { spell = tonumber(s) or s, sound = ccAdd.sound or "Phone", enabled = true }
+              ccAdd.spell = ""
+              ccCustomSave(list)
+            end,
+          },
+          debuffHeader = { type = "header", name = "Debuff tracker", desc = "PvP mode has its own set of tracked target debuffs, filtered by who is with you.", order = 50 },
+          pvpShowDebuffTracker = {
+            type = "toggle",
+            name = "Debuff tracker on in PvP mode",
+            desc = "Run the target debuff grid in PvP mode even when it is off in general (it ships off).",
+            order = 51,
+            width = "full",
+            get = function() return Nock.db.profile.pvpShowDebuffTracker == true end,
+            set = function(_, v) Nock.db.profile.pvpShowDebuffTracker = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+          pvpDebuffPartyFilter = {
+            type = "toggle",
+            name = "Only debuffs your party can apply",
+            desc = "Each built-in debuff knows its class; with this on, one nobody in your party or raid can apply is left out. Your own always count; custom entries always show.",
+            order = 52,
+            width = "full",
+            get = function() return Nock.db.profile.pvpDebuffPartyFilter == true end,
+            set = function(_, v) Nock.db.profile.pvpDebuffPartyFilter = v and true or false; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          },
+        },
+      },
       shopping = {
         type = "group",
         name = "Shopping List",
@@ -2885,6 +3425,32 @@ local function buildOptionsTable()
           -- Per-curated-entry inline groups (toggle + threshold) injected at
           -- order 100+ — see the loop near the bottom of buildOptionsTable.
           customHeader = { type = "header", name = "Custom items", order = 280 },
+          customAddId = {
+            type = "input", name = "Item ID", order = 283, width = 0.6,
+            get = function() return shopAdd.id or "" end,
+            set = function(_, v) shopAdd.id = v end,
+            validate = function(_, v) return (v == "" or tonumber(v)) and true or "Item ID must be a number" end,
+          },
+          customAddThr = {
+            type = "range", name = "Keep at least", order = 284, width = 0.9, min = 1, max = 20000, step = 1, bigStep = 10,
+            get = function() return shopAdd.thr or 1 end,
+            set = function(_, v) shopAdd.thr = v end,
+          },
+          customAddLabel = {
+            type = "input", name = "Label (optional)", order = 285, width = 0.9,
+            get = function() return shopAdd.label or "" end,
+            set = function(_, v) shopAdd.label = v end,
+          },
+          customAddBtn = {
+            type = "execute", name = "Add item", order = 286, width = 0.6,
+            disabled = function() return not tonumber(shopAdd.id) end,
+            func = function()
+              local list = shopCustomList()
+              list[#list + 1] = { id = tonumber(shopAdd.id), threshold = math.max(1, math.floor((shopAdd.thr or 1) + 0.5)), label = (shopAdd.label ~= "" and shopAdd.label) or nil }
+              shopAdd.id, shopAdd.label = "", ""
+              shopCustomSave(list)
+            end,
+          },
           customIntro = {
             type = "description",
             name = "Extra items to track, one per line: itemID:threshold or itemID:threshold:Label. Example:\n22838:10:Haste Potion\n33874:40",
@@ -2893,14 +3459,16 @@ local function buildOptionsTable()
           },
           custom = {
             type = "input",
-            name = "Custom items",
+            name = "Edit as text",
+            desc = "One per line: itemID:threshold or itemID:threshold:Label.",
             multiline = 5,
             width = "full",
-            order = 282,
+            order = 289,
             get = function() return Nock.db.profile.shoppingCustom or "" end,
             set = function(_, v)
               Nock.db.profile.shoppingCustom = v
               Nock:SendMessage("NOCK_VISUALS_CHANGED")
+              Nock:RebuildOptionsArgs()
             end,
           },
           repairHeader = { type = "header", name = "Repair reminder", order = 290 },
@@ -3223,6 +3791,45 @@ local function buildOptionsTable()
               if reg then reg:NotifyChange("Nock") end
             end,
           },
+          -- Quick fill (settings redesign 2026-09-09): the wizard's three macro
+          -- shapes as one segmented control above the bodies.
+          weaveFillDefault = {
+            type  = "execute",
+            name  = "Default",
+            desc  = "Replace both bodies with the shipped weave pair.",
+            order = 51,
+            func  = function()
+              local C = Nock.Constants
+              Nock.db.profile.weaveBindMacroDown = C.WEAVE_BIND_MACRO_DOWN
+              Nock.db.profile.weaveBindMacroUp   = C.WEAVE_BIND_MACRO_UP
+              Nock:SendMessage("NOCK_WEAVEBIND_CHANGED")
+            end,
+          },
+          weaveFillNatty = {
+            type  = "execute",
+            name  = "Natty",
+            desc  = "Empty both bodies so you can write your own.",
+            order = 52,
+            func  = function()
+              Nock.db.profile.weaveBindMacroDown = ""
+              Nock.db.profile.weaveBindMacroUp   = ""
+              Nock:SendMessage("NOCK_WEAVEBIND_CHANGED")
+            end,
+          },
+          weaveFillClever = {
+            type  = "execute",
+            name  = "Clever",
+            desc  = "The shipped pair plus auto-backpedal: you step out for exactly as long as you hold the key.",
+            order = 53,
+            func  = function()
+              local C, WM, p = Nock.Constants, Nock.WeaveMacro, Nock.db.profile
+              p.weaveBindMacroDown = WM.WithMovePad(C.WEAVE_BIND_MACRO_DOWN)
+              p.weaveBindMacroUp   = WM.WithMovePad(C.WEAVE_BIND_MACRO_UP)
+              local wb = Nock:GetModule("WeaveBind", true)
+              if wb and wb.EnsureMovePad then wb:EnsureMovePad() end
+              Nock:SendMessage("NOCK_WEAVEBIND_CHANGED")
+            end,
+          },
           -- Grounded (Gello): the three steps of the move, each shown only
           -- when it applies -- import while Grounded holds a weave bind, undo
           -- while the import can go back, disable once Grounded holds nothing.
@@ -3475,22 +4082,10 @@ local function buildOptionsTable()
               if m then m:ApplySize() end
             end,
           },
-          dialHint = {
-            type = "description",
-            name = "\n|cff909090Unlock the HUD to drag the dial or resize it by its bottom-right grip. While unlocked it loops its sweep so there is something to aim at.|r",
-            order = 15,
-            fontSize = "medium",
-          },
           usage = {
             type = "description",
-            name = "\nIf you ever get welded anyway, |cffffd200/nock tonk|r steps you out immediately.",
+            name = "Unlock the HUD to drag the dial or resize it by its bottom-right grip; while unlocked it loops its sweep so there is something to aim at. If you ever get welded anyway, |cffffd200/nock tonk|r steps you out immediately.",
             order = 30,
-            fontSize = "medium",
-          },
-          credit = {
-            type = "description",
-            name = "\n|cff909090The in-combat exit is |cffffd200Big Chungus|r|cff909090's find, from the Classic Hunter Discord. The tonk is a charmed creature rather than a buff you wear, so dismissing the creature ends it — and pet control, unlike every aura-cancel function, is not blocked in combat.|r",
-            order = 31,
             fontSize = "medium",
           },
         },
@@ -3636,16 +4231,6 @@ local function buildOptionsTable()
             dialogControl = "NockShotBarsLegend",
             order = 2.615,
           },
-          shotBarsLegacy = {
-            type = "toggle",
-            name = "Use legacy Shot Bars",
-            desc = "Bring back the pre-1.0.14 multi-lane Shot Bars look (full-height melee lane, no GCD/cast shade, no clip-breakpoint tick). The simplified single-lane bar is the default.",
-            order = 2.612,
-            width = "full",
-            disabled = function() return Nock.db.profile.rotationMode ~= "bars" end,
-            get = function() return Nock.db.profile.shotBarsSimplified == false end,
-            set = function(_, v) visualsSet(_, "shotBarsSimplified", not v) end,
-          },
           shotBarsShowHelper = {
             type = "toggle",
             name = "Also show the next-action helper row (unified)",
@@ -3688,13 +4273,12 @@ local function buildOptionsTable()
           shotBarsMeleeHeight = {
             type = "range",
             name = "Melee lane height (px)",
-            desc = "Height of the bottom melee/weave strip inside the Shot Bars. The pixels come out of the ranged lane above it, so the overall bar height never changes and nothing below it on the HUD moves. Default 4.\n\nLegacy Shot Bars split the two lanes proportionally and ignore this.",
+            desc = "Height of the bottom melee/weave strip inside the Shot Bars. The pixels come out of the ranged lane above it, so the overall bar height never changes and nothing below it on the HUD moves. Default 4.",
             min = 2, max = 24, step = 1, bigStep = 2,
             order = 2.631,
             disabled = function()
               local p = Nock.db.profile
               return p.rotationMode ~= "bars"
-                  or p.shotBarsSimplified == false
                   or p.shotBarsShowRaptor == false
             end,
             get = function() return Nock.db.profile.shotBarsMeleeHeight end,
@@ -3903,6 +4487,7 @@ local function buildOptionsTable()
                   -- only stand in front of it (user, 2026-08-27). Ending
                   -- practice leaves Options where it is.
                   if Nock.state.sim.active then
+                    if Nock.Settings then Nock.Settings:Close() end
                     local dlg = LibStub("AceConfigDialog-3.0", true)
                     if dlg and dlg.Close then dlg:Close("Nock") end
                     local blizz = _G.SettingsPanel or _G.InterfaceOptionsFrame
@@ -4606,88 +5191,6 @@ local function buildOptionsTable()
             order = 1,
             fontSize = "medium",
           },
-          v3Header = {
-            type = "header",
-            name = "V3 next-action display",
-            order = 10,
-          },
-          v3Intro = {
-            type = "description",
-            name = "A big movable icon near your character that always says WHAT to press (GCD/cast as a cooldown swipe, a glow at the press moment, a red HOLD while your Auto Shot is winding up). Toggle with /nock v3. Unlock (General → Lock all frames) to drag the medallion. (Its companion, the simplified Shot Bars lane, graduated to the default look — see the Shot Bars page's \"Use legacy Shot Bars\" to go back.)",
-            order = 11,
-            fontSize = "medium",
-          },
-          medallionEnabled = {
-            type = "toggle",
-            name = "Next-action medallion (ring + icon)",
-            desc = "Show the big center-screen next-action medallion — the icon plus its countdown ring.",
-            order = 12,
-            width = "full",
-            get = function() return Nock.db.profile.medallionEnabled end,
-            set = function(_, v) visualsSet(_, "medallionEnabled", v) end,
-          },
-          medallionSize = {
-            type = "range",
-            name = "Medallion size (px)",
-            desc = "Icon size of the medallion.",
-            min = 40, max = 96, step = 2,
-            order = 13,
-            disabled = function() return not Nock.db.profile.medallionEnabled end,
-            get = function() return Nock.db.profile.medallionSize end,
-            set = function(_, v) visualsSet(_, "medallionSize", v) end,
-          },
-          ringHeader = {
-            type = "header",
-            name = "Countdown dial (ring)",
-            order = 20,
-          },
-          ringIntro = {
-            type = "description",
-            name = "The ring around the medallion: it drains to empty at the moment you press (GCD / cast lockout), and turns its HOLD color counting down to your Auto Shot while you hold.",
-            order = 21,
-            fontSize = "medium",
-          },
-          medallionRing = {
-            type = "toggle",
-            name = "Show countdown dial",
-            desc = "Circular timer around the medallion.",
-            order = 22,
-            width = "full",
-            disabled = function() return not Nock.db.profile.medallionEnabled end,
-            get = function() return Nock.db.profile.medallionRing end,
-            set = function(_, v) visualsSet(_, "medallionRing", v) end,
-          },
-          medallionRingColorPress = {
-            type = "color",
-            name = "Lockout color",
-            desc = "Ring swipe color while you're on the GCD / casting (counting down to the next press).",
-            hasAlpha = true,
-            order = 23,
-            disabled = function() local p = Nock.db.profile return not (p.medallionEnabled and p.medallionRing) end,
-            get = getColor,
-            set = setColor,
-          },
-          medallionRingColorHold = {
-            type = "color",
-            name = "HOLD color",
-            desc = "Ring swipe color during HOLD — while your Auto Shot is winding up and you should not cast.",
-            hasAlpha = true,
-            order = 24,
-            disabled = function() local p = Nock.db.profile return not (p.medallionEnabled and p.medallionRing) end,
-            get = getColor,
-            set = setColor,
-          },
-          medallionRingTrackColor = {
-            type = "color",
-            name = "Track color",
-            desc = "The static background ring behind the swipe.",
-            hasAlpha = true,
-            order = 25,
-            disabled = function() local p = Nock.db.profile return not (p.medallionEnabled and p.medallionRing) end,
-            get = getColor,
-            set = setColor,
-          },
-
           sapperHeader = {
             type = "header",
             name = "Sapper column (Misdirection panel)",
@@ -4735,6 +5238,16 @@ local function buildOptionsTable()
             get = function() return Nock.db.profile.mdSapperAnnounceScope or "all" end,
             set = function(_, v) Nock.db.profile.mdSapperAnnounceScope = v end,
           },
+          mdSapperWhisperNext = {
+            type = "toggle",
+            name = "Whisper the next hunter",
+            desc = "After your own MD + Sapper opener, whisper the hunter after you in the group's hunter list (by name; the last wraps to the first) that they are next. Only your own opener, so each hunter running this passes the rotation along; independent of the raid announce.",
+            order = 35,
+            width = "full",
+            disabled = function() return not Nock.db.profile.mdSapperEnabled end,
+            get = function() return Nock.db.profile.mdSapperWhisperNext == true end,
+            set = function(_, v) Nock.db.profile.mdSapperWhisperNext = v and true or false end,
+          },
           zoomHeader = {
             type = "header",
             name = "Zoomed weave bar",
@@ -4765,6 +5278,49 @@ local function buildOptionsTable()
             get = function() return Nock.db.profile.rangeZoomLevel or 2 end,
             set = function(_, v) visualsSet(_, "rangeZoomLevel", v) end,
           },
+          stripHeader = {
+            type = "header",
+            name = "React position strip",
+            order = 45,
+          },
+          stripIntro = {
+            type = "description",
+            name = "React HUD only. A thin two-segment strip welded under the range bar: the left half lights while Auto Shot is usable (RANGED), the right half while you are in melee (MELEE), read straight from the range probes. It keeps working while the bar itself says RESYNC, and stays dark with no target. The rows below the range bar move down by the strip's height.\n",
+            order = 46,
+            fontSize = "medium",
+          },
+          reactRangeStrip = {
+            type = "toggle",
+            name = "Position strip",
+            desc = "Show the melee | ranged strip under the React range bar.",
+            width = "full",
+            order = 47,
+            get = function() return Nock.db.profile.reactRangeStrip == true end,
+            set = function(_, v) visualsSet(_, "reactRangeStrip", v and true or false) end,
+          },
+          reactRangeStripH = {
+            type = "range",
+            name = "Strip height",
+            desc = "Height of the strip in pixels. Labels need 9 or more.",
+            min = 2, max = 14, step = 1,
+            order = 48,
+            disabled = function() return not Nock.db.profile.reactRangeStrip end,
+            get = function() return Nock.db.profile.reactRangeStripH or 10 end,
+            set = function(_, v) visualsSet(_, "reactRangeStripH", v) end,
+          },
+          reactRangeStripLabels = {
+            type = "toggle",
+            name = "Labels",
+            desc = "RANGED and MELEE centred in their segments; drawn only once the strip is 9 px or taller.",
+            order = 48.5,
+            disabled = function() return not Nock.db.profile.reactRangeStrip end,
+            get = function() return Nock.db.profile.reactRangeStripLabels ~= false end,
+            set = function(_, v) visualsSet(_, "reactRangeStripLabels", v and true or false) end,
+          },
+          reactStripColorRanged = { type = "color", name = "Ranged", desc = "Left segment while Auto Shot is usable.", hasAlpha = true, order = 49.1, get = getColor, set = setColor },
+          reactStripColorMelee  = { type = "color", name = "Melee", desc = "Right segment while you are in melee.", hasAlpha = true, order = 49.2, get = getColor, set = setColor },
+          reactStripColorDead   = { type = "color", name = "Dead gap", desc = "Right segment in the gap: near, no melee, no shot.", hasAlpha = true, order = 49.3, get = getColor, set = setColor },
+          reactStripColorOff    = { type = "color", name = "Not in range", desc = "A segment whose probe says no.", hasAlpha = true, order = 49.4, get = getColor, set = setColor },
           releaseHeader = {
             type = "header",
             name = "Retry-Timer",
@@ -5148,10 +5704,8 @@ local function buildOptionsTable()
   if setup and setup.Checks and options.args.general then
     local order = 70
     for _, check in ipairs(setup.Checks) do
-      if not (check.applies and not check.applies()) then
-        options.args.general.args["setup_" .. check.key] = buildSetupCheckGroup(check, order)
-        order = order + 10
-      end
+      options.args.general.args["setup_" .. check.key] = buildSetupCheckGroup(check, order)
+      order = order + 10
     end
   end
 
@@ -5175,9 +5729,10 @@ local function buildOptionsTable()
       if not catalog then return end
       local order = baseOrder
       for _, cat in ipairs(catalog) do
+        local sid = cat.spellIds and cat.spellIds[1]
         options.args.buffTracker.args["bt_" .. which .. "_" .. cat.key] = {
           type  = "toggle",
-          name  = cat.label or cat.key,
+          name  = (cat.label or cat.key) .. (sid and ("  |cff808080(spell " .. sid .. ")|r") or ""),
           order = order,
           get   = function()
             local d = Nock.db.profile.buffTrackerDisabled
@@ -5197,17 +5752,53 @@ local function buildOptionsTable()
     addToggles(bt.PetCatalog,    "pet",    300)
   end
 
+  -- Custom shopping items: one line per stored entry (label · threshold · X),
+  -- rebuilt with the dynamic blocks whenever the stored text changes.
+  if options.args.shopping then
+    local shopArgs = options.args.shopping.args
+    local function rebuildShopCustom()
+      for k in pairs(shopArgs) do
+        if type(k) == "string" and k:sub(1, 11) == "customItem_" then shopArgs[k] = nil end
+      end
+      local list = shopCustomList()
+      for i, e in ipairs(list) do
+        local base = 286 + i * 0.01
+        local nm = e.label or shopItemName(e.id) or ("Item " .. e.id)
+        shopArgs["customItem_" .. i .. "_lbl"] = {
+          type = "description", order = base, width = 1.4, fontSize = "medium",
+          name = ("%s  |cff808080(item %d)|r"):format(nm, e.id),
+        }
+        shopArgs["customItem_" .. i .. "_thr"] = {
+          type = "range", name = "Keep at least", order = base + 0.001, width = 1.0, min = 1, max = 20000, step = 1, bigStep = 10,
+          get = function() return e.threshold end,
+          set = function(_, v) local l = shopCustomList(); if l[i] then l[i].threshold = v end; shopCustomSave(l) end,
+        }
+        shopArgs["customItem_" .. i .. "_rm"] = {
+          type = "execute", name = "X", desc = "Remove this item.", order = base + 0.002, width = 0.3,
+          func = function() local l = shopCustomList(); table.remove(l, i); shopCustomSave(l) end,
+        }
+      end
+    end
+    rebuildShopCustom()
+    ARG_REBUILDERS[#ARG_REBUILDERS + 1] = rebuildShopCustom
+  end
+
   -- Inject per-curated-entry inline groups (enable + threshold) for the
   -- Shopping List, generated from Constants.SHOPPING_CURATED (orders 100+).
   if options.args.shopping and Nock.Constants.SHOPPING_CURATED then
     local order = 100
     for _, e in ipairs(Nock.Constants.SHOPPING_CURATED) do
       local key, default = e.key, e.threshold or 1
+      local iconId = e.id or (e.ids and e.ids[1]) or (key == "arrows" and 28056) or nil
       options.args.shopping.args["shop_" .. key] = {
         type   = "group",
         inline = true,
         name   = e.label or key,
         order  = order,
+        icon   = iconId and function()
+          if C_Item and C_Item.GetItemIconByID then return C_Item.GetItemIconByID(iconId) end
+          if GetItemIcon then return GetItemIcon(iconId) end
+        end or nil,
         args = {
           on = {
             type  = "toggle",
@@ -5275,7 +5866,7 @@ local function buildOptionsTable()
     local function dbfOrdered()
       if DTMOD and DTMOD.GetOrderedKeys then return DTMOD:GetOrderedKeys() end
       local out = {}
-      for _, e in ipairs(Nock.Constants.DEBUFF_CURATED) do out[#out + 1] = e.key end
+      for _, e in ipairs(Nock.Constants.DEBUFF_CURATED) do if not e.pvpOnly then out[#out + 1] = e.key end end
       return out
     end
 
@@ -5296,7 +5887,7 @@ local function buildOptionsTable()
       for kk in pairs(dbfArgs) do
         if kk:sub(1, 4) == "dbf_" then dbfArgs[kk] = nil end
       end
-      dbfArgs.dbf_header = { type = "header", name = "Tracked debuffs (top = first icon)", order = 199 }
+      dbfArgs.dbf_header = { type = "header", name = "Tracked debuffs", order = 199 }
       dbfArgs.dbf_resetOrder = {
         type = "execute", name = "Reset order", order = 199.5, width = "half",
         desc = "Return to the built-in order. Does not change which entries are on.",
@@ -5310,9 +5901,13 @@ local function buildOptionsTable()
       local o = 200
       for i, key in ipairs(ordered) do
         local nm = (DTMOD and DTMOD.Describe) and DTMOD:Describe(key) or key
+        local sid = tonumber(key:match("^custom:(%d+)$"))
+        if not sid and DTMOD and DTMOD.Catalog then
+          for _, e in ipairs(DTMOD.Catalog) do if e.key == key then sid = e.spellIds and e.spellIds[1]; break end end
+        end
         dbfArgs["dbf_en_" .. key] = {
           type  = "toggle",
-          name  = nm,
+          name  = nm .. (sid and ("  |cff808080(spell " .. sid .. ")|r") or ""),
           order = o,
           width = 1.7,
           get   = function() return dbfEnabled(key) end,
@@ -5341,6 +5936,7 @@ local function buildOptionsTable()
     rebuildDbfArgs()
     -- Custom entries come and go with the text box; re-list on any change.
     dbfRebuildEntries = rebuildDbfArgs
+    ARG_REBUILDERS[#ARG_REBUILDERS + 1] = rebuildDbfArgs
   end
 
   -- Inject the shared per-panel Background styling block (fill + LSM border)
@@ -5488,6 +6084,7 @@ local function buildOptionsTable()
     end
 
     customEntryRebuilds[#customEntryRebuilds + 1] = rebuildCdArgs
+    ARG_REBUILDERS[#ARG_REBUILDERS + 1] = rebuildCdArgs
     rebuildCdArgs()
     options.args.cooldownGrid = {
       type  = "group",
@@ -5552,6 +6149,7 @@ local function buildOptionsTable()
       name = "Fixed-skin replica of the React hunter WeakAura: converge-to-center Auto Shot bar, melee bar, slide range finder, thin mana bar, glued cast bar, a 3-row cooldown grid and a proc/utility buff row — replacing the classic rows entirely while active. Configure the content and behavior here; the skin itself stays the reference look apart from the curated knobs under |cffffd100Skin|r. Toggle quickly with |cffffd200/nock react|r.\n",
     }
     landingArgs.hudMode = hudModeSelect(2, "(same setting as General → HUD look)")
+    landingArgs.useLook = useLookButton("react", "React HUD", 1.5)
 
     sizeArgs.sizeHeader = { type = "header", name = "Size", order = 10 }
     sizeArgs.reactWidth = {
@@ -5818,7 +6416,7 @@ local function buildOptionsTable()
     barsArgs.grpEngine = {
       type = "group",
       inline = true,
-      name = "Weave engine (same settings as Classic → Shot Bars)",
+      name = "Weave engine", desc = "The same settings as Classic → Shot Bars; one engine feeds every HUD.",
       order = 38,
       args = weaveEngineArgs(),
     }
@@ -5980,6 +6578,7 @@ local function buildOptionsTable()
       }
     end
     rebuildGridArgs()
+    ARG_REBUILDERS[#ARG_REBUILDERS + 1] = rebuildGridArgs
     gridArgs.reactConsumablesAlways = {
       type = "toggle",
       name = "Always show consumables",
@@ -6079,6 +6678,7 @@ local function buildOptionsTable()
     end
     rebuildReactCustomList()
     customEntryRebuilds[#customEntryRebuilds + 1] = rebuildReactCustomList
+    ARG_REBUILDERS[#ARG_REBUILDERS + 1] = rebuildReactCustomList
     buildCustomAddForm(gridArgs, 80, reactCdStage)
 
     -- Buff Row settings, built ONCE PER SIDE — Classic HUD → Buff Row and
@@ -6097,6 +6697,7 @@ local function buildOptionsTable()
     local function rebuildAllBuffCustom()
       for i = 1, #buffCustomRebuilds do buffCustomRebuilds[i]() end
     end
+    ARG_REBUILDERS[#ARG_REBUILDERS + 1] = rebuildAllBuffCustom
     local function fillBuffArgs(args, side)
       local react     = (side == "react")
       local fluffy    = (side == "fluffy")
@@ -6469,6 +7070,7 @@ local function buildOptionsTable()
       args  = {
         intro   = landingArgs.intro,
         hudMode = landingArgs.hudMode,
+        useLook = landingArgs.useLook,
         tabSize  = { type = "group", name = "Size & Elements", order = 10, args = sizeArgs },
         tabBars  = { type = "group", name = "Bars",            order = 20, args = barsArgs },
         tabRange = { type = "group", name = "Range Bar",       order = 30, args = rangeArgs },
@@ -6681,7 +7283,7 @@ local function buildOptionsTable()
     fBarsArgs.grpEngine = {
       type = "group",
       inline = true,
-      name = "Weave engine (same settings as Classic → Shot Bars)",
+      name = "Weave engine", desc = "The same settings as Classic → Shot Bars; one engine feeds every HUD.",
       order = 30,
       args = weaveEngineArgs(),
     }
@@ -6817,6 +7419,7 @@ local function buildOptionsTable()
       }
     end
     rebuildFluffyGridArgs()
+    ARG_REBUILDERS[#ARG_REBUILDERS + 1] = rebuildFluffyGridArgs
     fGridArgs.lookHeader = { type = "header", name = "Glows & tints", order = 20 }
     fGridArgs.lookNote = {
       type = "description", fontSize = "medium", order = 20.1,
@@ -6891,6 +7494,7 @@ local function buildOptionsTable()
     end
     rebuildFluffyCustomList()
     customEntryRebuilds[#customEntryRebuilds + 1] = rebuildFluffyCustomList
+    ARG_REBUILDERS[#ARG_REBUILDERS + 1] = rebuildFluffyCustomList
     buildCustomAddForm(fGridArgs, 50, fluffyCdStage)
 
     fillBuffArgs(fBuffArgs, "fluffy")
@@ -7044,6 +7648,7 @@ local function buildOptionsTable()
           name = "The compact third look: a cast bar that only appears while casting, the React-style converge Auto Shot bar with its breakpoint ticks, the Fluffy shot-window lanes (ranged + melee), the range finder, the proc row above and an optional 6-icon cooldown row welded below (it grows downward, never moving the stack). Element visibility lives on this page's own keys; the classic rows' settings don't apply. Toggle quickly with |cffffd200/nock fluffy|r.\n",
         },
         hudMode  = hudModeSelect(2, "(same setting as General → HUD look)"),
+        useLook  = useLookButton("fluffy", "FluffyHUD", 1.5),
         tabSize  = { type = "group", name = "Size & Elements", order = 10, args = fSizeArgs },
         tabBars  = { type = "group", name = "Auto Shot Bar",   order = 15, args = fBarsArgs },
         tabGrid  = { type = "group", name = "Cooldown Grid",    order = 20, args = fGridArgs },
@@ -7142,28 +7747,26 @@ local function buildOptionsTable()
   -- Rotation: mode picks stay up top; the Shot Bars pile and each tunable
   -- cluster get their own section.
   regroup("rotation", "grpShotBars", "Shot timing bars", 3,
-    { "shotBarsIntro", "shotBarsLegend", "shotBarsLegacy", "shotBarsShowHelper", "shotBarsWindow",
+    { "shotBarsIntro", "shotBarsLegend", "shotBarsShowHelper", "shotBarsWindow",
       "shotBarsRotationText", "shotBarsHeight", "shotBarsMeleeHeight", "shotBarsReverse", "shotBarsShowMulti",
       "shotBarsShowArcane", "shotBarsShowRaptor", "shotBarsColorSteady", "shotBarsColorMulti",
       "shotBarsColorArcane", "shotBarsColorRaptor", "shotBarsColorWeaveAuto",
       "shotBarsColorDanger", "shotBarsColorQueue", "shotBarsColorQueueLive",
       "shotBarsColorSpark" })
-  -- Experimental: one sidebar sub-page per experiment (the countdown dial
-  -- rides with the medallion — same experiment, two sections). The landing
-  -- page keeps only the opt-in disclaimer.
+  -- Experimental: one sidebar sub-page per experiment. The landing page
+  -- keeps only the opt-in disclaimer.
   options.args.experimental.childGroups = "tree"
-  regroup("experimental", "grpMedallion", "V3 Medallion", 10,
-    { "v3Intro", "medallionEnabled", "medallionSize", "ringHeader", "ringIntro",
-      "medallionRing", "medallionRingColorPress", "medallionRingColorHold",
-      "medallionRingTrackColor" }, true)
   regroup("experimental", "grpSapper", "Sapper Column", 20,
-    { "sapperIntro", "mdSapperEnabled", "mdSapperAnnounce", "mdSapperAnnounceScope" }, true)
+    { "sapperIntro", "mdSapperEnabled", "mdSapperAnnounce", "mdSapperAnnounceScope", "mdSapperWhisperNext" }, true)
   regroup("experimental", "grpZoom", "Zoomed Weave Bar", 30,
     { "zoomIntro", "rangeZoomedGlide", "rangeZoomLevel" }, true)
+  regroup("experimental", "grpStrip", "React Position Strip", 35,
+    { "stripIntro", "reactRangeStrip", "reactRangeStripH", "reactRangeStripLabels",
+      "reactStripColorRanged", "reactStripColorMelee", "reactStripColorDead", "reactStripColorOff" }, true)
   regroup("experimental", "grpRelease", "Retry-Timer", 40,
     { "releaseIntro", "releaseBarEnabled", "releaseBarAlways", "releaseBarHeight",
       "releaseBarLabels", "releaseBarNotches" }, true)
-  dropArgs("experimental", "v3Header", "sapperHeader", "zoomHeader", "releaseHeader")
+  dropArgs("experimental", "sapperHeader", "zoomHeader", "stripHeader", "releaseHeader")
 
   -- Warnings: the settings layer is the first sidebar child (order 1; the
   -- category nodes start at 10), keeping the landing page to just the master
@@ -7174,7 +7777,7 @@ local function buildOptionsTable()
       "warningLabelSize", "warningLabelFont", "warningLabelStyle", "warningLabelUpper",
       "previewHeader", "previewIntro", "previewButton", "noReleasePreview" }, true)
 
-  regroup("rotation", "grpEngine", "Weave engine (same settings as React → Bars)", 4,
+  regroup("rotation", "grpEngine", "Weave engine", 4,
     { "rotQuiverEquipped", "rotRaptorWeaveHeadroom", "rotWeaveProxMin", "rotWeaveProxMax" })
   regroup("rotation", "grpClipTicks", "Clip-zone ticks", 5,
     { "clipTicksIntro", "showWindupMark" })
@@ -7343,7 +7946,124 @@ local function buildOptionsTable()
       name = "The configurable classic look: a stack of independent rows. Each page below owns one piece — row layout and element visibility, the Shot Bars timeline, swing/mana/range bars, the cooldown grid and the cast bar.\n",
     }
     classic.args.hudMode = hudModeSelect(0.5, "(same setting as General → HUD look)")
+    classic.args.useLook = useLookButton("classic", "Classic HUD", 0.4)
     options.args.classic = classic
+  end
+
+  -- Helpers in two tabs: the consumable cards first, the strip's settings
+  -- second (user, 2026-09-06). The intro stays on the page and leads Buffs.
+  do
+    local h = options.args.helpers
+    if h and h.args then
+      local buffs = { type = "group", name = "Buffs", order = 1, args = {} }
+      local settings = { type = "group", name = "Settings", order = 2, args = {} }
+      local keys = {}
+      for k in pairs(h.args) do keys[#keys + 1] = k end
+      for _, k in ipairs(keys) do
+        if k ~= "intro" then
+          local v = h.args[k]
+          if type(k) == "string" and k:sub(1, 7) == "helper_" then buffs.args[k] = v else settings.args[k] = v end
+          h.args[k] = nil
+        end
+      end
+      h.args.tabBuffs, h.args.tabSettings = buffs, settings
+    end
+  end
+
+  -- Alerts -> Sounds: every audio cue on one page. The dead-zone cues move
+  -- here from the Range Finder tab (they fire in every look); the warning
+  -- sound pickers and the eating-pill chime are copies of their home rows
+  -- (same get/set closures), so either page edits the same setting.
+  do
+    -- One tab per cue family so the page can grow.
+    local function tab(name, order, intro)
+      return { type = "group", name = name, order = order, args = {
+        intro = { type = "description", fontSize = "medium", order = 0, name = intro .. "\n" },
+      } }
+    end
+    local sounds = {
+      type = "group", name = "Sounds", order = 3, childGroups = "tab",
+      args = {
+        deadZone = tab("Dead zone", 1, "A cue when you step into or out of the dead zone (in melee, unable to shoot). Fires in every look, on any real zone change; losing the target stays silent."),
+        warnings = tab("Warnings", 2, "The cue each warning plays, on the Master channel. The same picker sits on the warning's own page; changing it here changes it there."),
+        weave = tab("Weaving", 3, "Outcome cues for the melee weave, from the combat log: your Raptor Strike landing, and a Windfury proc. Played on the dead-zone output channel."),
+        other = tab("Other cues", 4, "Sounds that belong to no warning."),
+      },
+    }
+    local rf = options.args.classic and options.args.classic.args.rangeFinder
+    if rf and rf.args then
+      for _, k in ipairs({ "deadZoneHeader", "deadZoneIntro", "deadZoneSoundChannel", "deadZoneEnterEnabled", "deadZoneEnterSound",
+                           "deadZoneEnterPreview", "deadZoneExitEnabled", "deadZoneExitSound", "deadZoneExitPreview" }) do
+        sounds.args.deadZone.args[k] = rf.args[k]; rf.args[k] = nil
+      end
+    end
+    local function copyRow(node, order)
+      local c = {}
+      for k, v in pairs(node) do c[k] = v end
+      c.order = order
+      return c
+    end
+    local function sorted(args, prefix)
+      local out = {}
+      for k, v in pairs(args) do
+        if k:sub(1, #prefix) == prefix and type(v) == "table" and v.args then out[#out + 1] = { o = v.order or 0, k = k, args = v.args } end
+      end
+      table.sort(out, function(a, b) if a.o == b.o then return a.k < b.k end return a.o < b.o end)
+      return out
+    end
+    local w, n = options.args.warnings, 0
+    for _, cat in ipairs(w and w.args and sorted(w.args, "cat_") or {}) do
+      for _, wg in ipairs(sorted(cat.args, "warning_")) do
+        local keys = {}
+        for k in pairs(wg.args) do if k:sub(1, 6) == "media_" and wg.args["mediaplay_" .. k:sub(7)] then keys[#keys + 1] = k end end
+        table.sort(keys)
+        for _, k in ipairs(keys) do
+          n = n + 1
+          sounds.args.warnings.args[k] = copyRow(wg.args[k], 100 + n * 2)
+          sounds.args.warnings.args["mediaplay_" .. k:sub(7)] = copyRow(wg.args["mediaplay_" .. k:sub(7)], 101 + n * 2)
+        end
+      end
+    end
+    do
+      local wa = sounds.args.weave.args
+      local function soundValues()
+        local lsm = LibStub("LibSharedMedia-3.0", true)
+        local out = { ["None"] = "None" }
+        if lsm then for _, name in ipairs(lsm:List("sound")) do out[name] = name end end
+        return out
+      end
+      local function cue(prefix, label, order, what)
+        wa[prefix .. "Enabled"] = {
+          type = "toggle", name = label, desc = what, order = order, width = "full",
+          get = function() return Nock.db.profile[prefix .. "Enabled"] == true end,
+          set = function(_, v) Nock.db.profile[prefix .. "Enabled"] = v and true or false end,
+        }
+        wa[prefix .. "Sound"] = {
+          type = "select", name = label .. " sound", desc = "'None' is silent.", order = order + 1,
+          dialogControl = lsmWidget(nil, "plain"), values = soundValues,
+          disabled = function() return not Nock.db.profile[prefix .. "Enabled"] end,
+          get = function() return Nock.db.profile[prefix .. "Sound"] or "None" end,
+          set = function(_, v) Nock.db.profile[prefix .. "Sound"] = v end,
+        }
+        wa[prefix .. "Preview"] = {
+          type = "execute", name = "Preview", order = order + 2, width = "half",
+          disabled = function() return not Nock.db.profile[prefix .. "Enabled"] or (Nock.db.profile[prefix .. "Sound"] or "None") == "None" end,
+          func = function() previewSound(Nock.db.profile[prefix .. "Sound"], Nock.db.profile.deadZoneSoundChannel) end,
+        }
+      end
+      cue("weaveRaptorHit", "Raptor Strike hit", 10, "Play a sound when your Raptor Strike lands (a miss, dodge or parry stays silent).")
+      cue("weaveWfProc", "Windfury proc", 20, "Play a sound when Windfury grants you extra attacks.")
+    end
+    local hs = options.args.helpers and options.args.helpers.args.tabSettings
+    if hs and hs.args and hs.args.consumeBannerSound then
+      sounds.args.other.args.consumeBannerSound = copyRow(hs.args.consumeBannerSound, 200)
+    end
+    local ag = options.args.aggro
+    if ag and ag.args then
+      sounds.args.other.args.aggroSoundMode = copyRow(ag.args.aggroSoundMode, 210)
+      sounds.args.other.args.aggroPreview = copyRow(ag.args.aggroPreview, 211)
+    end
+    options.args.sounds = sounds
   end
 
   local FAMILIES = {
@@ -7351,15 +8071,143 @@ local function buildOptionsTable()
       desc = "Everything drawn as part of the HUD cluster, split by look: the Classic row stack, the fixed-skin React replica and the compact FluffyHUD. The active look is marked in the list.",
       children = { "classic", "react", "fluffy" } },
     { key = "alerts", name = "Alerts", order = 3,
-      desc = "Things that shout at you: full-screen warnings and the consumable/buff helper row.",
-      children = { "warnings", "helpers" } },
+      desc = "Things that shout at you: full-screen warnings, the consumable/buff helper row and every sound cue.",
+      children = { "warnings", "aggro", "helpers", "sounds" } },
     { key = "trackers", name = "Trackers", order = 4,
-      desc = "Standalone tracking panels: buffs, target debuffs, totem range and Misdirection.",
-      children = { "buffTracker", "debuffTracker", "totemTracker", "misdirect" } },
+      desc = "Standalone tracking panels: buffs, target debuffs and Misdirection.",
+      children = { "buffTracker", "debuffTracker", "misdirect" } },
+    { key = "pvp", name = "PvP", order = 4.5,
+      desc = "Battlegrounds and arenas: one mode that puts the raid furniture away, and what it changes.",
+      children = { "pvpMode" } },
     { key = "utilities", name = "Utilities", order = 5,
-      desc = "Quality-of-life helpers: shopping list, mailbox, the weave keybind, the boss garment autopilot and the Steam Tonk guard.",
-      children = { "shopping", "mailbox", "weaveBind", "garment", "tonk", "practice" } },
+      desc = "Quality-of-life helpers: vendor and screen baselines, shopping list, mailbox, the weave keybind, the boss garment autopilot and the Steam Tonk guard.",
+      children = { "qol", "shopping", "mailbox", "weaveBind", "garment", "tonk", "practice" } },
   }
+  -- The Totem Tracker panel is Classic-only (React and Fluffy show totems in
+  -- their buff row), so it is a Classic HUD tab, not a Trackers page.
+  do
+    local tt = options.args.totemTracker
+    local classic = options.args.classic
+    if tt and classic and classic.args then
+      tt.order = 10.5
+      classic.args.totemTracker = tt
+      options.args.totemTracker = nil
+    end
+  end
+  -- The incoming-CC alert's spell table: icon · name | Sound | Preview | On | x.
+  -- Built-ins (C.PVP_CC_CASTS) and your own list, each row pvpCcItem_<id>_*;
+  -- the layout's wildcard table line picks them up by the _lbl node.
+  do
+    local pg = options.args.pvpMode
+    local function ccPlay(soundName)
+      local m = Nock:GetModule("CCAlert", true)
+      if not (m and m.PlayCue) then return end
+      local LSM = LibStub("LibSharedMedia-3.0", true)
+      m.PlayCue(Nock.db.profile, { sound = soundName }, {
+        lsmPath = function(n) return LSM and LSM:Fetch("sound", n, true) or nil end,
+        playFile = function(path) if PlaySoundFile then pcall(PlaySoundFile, path, "Master") end end,
+      })
+    end
+    local function ccRow(id, order, label, spell, getSound, setSound, getOn, setOn, remove)
+      local W = Nock.OptionsWalk
+      local lbl = { type = "description", name = label, order = order, width = 1.0, fontSize = "medium" }
+      if W and W.SetMeta then W.SetMeta(lbl, "icon", ccSpellIcon(spell)); W.SetMeta(lbl, "seq", order) end
+      pg.args["pvpCcItem_" .. id .. "_lbl"] = lbl
+      pg.args["pvpCcItem_" .. id .. "_sound"] = {
+        type = "select", name = "Sound", order = order + 0.001, width = 0.9,
+        desc = "Played once when a hostile starts casting this at you. 'None' is silent.",
+        dialogControl = lsmWidget(nil, "plain"), values = ccSoundValues,
+        disabled = function() return Nock.db.profile.pvpCcEnabled == false or not getOn() end,
+        get = getSound, set = function(_, v) setSound(v) end,
+      }
+      pg.args["pvpCcItem_" .. id .. "_play"] = {
+        type = "execute", name = "Preview", order = order + 0.002, width = "half",
+        disabled = function() return Nock.db.profile.pvpCcEnabled == false or not getOn() or getSound() == "None" end,
+        func = function() ccPlay(getSound()) end,
+      }
+      pg.args["pvpCcItem_" .. id .. "_on"] = {
+        type = "toggle", name = "On", order = order + 0.003, width = 0.4,
+        desc = "Alert when a hostile starts casting this at you.",
+        disabled = function() return Nock.db.profile.pvpCcEnabled == false end,
+        get = getOn, set = function(_, v) setOn(v) end,
+      }
+      if remove then
+        pg.args["pvpCcItem_" .. id .. "_rm"] = {
+          type = "execute", name = "X", desc = "Remove this spell.", order = order + 0.004, width = 0.3,
+          func = remove,
+        }
+      end
+    end
+    local function rebuildCcItems()
+      for k in pairs(pg.args) do
+        if type(k) == "string" and k:sub(1, 10) == "pvpCcItem_" then pg.args[k] = nil end
+      end
+      local o = 46
+      for _, e in ipairs(Nock.Constants.PVP_CC_CASTS or {}) do
+        local key, sk = e.key, "pvpCc_" .. e.key .. "_sound"
+        ccRow(key, o, e.label, e.ids[1],
+          function() return Nock.db.profile[sk] or "Phone" end,
+          function(v) Nock.db.profile[sk] = v end,
+          function() return Nock.db.profile["pvpCc_" .. key] ~= false end,
+          function(v) Nock.db.profile["pvpCc_" .. key] = v and true or false end,
+          nil)
+        o = o + 0.01
+      end
+      for i, c in ipairs(ccCustomList()) do
+        local spell = c.spell
+        ccRow("c" .. i, o, tostring(spell), spell,
+          function() local l = ccCustomList(); return l[i] and l[i].sound or "Phone" end,
+          function(v) local l = ccCustomList(); if l[i] then l[i].sound = v end; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          function() local l = ccCustomList(); return l[i] ~= nil and l[i].enabled ~= false end,
+          function(v) local l = ccCustomList(); if l[i] then l[i].enabled = v and true or false end; Nock:SendMessage("NOCK_VISUALS_CHANGED") end,
+          function() local l = ccCustomList(); table.remove(l, i); ccCustomSave(l) end)
+        o = o + 0.01
+      end
+    end
+    rebuildCcItems()
+    ARG_REBUILDERS[#ARG_REBUILDERS + 1] = rebuildCcItems
+  end
+  -- PvP mode's own debuff set: a table line per curated entry (icon · name
+  -- and who applies it | On), via the layout's wildcard table (pvpdbf_<key>_lbl
+  -- names and orders the line, its META icon is the spell's).
+  do
+    local pg = options.args.pvpMode
+    local DTMOD = Nock:GetModule("DebuffTracker", true)
+    local W = Nock.OptionsWalk
+    local function classWord(tok) return tok:sub(1, 1) .. tok:sub(2):lower() end
+    local o = 60
+    for _, e in ipairs(Nock.Constants.DEBUFF_CURATED or {}) do
+      if e.pvp ~= false then   -- raid-only debuffs never enter the PvP set
+      local key = e.key
+      local who = {}
+      for i, tok in ipairs(e.classes or {}) do who[i] = classWord(tok) end
+      local lbl = {
+        type = "description", order = o, width = 1.4, fontSize = "medium",
+        name = e.label .. (#who > 0 and ("  |cff808080(" .. table.concat(who, " / ") .. ")|r") or ""),
+      }
+      if W and W.SetMeta then
+        W.SetMeta(lbl, "icon", e.spellIds and e.spellIds[1] and { spell = e.spellIds[1] } or e.fallbackIcon)
+        W.SetMeta(lbl, "seq", o)
+      end
+      pg.args["pvpdbf_" .. key .. "_lbl"] = lbl
+      pg.args["pvpdbf_" .. key .. "_on"] = {
+        type = "toggle",
+        name = "On",
+        desc = "Tracked on the target while PvP mode is on.",
+        order = o + 0.001,
+        width = 0.4,
+        get = function() return DTMOD ~= nil and DTMOD.IsEntryEnabledPvP ~= nil and DTMOD.IsEntryEnabledPvP(key) or false end,
+        set = function(_, v)
+          local p = Nock.db.profile
+          p.pvpDebuffDisabled = p.pvpDebuffDisabled or {}
+          p.pvpDebuffDisabled[key] = (not v)
+          Nock:SendMessage("NOCK_VISUALS_CHANGED")
+        end,
+      }
+      o = o + 1
+      end
+    end
+  end
   for _, fam in ipairs(FAMILIES) do
     local group = {
       type = "group",
@@ -7389,11 +8237,38 @@ function Nock:RegisterOptions()
   local options = buildOptionsTable()
   options.args.profiles = LibStub("AceDBOptions-3.0"):GetOptionsTable(self.db)
   options.args.profiles.order = 99   -- pinned to the very bottom
+  -- Simple/Advanced tags (Config/OptionsAdvanced.lua) go onto the built table;
+  -- RebuildOptionsArgs re-applies them after refilling the dynamic blocks.
+  self.optionsTable = options
+  if self.OptionsAdvanced then self.OptionsAdvanced.Apply(options) end
+  if self.OptionsLayout then self.OptionsLayout.Apply(options) end
 
   LibStub("AceConfig-3.0"):RegisterOptionsTable("Nock", options)
-  self.optionsFrame = LibStub("AceConfigDialog-3.0"):AddToBlizOptions("Nock", "Nock")
+  -- Interface -> AddOns -> Nock: one button into the settings window (the
+  -- legacy AceConfig tree stays reachable from it); RegisterOptions runs from
+  -- OnInitialize, after every file loaded, so the launcher exists by now.
+  if self.UI and self.UI.RegisterSettingsLauncher then
+    self.optionsFrame = self.UI.RegisterSettingsLauncher()
+  else
+    self.optionsFrame = LibStub("AceConfigDialog-3.0"):AddToBlizOptions("Nock", "Nock")
+  end
+end
+
+-- Refill every dynamic args block from the live profile and tell the
+-- registry. Called on profile switch (Core/Core.lua) and by the settings
+-- window when it needs the rows to follow the profile.
+function Nock:RebuildOptionsArgs()
+  for i = 1, #ARG_REBUILDERS do
+    local okr, err = pcall(ARG_REBUILDERS[i])
+    if not okr then self:Print(("Options rebuild failed: %s"):format(tostring(err))) end
+  end
+  if self.OptionsAdvanced and self.optionsTable then self.OptionsAdvanced.Apply(self.optionsTable) end
+  if self.OptionsLayout and self.optionsTable then self.OptionsLayout.Apply(self.optionsTable) end
+  local reg = LibStub("AceConfigRegistry-3.0", true)
+  if reg then reg:NotifyChange("Nock") end
 end
 
 function Nock:OpenConfig()
+  if self.Settings and self.Settings.Open then self.Settings:Open() return end
   LibStub("AceConfigDialog-3.0"):Open("Nock")
 end

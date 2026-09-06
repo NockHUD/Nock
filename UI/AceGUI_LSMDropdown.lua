@@ -244,7 +244,7 @@ registerWrapper("Nock_LSM_Plain",     stylePlain,     stylePlain)
 -- so every setting below the failing one simply never appears and the user
 -- reports "the tab goes blank" with nothing else to go on. Knowing whether a
 -- foreign LSM30_* (and which vintage) took over turns that into a one-line
--- answer. See LSM_WIDGET_PREFERENCE in Config/Options.lua for why ours win.
+-- answer. See MEDIA_WIDGET_PREFERENCE below for why ours win.
 ----------------------------------------------------------------------------
 
 local PROBE_WIDGETS = {

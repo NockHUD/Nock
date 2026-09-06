@@ -241,7 +241,7 @@ function Rotation:Refresh(state)
   -- tick) has already named the press; the scorers below know the sim's swing
   -- and cooldowns but not the drill, and they used to be filtered here through
   -- Nock.PaperAllows -- one of five places that decided "next". Copied, not
-  -- scored: the medallion, the rotation row and WeaveCoach's GO all read these
+  -- scored: the rotation row and WeaveCoach's GO both read these
   -- two fields, so this is the whole reason every practice surface agrees.
   --
   -- Practice ON with no fight running is live scoring as before: there is no

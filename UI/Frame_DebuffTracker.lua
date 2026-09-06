@@ -25,7 +25,14 @@ local function profileGet(key, fallback)
   return fallback
 end
 
-local function isEnabled()  return profileGet("debuffTrackerEnabled", true) and true or false end
+local function pvpActive()
+  local st = Nock.state and Nock.state.player
+  return st ~= nil and st.pvp == true
+end
+local function isEnabled()
+  if pvpActive() and profileGet("pvpShowDebuffTracker", true) then return true end
+  return profileGet("debuffTrackerEnabled", true) and true or false
+end
 local function isRaidOnly() return profileGet("debuffTrackerRaidOnly", false) and true or false end
 local function isLocked()   return Nock.IsLocked() end
 local function cols()       return profileGet("debuffTrackerCols", 8) end
@@ -225,7 +232,7 @@ function DebuffTrackerView:Refresh(state)
   local hasTarget = UnitExists and UnitExists("target")
   local gated = not isEnabled()
              or (not hasTarget and not demo)
-             or (isRaidOnly() and not inRaid() and not demo)
+             or (isRaidOnly() and not inRaid() and not demo and not pvpActive())
   local list  = state.debufftracker or {}
   if gated or #list == 0 then
     if self.panel:IsShown() then

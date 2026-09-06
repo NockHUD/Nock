@@ -1,8 +1,8 @@
 -- Core/PracticePlan.lua
 -- The one answer to "what do I press next": Nock.state.sim.plan, built once per tick from the grader's cycles and the engine's grid.
 --
--- Everything the practice surfaces show as ADVICE -- the medallion, the
--- rotation row, WeaveCoach's GO, the conveyor's NEXT, the coach line -- READS
+-- Everything the practice surfaces show as ADVICE -- the rotation row,
+-- WeaveCoach's GO, the conveyor's NEXT, the coach line -- READS
 -- this table. Nothing else computes it. Seated cycles come from the grader
 -- (measured releases); the cycles ahead are seated on the engine's shot grid
 -- with the grader's own routine (G.SeatCycle), so a projected note's key and
@@ -1031,7 +1031,7 @@ function P.Build(src, plan)
     local nt = plan.notes[best]
     plan.nextIdx, plan.nextKey, plan.nextSym = best, nt.key, nt.sym
     -- The HUD's spell only once the fight is on: armed, the strip says what to
-    -- pull with and the medallion stays as blank as it is with no target.
+    -- pull with and the rotation row stays as blank as it is with no target.
     if plan.pulled then
       plan.nextSpellId = spellFor(nt.sym)
       plan.nextNextSpellId = second and spellFor(plan.notes[second].sym) or nil

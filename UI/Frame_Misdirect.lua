@@ -912,6 +912,20 @@ function MisdirectView:Refresh(state)
     self._trackerN = 0
     return
   end
+  -- The panel's own show-when rule (Trackers -> Misdirection -> Show when);
+  -- group changes happen out of combat, so the same lockdown guard applies.
+  -- PvP mode (sidebar PvP): the MD panel is a raid tool. Zone changes happen
+  -- out of combat; a manual flip mid-fight waits for the next regen.
+  if Nock.PvPHides(Nock.db and Nock.db.profile, "pvpHideMisdirect") then
+    if self.panel:IsShown() and not InCombatLockdown() then self.panel:Hide() end
+    self._trackerN = 0
+    return
+  end
+  if not Nock.PanelShowApplies(Nock.db and Nock.db.profile, "md", IsResting and IsResting(), groupChannel()) then
+    if self.panel:IsShown() and not InCombatLockdown() then self.panel:Hide() end
+    self._trackerN = 0
+    return
+  end
 
   local trackerOn = isTrackerEnabled()
   local hunters = trackerOn and state.misdirection and state.misdirection.hunters or nil

@@ -54,6 +54,11 @@ local function selfOnly()
   return p and p.mdSapperAnnounceScope == "self"
 end
 
+local function whisperNextOn()
+  local p = profile()
+  return p ~= nil and p.mdSapperWhisperNext == true
+end
+
 -- ---------------------------------------------------------------------------
 -- Helpers
 -- ---------------------------------------------------------------------------
@@ -70,6 +75,31 @@ local function groupChannel()
   if GetNumRaidMembers and GetNumRaidMembers() > 0 then return "RAID" end
   if GetNumPartyMembers and GetNumPartyMembers() > 0 then return "PARTY" end
   return nil
+end
+
+-- The hunter after `name` in the group's hunter roster sorted by name, wrapping
+-- from the last back to the first; nil when nobody else is a hunter. Pure.
+local function nextHunter(hunters, name)
+  local names = {}
+  for n in pairs(hunters or {}) do names[#names + 1] = n end
+  table.sort(names)
+  if #names < 2 then return nil end
+  for i, n in ipairs(names) do
+    if n == name then return names[i % #names + 1] end
+  end
+  return nil
+end
+Nock.SapperNextHunter = nextHunter
+
+-- The tank an opener by `name` lands on: their recorded MD target while the
+-- MD window is still open; nil for a bare sapper.
+local function openerTarget(name, now)
+  local hunters = Nock.state and Nock.state.misdirection and Nock.state.misdirection.hunters
+  local md = hunters and hunters[name]
+  if not (md and md.target) then return nil end
+  local castTime = md.castTime or 0
+  if castTime <= 0 or (now - castTime) > MD_SEC then return nil end
+  return md.target, hunters
 end
 
 -- Rewrite an entry in place — Refresh runs on the central tick, so it must not
@@ -230,6 +260,7 @@ function Sapper:OnCombatLog()
   rec.cdEnd = now + CD_SEC
 
   self:MaybeAnnounce(name, now)
+  self:MaybeWhisperNext(name, now)
 end
 
 -- ---------------------------------------------------------------------------
@@ -243,17 +274,14 @@ function Sapper:MaybeAnnounce(name, now)
   local isSelf = (name == self._playerName)
   if selfOnly() and not isSelf then return end
 
-  local hunters = Nock.state and Nock.state.misdirection and Nock.state.misdirection.hunters
-  local md = hunters and hunters[name]
-  if not (md and md.target) then return end
-  local castTime = md.castTime or 0
-  if castTime <= 0 or (now - castTime) > MD_SEC then return end
+  local target = openerTarget(name, now)
+  if not target then return end
 
   local msg
   if isSelf then
-    msg = ("Sapper + MD -> %s"):format(shortName(md.target))
+    msg = ("Sapper + MD -> %s"):format(shortName(target))
   else
-    msg = ("%s: Sapper + MD -> %s"):format(name, shortName(md.target))
+    msg = ("%s: Sapper + MD -> %s"):format(name, shortName(target))
   end
 
   local ch = groupChannel()
@@ -261,6 +289,27 @@ function Sapper:MaybeAnnounce(name, now)
     SendChatMessage(msg, ch)
   else
     Nock:Print(msg)
+  end
+end
+
+-- ---------------------------------------------------------------------------
+-- Whisper the next hunter (by name, wrapping) after your OWN opener only: with
+-- every Nock user whispering on every opener the same hunter would hear it
+-- several times, whereas each hunter passing it on after their own throw
+-- makes a chain. Independent of the raid announce and its scope.
+-- ---------------------------------------------------------------------------
+function Sapper:MaybeWhisperNext(name, now)
+  if not whisperNextOn() then return end
+  if name ~= self._playerName then return end
+  local target, hunters = openerTarget(name, now)
+  if not target then return end
+  local nxt = nextHunter(hunters, name)
+  if not nxt then return end
+  local msg = ("Nock: you're next in the MD + Sapper rotation (after %s)"):format(name)
+  if SendChatMessage then
+    SendChatMessage(msg, "WHISPER", nil, nxt)
+  else
+    Nock:Print(("%s -> %s"):format(msg, nxt))
   end
 end
 

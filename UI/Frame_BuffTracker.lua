@@ -437,6 +437,18 @@ function BuffTrackerView:Refresh(state)
     if self.petPanel:IsShown()    then self.petPanel:Hide()    end
     return
   end
+  -- The tracker's own show-when rule (Trackers -> Buff Tracker -> Show when).
+  -- PvP mode's own hide switch (off by default: buffs stay useful there).
+  if Nock.PvPHides(p, "pvpHideBuffTracker") then
+    if self.playerPanel:IsShown() then self.playerPanel:Hide() end
+    if self.petPanel:IsShown()    then self.petPanel:Hide()    end
+    return
+  end
+  if not Nock.BuffTrackerShowApplies(p, IsResting and IsResting(), groupChannel()) then
+    if self.playerPanel:IsShown() then self.playerPanel:Hide() end
+    if self.petPanel:IsShown()    then self.petPanel:Hide()    end
+    return
+  end
 
   local colCount = cols()
   local sz       = iconSize()

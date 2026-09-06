@@ -295,8 +295,14 @@ end
 
 -- Refresh's helpers, module-level (they were two closures per refresh).
 local _list
+-- PvP mode mutes the raid-only warnings (C.PVP_MUTED_WARNINGS, by warning
+-- id) while its "Mute raid-only warnings" switch is on.
+local function pvpMuted(id)
+  if not (Nock.PvPHides and Nock.PvPHides(Nock.db and Nock.db.profile, "pvpMuteRaidWarnings")) then return false end
+  return C.PVP_MUTED_WARNINGS ~= nil and C.PVP_MUTED_WARNINGS[id] == true
+end
 local function add(w)
-  if w then _list[#_list + 1] = w end
+  if w and not pvpMuted(w.id) then _list[#_list + 1] = w end
 end
 local function bySeverity(a, b)
   return (SEVERITY_RANK[a.severity] or 0) > (SEVERITY_RANK[b.severity] or 0)
@@ -414,6 +420,7 @@ local function updateNoRelease(state)
   end
   Warnings._noReleaseDemoUntil = nil
   if not isEnabled("warnNoReleaseEnabled") then nr.active = false return end
+  if pvpMuted("noRelease") then nr.active = false return end
   if not (UnitIsDead and UnitIsDead("player")) then nr.active = false return end
   if UnitIsGhost and UnitIsGhost("player") then nr.active = false return end
   nr.active = state.player.sated or false
@@ -518,6 +525,8 @@ function Warnings:OnEnable()
   self:RegisterEvent("GET_ITEM_INFO_RECEIVED")
   self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", "InvalidateGarment")
   self:RegisterEvent("PLAYER_ENTERING_WORLD", "ResetKaraborNeck")
+  self:RegisterEvent("BAG_UPDATE_DELAYED", "MarkBagsDirty")       -- the no-PvP-trinket check's bag scan
+  self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED", "MarkBagsDirty")
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "RebuildIdSets")
   -- The weave-key dialog and the Grounded import rewrite the macro bodies
   -- without an Options round-trip: the cached gate direction follows them.
@@ -755,9 +764,58 @@ local function checkWrongTrinket(state)
   if not next(badTrinketSet) then return nil end
   local t1 = GetInventoryItemID("player", 13)
   local t2 = GetInventoryItemID("player", 14)
+  -- In PvP mode the escape trinkets are the RIGHT trinkets: the built-in
+  -- family stops counting, the user's own list (crop, carrot, tooth) still does.
+  local pvp = state.player ~= nil and state.player.pvp == true
+  if pvp then
+    if t1 and C.WRONG_TRINKET_IDS[t1] then t1 = nil end
+    if t2 and C.WRONG_TRINKET_IDS[t2] then t2 = nil end
+  end
   local badId = (t1 and badTrinketSet[t1] and t1) or (t2 and badTrinketSet[t2] and t2)
   if not badId then return nil end
   return warn("wrongTrinket", "amber", itemIcon(badId) or 134486, "Bad trinket", nil)
+end
+
+-- PvP mode's incoming-CC alert: Modules/CCAlert.lua fills state.ccAlert while
+-- a hostile casts a listed spell at you; the square says what to feign from
+-- and counts the cast down. Expiry by time lives here (no tick in CCAlert).
+local function checkCcIncoming(state)
+  local a = state.ccAlert
+  if not a then return nil end
+  if not isEnabled("pvpCcEnabled") then return nil end
+  local now = GetTime()
+  if (a.endTime or 0) <= now then state.ccAlert = nil; return nil end
+  return warn("ccIncoming", "red", a.icon or spellIcon(C.SpellID.FEIGN_DEATH) or 132293, "FD! " .. (a.short or a.name or "CC"), a.endTime - now)
+end
+
+-- The mirror image, PvP mode only: neither trinket slot holds a PvP escape
+-- trinket (the same built-in family the check above forgives there).
+-- ...and only when one is actually in your bags: no trinket, no nag. The bag
+-- scan (one GetItemCount per family id) runs once per bag change, not per tick.
+local _pvpTrinketBagId, _pvpTrinketBagsDirty = nil, true
+function Warnings:MarkBagsDirty() _pvpTrinketBagsDirty = true end
+local function pvpTrinketInBags()
+  if _pvpTrinketBagsDirty then
+    _pvpTrinketBagsDirty = false
+    _pvpTrinketBagId = nil
+    if GetItemCount then
+      for id in pairs(C.WRONG_TRINKET_IDS) do
+        if (GetItemCount(id) or 0) > 0 then _pvpTrinketBagId = id; break end
+      end
+    end
+  end
+  return _pvpTrinketBagId
+end
+local function checkNoPvpTrinket(state)
+  if not (state.player ~= nil and state.player.pvp == true) then return nil end
+  if not isEnabled("warnNoPvpTrinketEnabled") then return nil end
+  if not GetInventoryItemID then return nil end
+  local t1 = GetInventoryItemID("player", 13)
+  local t2 = GetInventoryItemID("player", 14)
+  if (t1 and C.WRONG_TRINKET_IDS[t1]) or (t2 and C.WRONG_TRINKET_IDS[t2]) then return nil end
+  local bagId = pvpTrinketInBags()
+  if not bagId then return nil end
+  return warn("noPvpTrinket", "amber", itemIcon(bagId) or itemIcon(37865) or 134486, "PvP trinket in bags", nil)
 end
 
 -- Shirt-gate check: the user's weave/consume macros carry [noequipped:Shirt]
@@ -1133,6 +1191,7 @@ local _lustPrevT1Ready, _lustPrevT2Ready = nil, nil
 local _lustTrinketSpoke = false
 
 local function maybeSpeakLustTrinket(state)
+  if pvpMuted("lustcds") then return end
   local p = Nock.db and Nock.db.profile
   local t1 = state.cooldowns and state.cooldowns.T1
   local t2 = state.cooldowns and state.cooldowns.T2
@@ -1278,6 +1337,7 @@ function Warnings:Refresh(state)
   _list = list
 
   add(checkHealth(state))
+  add(checkCcIncoming(state))
   add(checkFDResist(state))
   add(checkSteamTonk(state))
   add(checkMendPet(state))
@@ -1288,6 +1348,7 @@ function Warnings:Refresh(state)
   add(checkPetGrowl(state))
   add(checkPetTraining(state))
   add(checkWrongTrinket(state))
+  add(checkNoPvpTrinket(state))
   add(checkBindConflict(state))
   add(checkShirtGate(state))
   add(checkKaraborNeck(state))
@@ -1372,7 +1433,7 @@ Warnings.Catalog = {
   {
     key         = "devilsaur",
     category    = "gear",
-    name        = "Devilsaur Tooth (pet crit not loaded)",
+    name        = "Devilsaur Tooth not loaded",
     severity    = "amber",
     enabledKey  = "warnDevilsaurEnabled",
     iconFn      = function() return itemIcon(C.DEVILSAUR_TOOTH_ITEM) or 134071 end,
@@ -1454,6 +1515,31 @@ Warnings.Catalog = {
     },
   },
   {
+    key         = "ccIncoming",
+    category    = "combat",
+    name        = "Incoming CC (PvP mode)",
+    severity    = "red",
+    enabledKey  = "pvpCcEnabled",
+    iconFn      = function() return spellIcon(5782) or spellIcon(C.SpellID.FEIGN_DEATH) or 132293 end,
+    description = "PvP mode only: a hostile you can see starts casting Fear, Polymorph, Seduction, Mind Control or Entangling Roots at you. The square says FD! and counts the cast down; each spell's own sound plays once per cast. The spell table (sounds, switches, your own additions) lives on the PvP page.",
+    logic       = "Fires when ALL of:\n• PvP mode is active (sidebar PvP; /nock pvp)\n• Your target, your focus, an arena opponent or a nameplate starts a cast (or a channel) of a listed spell\n• The caster is hostile and, with 'Only casts aimed at you' on, targets you\n\nClears when the cast ends, fails or is interrupted, or when its cast time runs out. Cast STARTS only: once the crowd control lands there is nothing left to press.\n\nThe sound plays once per cast; a custom line can name its own sound (PvP page).",
+    thresholds  = {},
+    extraToggles = {
+      { key = "pvpCcOnlyAtYou", label = "Only casts aimed at you" },
+    },
+  },
+  {
+    key         = "noPvpTrinket",
+    category    = "gear",
+    name        = "PvP trinket in bags (PvP mode)",
+    severity    = "amber",
+    enabledKey  = "warnNoPvpTrinketEnabled",
+    iconFn      = function() return itemIcon(37865) or itemIcon(37864) or 134486 end,
+    description = "PvP mode only: nags while a PvP escape trinket (Insignia or Medallion of the Alliance/Horde, any version) sits in your bags with neither trinket slot holding one. No trinket owned, no nag.",
+    logic       = "Fires when ALL of:\n• PvP mode is active (sidebar PvP; /nock pvp)\n• Neither trinket slot 1 (13) nor trinket slot 2 (14) holds an item from the built-in PvP trinket family\n• One of that family is in your bags (scanned on bag and equipment changes)\n\nThe square shows the trinket that is in the bag. Outside PvP mode it never fires; there the bad-trinket check flags those same trinkets instead. Inside it, the bad-trinket check forgives them.",
+    thresholds  = {},
+  },
+  {
     key         = "bindConflict",
     category    = "gear",
     name        = "Nock keybind took over a key",
@@ -1467,7 +1553,7 @@ Warnings.Catalog = {
   {
     key         = "shirtGate",
     category    = "gear",
-    name        = "Shirt/Tabard wrong for boss (weave gate)",
+    name        = "Wrong garment for a boss",
     severity    = "red",
     enabledKey  = "warnShirtGateEnabled",
     iconFn      = function()
@@ -1482,7 +1568,7 @@ Warnings.Catalog = {
   {
     key         = "karaborNeck",
     category    = "gear",
-    name        = "Karabor neck still on (Black Temple)",
+    name        = "Karabor neck still on",
     severity    = "red",
     enabledKey  = "warnKaraborNeckEnabled",
     iconFn      = function() return itemIcon(32757) or "Interface\\Icons\\INV_Jewelry_Necklace_15" end,
@@ -1537,7 +1623,7 @@ Warnings.Catalog = {
   {
     key         = "targetFrenzy",
     category    = "combat",
-    name        = "Target Frenzy / Enrage (Tranq Shot)",
+    name        = "Target Frenzy (Tranq Shot)",
     severity    = "amber",
     enabledKey  = "warnTargetFrenzyEnabled",
     iconFn      = function() return spellIcon(C.SpellID.TRANQ_SHOT) or 132294 end,
@@ -1603,7 +1689,7 @@ Warnings.Catalog = {
   {
     key         = "noRelease",
     category    = "boss",
-    name        = "DO NOT RELEASE (Sated after a wipe)",
+    name        = "DO NOT RELEASE (Sated)",
     severity    = "red",
     enabledKey  = "warnNoReleaseEnabled",
     iconFn      = function() return spellIcon(C.SpellID.SATED) or 136090 end,
@@ -1619,7 +1705,7 @@ Warnings.Catalog = {
   {
     key         = "slammer",
     category    = "boss",
-    name        = "Anetheron — Sulfuron Slammer button",
+    name        = "Sulfuron Slammer button",
     severity    = "red",
     enabledKey  = "warnSlammerEnabled",
     iconFn      = function() return itemIcon(C.SULFURON_SLAMMER_ITEM) or 135453 end,
@@ -1646,7 +1732,7 @@ Warnings.Catalog = {
   {
     key         = "ripper",
     category    = "you",
-    name        = "Ripper / Transporter — ALT F4 countdown",
+    name        = "Ripper: ALT F4 countdown",
     severity    = "red",
     enabledKey  = "warnRipperEnabled",
     iconFn      = function() return itemIcon(C.RIPPER_ITEMS[1]) or 134376 end,

@@ -121,7 +121,7 @@ function HUD:ApplyRowVisibility()
   -- visibility lives on its own reactShow* keys (React HUD tab; the cluster
   -- bars are consumed by ReactCluster:Geometry, the cast bar by
   -- ReactCastBar, the grid right below). Still honored: hideOoc, opacity*,
-  -- backgroundEnabled, rowAlign and medallionEnabled. freeLayout is NOT —
+  -- backgroundEnabled and rowAlign. freeLayout is NOT —
   -- React always grids (see Nock.FreeLayoutActive): free placement would split
   -- the cluster/grid seam and scatter the React rows to stale UIParent spots.
   -- FluffyHUD replaces the classic rows the same way; its element visibility

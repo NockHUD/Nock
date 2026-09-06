@@ -18,8 +18,11 @@
 -- profile wherever the bar itself is configurable, so a picture never contradicts
 -- the colour pickers sitting next to it.
 
-local AceGUI = LibStub and LibStub("AceGUI-3.0", true)
-if not AceGUI then return end
+-- The painters are exported as Nock.UI.PaintShotBarsLegend / PaintReactLegend
+-- for the settings window (a plain frame: width in, height out); the AceGUI
+-- registrations at the bottom wrap the same painters for the legacy dialog.
+local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
+Nock.UI = Nock.UI or {}
 
 local SOLID = "Interface\\Buttons\\WHITE8X8"
 
@@ -118,7 +121,7 @@ local function makeMethods(redraw)
   }
 end
 
-local function register(typeName, version, build, redraw)
+local function register(AceGUI, typeName, version, build, redraw)
   local methods = makeMethods(redraw)
   AceGUI:RegisterWidgetType(typeName, function()
     local frame = CreateFrame("Frame", nil, UIParent)
@@ -204,7 +207,7 @@ local function redrawShotBars(self)
   fitHeight(self, -y + PAD)
 end
 
-register("NockShotBarsLegend", 1, function(widget, frame)
+local function buildShotBars(widget, frame)
   widget.segs = {
     safe  = newTexture(frame),
     clip  = newTexture(frame),
@@ -222,7 +225,7 @@ register("NockShotBarsLegend", 1, function(widget, frame)
     widget.marks[i].text:SetText(captions[i])
   end
   widget.rows = buildRows(frame, #SHOT_LEGEND)
-end, redrawShotBars)
+end
 
 ----------------------------------------------------------------------------
 -- 2. React converge bar — two halves closing on the centre, marks mirrored.
@@ -339,7 +342,7 @@ local function redrawReact(self)
   fitHeight(self, -y + PAD)
 end
 
-register("NockReactBarLegend", 1, function(widget, frame)
+local function buildReact(widget, frame)
   widget.fill  = { L = newTexture(frame), R = newTexture(frame) }
   widget.ticks = {}
   for i = 1, 3 do
@@ -357,4 +360,47 @@ register("NockReactBarLegend", 1, function(widget, frame)
   widget.rows = buildRows(frame, #REACT_LEGEND + 1)  -- +1: the optional GCD row
   widget.note = newFont(frame, "GameFontDisableSmall", "LEFT")
   widget.note:SetText("Every mark is mirrored on both halves — the pair closes on the centre together, so you can read whichever side your eye is on.")
-end, redrawReact)
+end
+
+----------------------------------------------------------------------------
+-- Painters for a plain frame (the settings window). The frame's width is the
+-- input, its height the output; the parts are built once and kept on the
+-- frame. Repaint on NOCK_VISUALS_CHANGED and whenever the width changes.
+----------------------------------------------------------------------------
+-- Parts are kept per painter (a pooled frame may draw either legend), and
+-- the other legend's parts are hidden before this one draws.
+local function painter(key, build, redraw)
+  return function(frame)
+    frame._legends = frame._legends or {}
+    for k, other in pairs(frame._legends) do
+      if k ~= key then for _, region in ipairs(other.regions) do region:Hide() end end
+    end
+    local w = frame._legends[key]
+    if not w then
+      w = { frame = frame, SetHeight = function() end, regions = {} }
+      local created = {}
+      local oldTex, oldFont = frame.CreateTexture, frame.CreateFontString
+      -- collect every region the build makes so it can be hidden later
+      frame.CreateTexture = function(self, ...) local r = oldTex(self, ...); created[#created + 1] = r; return r end
+      frame.CreateFontString = function(self, ...) local r = oldFont(self, ...); created[#created + 1] = r; return r end
+      build(w, frame)
+      frame.CreateTexture, frame.CreateFontString = nil, nil
+      w.regions = created
+      frame._legends[key] = w
+    else
+      for _, region in ipairs(w.regions) do region:Show() end
+    end
+    redraw(w)
+    return frame:GetHeight() or 0
+  end
+end
+Nock.UI.PaintShotBarsLegend = painter("shot", buildShotBars, redrawShotBars)
+Nock.UI.PaintReactLegend = painter("react", buildReact, redrawReact)
+
+----------------------------------------------------------------------------
+-- The AceGUI widgets, for the legacy dialog.
+----------------------------------------------------------------------------
+local AceGUI = LibStub("AceGUI-3.0", true)
+if not AceGUI then return end
+register(AceGUI, "NockShotBarsLegend", 1, buildShotBars, redrawShotBars)
+register(AceGUI, "NockReactBarLegend", 1, buildReact, redrawReact)

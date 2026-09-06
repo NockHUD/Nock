@@ -19,6 +19,7 @@ function Frame:GetHeight() return self._h or 224 end
 function Frame:SetText(s) self._text = s or ""; Stub.counters.SetText = Stub.counters.SetText + 1; return self end
 function Frame:GetText() return self._text or "" end
 function Frame:GetStringWidth() return #(self._text or "") * 6 end
+function Frame:GetStringHeight() return 12 end
 function Frame:SetTexture(t) self._tex = t; Stub.counters.SetTexture = Stub.counters.SetTexture + 1; return self end
 function Frame:SetAlpha(a) self._alpha = a; return self end
 function Frame:GetAlpha() if self._alpha == nil then return 1 end; return self._alpha end

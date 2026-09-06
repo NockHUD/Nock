@@ -30,6 +30,9 @@ local LSM = LibStub("LibSharedMedia-3.0", true)
 local NOCK_CLEAN = "Nock Clean"
 if LSM then
   LSM:Register("statusbar", NOCK_CLEAN, [[Interface\AddOns\Nock\Media\NockClean]])
+  -- The Windfury proc cue's stock sound (Alerts -> Sounds -> Weaving): a
+  -- lightsaber ignition, Pixabay Content License (see ATTRIBUTION.md).
+  LSM:Register("sound", "Nock Windfury", [[Interface\AddOns\Nock\Media\NockWindfury.mp3]])
 end
 
 -- Registries of media-consuming widgets for live-refresh via RefreshMedia.
@@ -1559,6 +1562,23 @@ local REACT_STAGE_LOOK = {
   STRUCK  = { text = "BACK OUT", fill = { 0.40, 0.70, 1.00, 1.00 }, march = -1 },
   RELEASE = { text = "RELEASE",  fill = { 0.20, 0.90, 0.30, 1.00 }, march =  0, flash = true },
 }
+
+-- React position strip (experimental, UI/Frame_ReactCluster.lua): the two
+-- segments under the range bar read the probes the finder still knows while
+-- its yardage estimate is in RESYNC. `t` is state.target. Returns
+-- { melee = "melee"|"dead"|"off", ranged = "ranged"|"off" }: melee lit in
+-- true melee, ranged lit when Auto Shot is usable (SWEET / TOO_FAR), the
+-- melee segment dead-red in the gap (near, no melee, no shot); both off with
+-- no live hostile target or out of range.
+function Nock.UI.ReactRangeStripLook(t)
+  local out = { melee = "off", ranged = "off" }
+  if not t or not t.exists or not t.alive or t.friendly or not t.rangeState then return out end
+  local zone = t.rangeZone
+  if t.inMelee then out.melee = "melee"
+  elseif zone == "TOO_CLOSE" then out.melee = "dead" end
+  if zone == "SWEET" or zone == "TOO_FAR" then out.ranged = "ranged" end
+  return out
+end
 
 function Nock.UI.ReactStageLook(stage)
   return stage and REACT_STAGE_LOOK[stage] or nil

@@ -112,7 +112,7 @@ dofile("Modules/Onboarding.lua")
 local DEFAULTS = {
   locked = true,
   hudEnabled = true,
-  hudMode = "classic", rotationMode = "bars", medallionEnabled = false,
+  hudMode = "classic", rotationMode = "bars",
   reactShowAspectIcon = false, reactShowMarkIcon = false,
   showRotation = true, weaveNotationEnabled = false, weaveCoachSoundsEnabled = false,
   showRangeFinder = true, shotBarsShowRaptor = true,
@@ -210,12 +210,10 @@ ok(p.hudMode == "react", "picking React writes hudMode")
 ok(hud.options[2].isSelected(p) and not hud.options[1].isSelected(p), "selection follows the profile")
 ok(sentMessages[#sentMessages] == "NOCK_VISUALS_CHANGED", "a card selection broadcasts")
 
--- No HUD turns the frame off and takes the free-floating medallion with it.
+-- No HUD turns the frame off.
 p = freshProfile()
-p.medallionEnabled = true
 O:SelectCard(hud, hud.options[4])
 ok(p.hudEnabled == false, "No HUD clears hudEnabled")
-ok(p.medallionEnabled == false, "No HUD also drops the medallion")
 ok(hud.options[4].isSelected(p), "No HUD reads as selected")
 ok(not hud.options[1].isSelected(p) and not hud.options[2].isSelected(p)
    and not hud.options[3].isSelected(p),
@@ -231,13 +229,11 @@ ok(p.hudEnabled == true and p.hudMode == "react", "React switches the HUD back o
 p = freshProfile()
 local rot = pageByKey("rotation")
 ok(rot.options[1].isSelected(p), "shot bars selected by default")
-O:SelectCard(rot, rot.options[3])
-ok(p.medallionEnabled == true, "medallion card enables the medallion")
-ok(rot.options[3].isSelected(p), "medallion now selected")
-ok(not rot.options[1].isSelected(p) and not rot.options[2].isSelected(p),
-   "medallion deselects the other two")
+ok(#rot.options == 2, "two shot displays: bars and helper icons (the medallion is gone)")
 O:SelectCard(rot, rot.options[2])
-ok(p.medallionEnabled == false and p.rotationMode == "helper", "helper card turns the medallion back off")
+ok(p.rotationMode == "helper" and rot.options[2].isSelected(p) and not rot.options[1].isSelected(p), "helper card selects helper icons")
+O:SelectCard(rot, rot.options[1])
+ok(p.rotationMode == "bars" and rot.options[1].isSelected(p), "bars card selects shot bars again")
 
 --------------------------------------------------------------------------------
 -- 3. Toggles, dependencies
@@ -636,11 +632,11 @@ ok(recapValue(recap, "Weave macros") == nil, "turret recap has no macro row")
 
 -- Classic weaver: gains the macro row, keeps the shot-display row.
 p = freshProfile()
-p.medallionEnabled = true; p.weaveNotationEnabled = true
+p.rotationMode = "helper"; p.weaveNotationEnabled = true
 p.showWarnings = false; p.misdirectEnabled = true; p.debuffTrackerEnabled = true
 recap = O:BuildRecap()
 ok(#recap == 6, "classic weaver recap gains the macro row")
-ok(recapValue(recap, "Shot display") == "Medallion", "recap follows the medallion")
+ok(recapValue(recap, "Shot display") == "Helper icons", "recap follows the shot display")
 ok(recapValue(recap, "Playstyle") == "Melee weaver", "recap follows playstyle")
 ok(recapValue(recap, "Weave macros") == "Default", "recap names the macro style")
 ok(recapValue(recap, "Warnings") == "off", "recap reports warnings off")

@@ -169,6 +169,7 @@ Nock.Constants = {
     MULTI_SHOT    = 27021,
     ARCANE_SHOT   = 27019,
     RAPTOR_STRIKE = 27014,
+    WINDFURY_ATTACK = 25504,   -- the Windfury Totem weapon proc's extra-attacks spell (rank-independent name)
     ATTACK        = 6603,     -- melee auto-attack: the white hit's icon on the practice stage
 
     -- Aspects (TBC max ranks)
@@ -658,36 +659,113 @@ Nock.Constants = {
     { key = "slammer",   id = 38466, label = "Sulfuron Slammer (Anetheron)",    threshold = 20 },
   },
 
+  -- PvP mode's incoming-CC alert (Modules/CCAlert.lua): crowd control with a
+  -- cast time that a hostile can aim at you, so a Feign Death still helps.
+  -- Matched by the resolved name of ids[1] (rank-agnostic) or any listed id
+  -- (the Polymorph variants carry their own names). Each has a pvpCc_<key>
+  -- switch; the user's own "Spell = Sound" lines live in pvpCcCustom.
+  PVP_CC_CASTS = {
+    { key = "fear",    label = "Fear",             ids = { 5782, 6213, 6215 } },
+    { key = "poly",    label = "Polymorph",        ids = { 118, 12824, 12825, 12826, 28271, 28272 } },
+    { key = "seduce",  label = "Seduction",        ids = { 6358 } },
+    { key = "mc",      label = "Mind Control",     ids = { 605, 10911, 10912 } },
+    { key = "roots",   label = "Entangling Roots", ids = { 339, 1062, 5195, 5196, 9852, 9853, 26989 } },
+  },
+
+  -- Warnings that are raid furniture, keyed by the warning id they publish
+  -- (Warnings' warn() id, or the module's key for the banner/button ones).
+  -- PvP mode mutes them while its "Mute raid-only warnings" switch is on.
+  PVP_MUTED_WARNINGS = {
+    devilsaur = true, karaborNeck = true, shirtGate = true, drums = true, lustcds = true, sapperAoe = true,
+    bossMark = true, noRelease = true, slammer = true, ripper = true,
+  },
+
   -- Debuff tracker preset (target debuffs a hunter cares about). Same entry
   -- shape as the BuffTracker catalog: matched by `names` (rank-agnostic);
   -- `spellIds` only feed icon resolution; `fallbackIcon` if uncached. Users
   -- can disable entries or add their own by spell ID OR name in options.
+  -- `classes` = who can apply it (engine tokens): PvP mode's party filter
+  -- drops an entry nobody in the group can put up. `pvp = false` keeps a raid
+  -- debuff out of the PvP set; `pvpOnly = true` is a PvP-set entry the raid
+  -- tracker never lists.
   DEBUFF_CURATED = {
-    { key = "hmark",   label = "Hunter's Mark",        names = { "Hunter's Mark" },
+    { key = "hmark",   label = "Hunter's Mark",        names = { "Hunter's Mark" }, classes = { "HUNTER" },
       spellIds = { 1130, 14323, 14324, 14325 }, fallbackIcon = "Interface\\Icons\\Ability_Hunter_SniperShot" },
-    { key = "jow",     label = "Judgement of Wisdom",  names = { "Judgement of Wisdom" },
+    { key = "jow",     label = "Judgement of Wisdom",  names = { "Judgement of Wisdom" }, classes = { "PALADIN" }, pvp = false,
       spellIds = { 20354, 20355, 27164 },       fallbackIcon = "Interface\\Icons\\Spell_Holy_RighteousnessAura" },
-    { key = "ew",      label = "Expose Weakness",      names = { "Expose Weakness" },
+    { key = "ew",      label = "Expose Weakness",      names = { "Expose Weakness" }, classes = { "HUNTER" }, pvp = false,
       spellIds = { 34501 },                     fallbackIcon = "Interface\\Icons\\Ability_Rogue_FindWeakness" },
     -- Sunder Armor and Expose Armor share the target's armor-reduction slot
     -- (mutually exclusive in TBC) — one combined entry, present if EITHER is up.
-    { key = "armorshred", label = "Sunder / Expose Armor", names = { "Sunder Armor", "Expose Armor" },
+    { key = "armorshred", label = "Sunder / Expose Armor", names = { "Sunder Armor", "Expose Armor" }, classes = { "WARRIOR", "ROGUE" },
       spellIds = { 7386, 8647 },                fallbackIcon = "Interface\\Icons\\Ability_Warrior_Sunder" },
-    { key = "ff",      label = "Faerie Fire",          names = { "Faerie Fire", "Faerie Fire (Feral)" },
+    { key = "ff",      label = "Faerie Fire",          names = { "Faerie Fire", "Faerie Fire (Feral)" }, classes = { "DRUID" },
       spellIds = { 770, 16857 },                fallbackIcon = "Interface\\Icons\\Spell_Nature_FaerieFire" },
-    { key = "creck",   label = "Curse of Recklessness", names = { "Curse of Recklessness" },
+    { key = "creck",   label = "Curse of Recklessness", names = { "Curse of Recklessness" }, classes = { "WARLOCK" }, pvp = false,
       spellIds = { 704, 7658, 7659, 11717, 27226 }, fallbackIcon = "Interface\\Icons\\Spell_Shadow_UnholyStrength" },
-    { key = "bfrenzy", label = "Blood Frenzy",         names = { "Blood Frenzy" },
+    { key = "bfrenzy", label = "Blood Frenzy",         names = { "Blood Frenzy" }, classes = { "WARRIOR" }, pvp = false,
       spellIds = { 29859, 30069 },              fallbackIcon = "Interface\\Icons\\Ability_Druid_Bloodfrenzy" },
     -- The two melee-hit-reduction (tank mitigation) debuffs. `defaultOff`:
     -- listed in Options, OFF until switched on — most hunters track the DPS
     -- set above and nothing else (Modules/DebuffTracker.lua reads the flag).
-    { key = "scorpid", label = "Scorpid Sting",        names = { "Scorpid Sting" },
+    { key = "scorpid", label = "Scorpid Sting",        names = { "Scorpid Sting" }, classes = { "HUNTER" }, pvp = false,
       spellIds = { 3043, 14275, 14276, 14277 }, fallbackIcon = "Interface\\Icons\\Ability_Hunter_CriticalShot",
       defaultOff = true },
-    { key = "iswarm",  label = "Insect Swarm",         names = { "Insect Swarm" },
+    { key = "iswarm",  label = "Insect Swarm",         names = { "Insect Swarm" }, classes = { "DRUID" },
       spellIds = { 5570, 24974, 24975, 24976, 24977, 27013 }, fallbackIcon = "Interface\\Icons\\Spell_Nature_InsectSwarm",
       defaultOff = true },
+    -- The PvP pair (off outside PvP mode, on inside it): your sting (Serpent
+    -- or Viper, one slot; the icon is Viper's) and the scorpid pet's poison.
+    { key = "serpent", label = "Serpent / Viper Sting", names = { "Serpent Sting", "Viper Sting" }, classes = { "HUNTER" },
+      spellIds = { 3034, 14279, 14280, 27018, 1978, 13549, 13550, 13551, 13552, 13553, 13554, 13555, 25295, 27016 },
+      fallbackIcon = "Interface\\Icons\\Ability_Hunter_AimedShot",
+      defaultOff = true },
+    { key = "scorpidPoison", label = "Scorpid Poison (pet)", names = { "Scorpid Poison" }, classes = { "HUNTER" },
+      spellIds = { 24640, 24583, 24586, 24587, 27060 }, fallbackIcon = "Interface\\Icons\\Ability_PoisonSting",
+      defaultOff = true },
+    -- PvP set only (never in the raid tracker's list).
+    { key = "wingclip", label = "Wing Clip",            names = { "Wing Clip" }, classes = { "HUNTER" }, pvpOnly = true,
+      spellIds = { 2974, 14267, 14268 },        fallbackIcon = "Interface\\Icons\\Ability_Rogue_Trip" },
+    { key = "wyvern",  label = "Wyvern Sting",         names = { "Wyvern Sting" }, classes = { "HUNTER" }, pvpOnly = true,
+      spellIds = { 19386, 24132, 24133, 27068 },   fallbackIcon = "Interface\\Icons\\INV_Spear_02" },
+    { key = "aimed",   label = "Aimed Shot",           names = { "Aimed Shot" }, classes = { "HUNTER" }, pvpOnly = true,
+      spellIds = { 19434, 20900, 20901, 20902, 20903, 20904, 27065 }, fallbackIcon = "Interface\\Icons\\INV_Spear_07" },
+    { key = "justice", label = "Judgement of Justice", names = { "Judgement of Justice" }, classes = { "PALADIN" }, pvpOnly = true,
+      spellIds = { 20184 },                     fallbackIcon = "Interface\\Icons\\Spell_Holy_SealOfWrath" },
+    { key = "mstrike", label = "Mortal Strike",        names = { "Mortal Strike" }, classes = { "WARRIOR" }, pvpOnly = true,
+      spellIds = { 12294, 21551, 21552, 21553, 25248, 30330 }, fallbackIcon = "Interface\\Icons\\Ability_Warrior_SavageBlow" },
+    { key = "hamstring", label = "Hamstring",          names = { "Hamstring" }, classes = { "WARRIOR" }, pvpOnly = true,
+      spellIds = { 1715, 7372, 7373, 25212 },   fallbackIcon = "Interface\\Icons\\Ability_ShockWave" },
+    -- the warlock's one curse slot: whichever of these is up
+    { key = "curse",   label = "Curse (Tongues / Exhaustion / Recklessness / Elements / Weakness)",
+      names = { "Curse of Tongues", "Curse of Exhaustion", "Curse of Recklessness", "Curse of the Elements", "Curse of Weakness" }, classes = { "WARLOCK" }, pvpOnly = true,
+      spellIds = { 1714, 11719, 18223, 704, 7658, 7659, 11717, 27226, 1490, 11721, 11722, 27228, 702, 1108, 6205, 7646, 11707, 11708, 27224, 30909 },
+      fallbackIcon = "Interface\\Icons\\Spell_Shadow_CurseOfTounges" },
+    -- movement: one slot for the mage's slows (they replace each other), one
+    -- for everyone else's snare, and the two roots / channels on their own
+    { key = "mageslow", label = "Mage slow (Frostbolt / Cone / Nova / Slow)", names = { "Frostbolt", "Cone of Cold", "Frost Nova", "Slow", "Frostbite" }, classes = { "MAGE" }, pvpOnly = true,
+      spellIds = { 116, 120, 122, 31589, 12494 }, fallbackIcon = "Interface\\Icons\\Spell_Frost_FrostBolt02" },
+    { key = "snare",   label = "Snare (Howl / Frost Shock / Crippling / Concussive / Earthbind)",
+      names = { "Piercing Howl", "Frost Shock", "Crippling Poison", "Concussive Shot", "Earthbind" }, classes = { "WARRIOR", "SHAMAN", "ROGUE", "HUNTER" }, pvpOnly = true,
+      spellIds = { 12323, 8056, 3409, 5116, 3600 }, fallbackIcon = "Interface\\Icons\\Spell_Shadow_DeathScream" },
+    { key = "mindflay", label = "Mind Flay",           names = { "Mind Flay" }, classes = { "PRIEST" }, pvpOnly = true,
+      spellIds = { 15407, 17311, 17312, 17313, 17314, 18807, 25387 }, fallbackIcon = "Interface\\Icons\\Spell_Shadow_SiphonMana" },
+    { key = "roots",   label = "Entangling Roots",     names = { "Entangling Roots" }, classes = { "DRUID" }, pvpOnly = true,
+      spellIds = { 339, 1062, 5195, 5196, 9852, 9853, 26989 }, fallbackIcon = "Interface\\Icons\\Spell_Nature_StrangleVines" },
+    -- healing reduction
+    { key = "wound",   label = "Wound Poison",         names = { "Wound Poison" }, classes = { "ROGUE" }, pvpOnly = true,
+      spellIds = { 13218, 13222, 13223, 13224, 27189 }, fallbackIcon = "Interface\\Icons\\INV_Misc_Herb_16" },
+    -- damage taken
+    { key = "misery",  label = "Misery",               names = { "Misery" }, classes = { "PRIEST" }, pvpOnly = true,
+      spellIds = { 33196, 33197, 33198 },       fallbackIcon = "Interface\\Icons\\Spell_Shadow_Misery" },
+    { key = "shadowvuln", label = "Shadow Vulnerability", names = { "Shadow Vulnerability" }, classes = { "PRIEST" }, pvpOnly = true,
+      spellIds = { 15258 },                     fallbackIcon = "Interface\\Icons\\Spell_Shadow_ShadowBolt" },
+    { key = "crusader", label = "Judgement of the Crusader", names = { "Judgement of the Crusader" }, classes = { "PALADIN" }, pvpOnly = true,
+      spellIds = { 21183, 20188, 20300, 20301, 20302, 20303, 27159 }, fallbackIcon = "Interface\\Icons\\Spell_Holy_HolySmite" },
+    { key = "mangle",  label = "Mangle",               names = { "Mangle (Cat)", "Mangle (Bear)" }, classes = { "DRUID" }, pvpOnly = true,
+      spellIds = { 33876, 33982, 33983, 33878, 33986, 33987 }, fallbackIcon = "Interface\\Icons\\Ability_Druid_Mangle2" },
+    { key = "wchill",  label = "Winter's Chill",       names = { "Winter's Chill" }, classes = { "MAGE" }, pvpOnly = true,
+      spellIds = { 12579 },                     fallbackIcon = "Interface\\Icons\\Spell_Frost_ChillingBlast" },
   },
 
   -- itemID → buff spellID, for proc-glow detection on item/inventory slots.

@@ -4,8 +4,19 @@
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 
 Nock.state = {
+  -- Classes present in your party or raid (you included), engine tokens ->
+  -- true. Written by Modules/PvPMode.lua on roster events (replaced, never
+  -- mutated); read by the debuff tracker's PvP class filter.
+  group = { classes = {} },
+  -- PvP mode's incoming-CC alert (Modules/CCAlert.lua): { name, short, icon,
+  -- caster, startTime, endTime } while a hostile casts a listed spell at you,
+  -- else nil. Warnings draws it, CCAlert owns it.
+  ccAlert = nil,
   player = {
     inCombat = false,
+    -- PvP mode (sidebar PvP; Modules/PvPMode.lua). THE reading: every
+    -- consumer checks this and its own pvp* switch, nothing re-detects.
+    pvp = false,
     -- "BM" / "MM" / "SV" by talent-tab majority (Nock.SpecFromTabs), nil until
     -- the tabs have been read. Written by Core on the talent events; read by
     -- Rotations/Profiles.lua, where the Survival-only 5:4:1:1 hangs on it.
@@ -357,8 +368,8 @@ Nock.state = {
     rowSyms     = nil,
     -- THE ORACLE. The one answer to "what do I press next / when is the weave
     -- gap": a Nock.PracticePlan table owned by Modules/Practice.lua, built once
-    -- per tick in Practice:Step BEFORE any module Refresh runs. The medallion,
-    -- the rotation row, WeaveCoach's GO, the conveyor's NEXT and the coach line
+    -- per tick in Practice:Step BEFORE any module Refresh runs. The rotation
+    -- row, WeaveCoach's GO, the conveyor's NEXT and the coach line
     -- all READ it (Modules/Rotation.lua copies plan.nextSpellId in a sim fight).
     -- Nothing else computes it. nil until practice enables.
     plan        = nil,
@@ -407,6 +418,56 @@ function Nock.RestedHideApplies(p, resting, state)
   if p.locked == false then return false end
   if state and state.demo and state.demo.hudForceShow then return false end
   return true
+end
+
+-- PanelShowApplies: a floating panel's own show-when rule, on top of the
+-- global rested hide above, read from the profile keys <prefix>HideRested,
+-- <prefix>HideSolo, <prefix>ShowParty and <prefix>ShowRaid. `resting` is
+-- IsResting(); `group` is "RAID", "PARTY" or nil (solo). An unlocked panel
+-- always shows so it stays grabbable. Hide-while-rested wins over the group
+-- rule; the two group toggles only matter while hide-when-solo is on.
+function Nock.PanelShowApplies(p, prefix, resting, group)
+  if not p then return true end
+  if p.locked == false then return true end
+  if p[prefix .. "HideRested"] and resting then return false end
+  if p[prefix .. "HideSolo"] then
+    if group == "RAID" then return p[prefix .. "ShowRaid"] ~= false end
+    if group == "PARTY" then return p[prefix .. "ShowParty"] ~= false end
+    return false
+  end
+  return true
+end
+function Nock.BuffTrackerShowApplies(p, resting, group) return Nock.PanelShowApplies(p, "buffTracker", resting, group) end
+
+-- PvP mode. `pvpMode` is "off" | "on" | "auto"; auto = a battleground or an
+-- arena (`instanceType` from IsInInstance), plus a world PvP flag when the
+-- profile asks for it. Pure; Modules/PvPMode.lua writes the result to
+-- state.player.pvp.
+function Nock.PvPActive(p, instanceType, worldFlagged)
+  local mode = p and p.pvpMode or "off"
+  if mode == "on" then return true end
+  if mode ~= "auto" then return false end
+  if instanceType == "pvp" or instanceType == "arena" then return true end
+  return p.pvpAutoWorldFlag == true and worldFlagged == true
+end
+
+-- One of PvP mode's hide/mute switches applies: the mode is active AND the
+-- switch (`key`, a pvp* profile key) is on. `active` defaults to the reading.
+function Nock.PvPHides(p, key, active)
+  if active == nil then
+    local st = Nock.state and Nock.state.player
+    active = st ~= nil and st.pvp == true
+  end
+  if not active then return false end
+  return p ~= nil and p[key] == true
+end
+
+-- Two class sets (token -> true) differ.
+function Nock.ClassSetChanged(old, new)
+  old = old or {}
+  for k in pairs(new) do if not old[k] then return true end end
+  for k in pairs(old) do if not new[k] then return true end end
+  return false
 end
 
 -- Haste-adjusted cast time for a ranged shot, given its base cast in seconds

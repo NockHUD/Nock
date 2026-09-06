@@ -307,9 +307,18 @@ end
 -- `shortLabel` is the band text inside the icon, `noLabel` replaces it when
 -- nothing usable is in bags, `unit` adds the YOU / PET tag, `applyKind` says
 -- how the click layer uses the item (plain, on the pet, on the main hand).
+-- Tile groups on the settings page (Alerts › Helpers › Buffs), in this order.
+Helpers.Categories = {
+  { key = "food",        name = "Food & drink" },
+  { key = "elixir",      name = "Flask & elixirs" },
+  { key = "weapon",      name = "Weapon" },
+  { key = "conditional", name = "Conditional" },
+  { key = "scrolls",     name = "Scrolls (parse)" },
+}
 Helpers.Catalog = {
   {
     key           = "food",
+    category   = "food",
     data          = "food",
     shortLabel    = "FOOD",
     noLabel       = "NO FOOD",
@@ -325,6 +334,7 @@ Helpers.Catalog = {
   },
   {
     key           = "flask",
+    category   = "elixir",
     data          = "flask",
     shortLabel    = "FLASK",
     noLabel       = "NO FLASK",
@@ -347,6 +357,7 @@ Helpers.Catalog = {
   },
   {
     key           = "battleElixir",
+    category   = "elixir",
     data          = "battleElixir",
     shortLabel    = "BATTLE",
     noLabel       = "NO ELIXIR",
@@ -366,6 +377,7 @@ Helpers.Catalog = {
   },
   {
     key           = "guardianElixir",
+    category   = "elixir",
     data          = "guardianElixir",
     shortLabel    = "GUARD",
     noLabel       = "NO ELIXIR",
@@ -384,6 +396,7 @@ Helpers.Catalog = {
   },
   {
     key           = "sharpeningStone",
+    category   = "weapon",
     data          = "sharpeningStone",
     subData       = { mh = "sharpeningStone", oh = "sharpeningStone" },
     subLabel      = { mh = "STONE", oh = "STONE" },
@@ -406,6 +419,7 @@ Helpers.Catalog = {
   },
   {
     key           = "kibler",
+    category   = "food",
     data          = "kibler",
     shortLabel    = "PET FOOD",
     noLabel       = "NO FOOD",
@@ -424,6 +438,8 @@ Helpers.Catalog = {
   },
   {
     key           = "scrollPlayer",
+    category   = "scrolls",
+    tileNote   = "parse mode",
     data          = "scrollAgility",
     subData       = { agi = "scrollAgility", str = "scrollStrength" },
     subLabel      = { agi = "AGI", str = "STR" },
@@ -448,6 +464,8 @@ Helpers.Catalog = {
   },
   {
     key           = "scrollPet",
+    category   = "scrolls",
+    tileNote   = "parse mode",
     data          = "scrollAgility",
     subData       = { agi = "scrollAgility", str = "scrollStrength" },
     subLabel      = { agi = "AGI", str = "STR" },
@@ -473,6 +491,8 @@ Helpers.Catalog = {
   },
   {
     key         = "demonslayer",
+    category   = "conditional",
+    tileNote   = "conditional · Demon boss",
     data        = "demonslayer",
     shortLabel  = "DEMON",
     applyKind   = "item",
@@ -494,6 +514,8 @@ Helpers.Catalog = {
   },
   {
     key         = "consecratedStone",
+    category   = "weapon",
+    tileNote   = "conditional · Undead boss",
     data        = "consecratedStone",
     subData     = { mh = "consecratedStone", oh = "consecratedStone" },
     subLabel    = { mh = "HOLY", oh = "HOLY" },

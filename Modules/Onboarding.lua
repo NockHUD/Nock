@@ -137,9 +137,7 @@ Onboarding.Pages = {
         desc  = "No bars on screen. Warnings, trackers and the out-of-combat helpers still work.",
         icon  = function() return spellIcon(C.SpellID.FEIGN_DEATH) end,
         isSelected = function(p) return p.hudEnabled == false end,
-        -- The medallion floats free of the HUD box, so it would survive on its
-        -- own; someone asking for no HUD does not mean "except this one icon".
-        apply = function(p) p.hudEnabled = false; p.medallionEnabled = false end,
+        apply = function(p) p.hudEnabled = false end,
       },
     },
   },
@@ -178,27 +176,18 @@ Onboarding.Pages = {
         value = "bars", label = "Shot Bars", recommended = true,
         desc  = "A scrolling timeline of your next shots.",
         icon  = function() return spellIcon(C.SpellID.STEADY_SHOT) end,
-        isSelected = function(p) return p.rotationMode ~= "helper" and not p.medallionEnabled end,
+        isSelected = function(p) return p.rotationMode ~= "helper" end,
         apply = function(p)
-          p.rotationMode = "bars"; p.showRotation = true; p.medallionEnabled = false
+          p.rotationMode = "bars"; p.showRotation = true
         end,
       },
       {
         value = "helper", label = "Helper icons",
         desc  = "A row of six icons - the lit one is what to press.",
         icon  = function() return spellIcon(C.SpellID.MULTI_SHOT) end,
-        isSelected = function(p) return p.rotationMode == "helper" and not p.medallionEnabled end,
+        isSelected = function(p) return p.rotationMode == "helper" end,
         apply = function(p)
-          p.rotationMode = "helper"; p.showRotation = true; p.medallionEnabled = false
-        end,
-      },
-      {
-        value = "medallion", label = "Medallion",
-        desc  = "One big icon. The next shot, nothing else.",
-        icon  = function() return spellIcon(C.SpellID.KILL_COMMAND) end,
-        isSelected = function(p) return p.medallionEnabled == true end,
-        apply = function(p)
-          p.medallionEnabled = true; p.showRotation = true
+          p.rotationMode = "helper"; p.showRotation = true
         end,
       },
     },
@@ -551,8 +540,7 @@ function Onboarding:BuildRecap()
   -- never claims a setting the user was never shown.
   if p.hudEnabled ~= false and (p.hudMode or "classic") == "classic" then
     local shots
-    if p.medallionEnabled then shots = "Medallion"
-    elseif p.rotationMode == "helper" then shots = "Helper icons"
+    if p.rotationMode == "helper" then shots = "Helper icons"
     else shots = "Shot Bars" end
     rows[#rows + 1] = { "Shot display", shots }
   end
