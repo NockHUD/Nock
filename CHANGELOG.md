@@ -2,7 +2,7 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
-## Unreleased
+## 1.1.9
 
 - **The buff and debuff grids' "missing" border is their own, and off by
   default.** The border around a greyed (missing) slot was the rotation's
