@@ -411,6 +411,11 @@ Nock.Defaults = {
     buffTrackerBorderSize     = 12,
     buffTrackerBorderColor    = { 0.0, 0.0, 0.0 },
     buffTrackerBorderOpacity  = 1.0,
+    -- The "missing" highlight on a greyed slot: the grid's own effect and
+    -- colour. "none" is the baseline (user, 2026-09-07) -- the greyed icon
+    -- says missing on its own; the border is opt-in.
+    buffTrackerMissingEffect  = "none",   -- "none" | "static" | "pixelGlow" | "buttonGlow" | "autoCastGlow"
+    buffTrackerMissingColor   = { 0.00, 1.00, 0.40, 1.00 },
 
     -- Debuff tracker (bare draggable icon grid of target debuffs). Off by
     -- default; when enabled it only shows in a raid (and with a target).
@@ -430,6 +435,9 @@ Nock.Defaults = {
     debuffTrackerBorderSize     = 12,
     debuffTrackerBorderColor    = { 0.0, 0.0, 0.0 },
     debuffTrackerBorderOpacity  = 0,
+    -- The "missing" highlight, same shape as the buff tracker's.
+    debuffTrackerMissingEffect  = "none",
+    debuffTrackerMissingColor   = { 0.00, 1.00, 0.40, 1.00 },
 
     -- Totem-range panel (HUD-glued, right edge — mirror of pet status).
     totemTrackerEnabled = true,

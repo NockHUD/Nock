@@ -4,6 +4,16 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 ## Unreleased
 
+- **The buff and debuff grids' "missing" border is their own, and off by
+  default.** The border around a greyed (missing) slot was the rotation's
+  next-action highlight, borrowed wholesale, so its only controls were three
+  tabs away under Rotation → Next-action highlight and restyling one restyled
+  the other. Both grids gained a *Missing highlight* block under their
+  Background settings — Effect (none, static border, pixel ring, spell-proc
+  sparkle, auto-cast) and Color — and the baseline is *None*: the greyed icon
+  says missing on its own, the border is opt-in. Existing profiles lose the
+  green ring on missing slots until they pick an effect there. A restyle now
+  applies to the slots at once instead of on the next buff change.
 - **Fix: the rotation label never checked the spec, so a Survival hunter was
   told to play the Beast Master rotation.** rotationtools' Short French,
   `5:4:1:1`, "only ever appears for survival hunters without the 20% haste out

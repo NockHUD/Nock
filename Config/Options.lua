@@ -152,6 +152,44 @@ local function lsmWidget(_, mediaType)
   return Nock.UI.PreferredMediaWidget(mediaType)
 end
 
+-- The buff/debuff grids' "missing" highlight block: the grid's own Effect +
+-- Color, keys <prefix>MissingEffect / <prefix>MissingColor
+-- (Nock.UI.MissingHighlightStyle). `order` is the header's; the controls sit
+-- at order + 0.1 .. 0.2.
+local MISSING_EFFECT_VALUES = {
+  none         = "None",
+  static       = "Static border",
+  pixelGlow    = "Pixel ring (animated)",
+  buttonGlow   = "Spell-proc sparkle",
+  autoCastGlow = "Auto-cast rotation",
+}
+local function missingHighlightArgs(prefix, order, what)
+  local effectKey, colorKey = prefix .. "MissingEffect", prefix .. "MissingColor"
+  return {
+    [prefix .. "MissingHeader"] = { type = "header", name = "Missing highlight", order = order },
+    [effectKey] = {
+      type = "select",
+      name = "Effect",
+      desc = ("A border around a greyed (missing) %s slot, on top of the greyed icon.\n\n• None — the greyed icon only (default)\n• Static — flat colored border\n• Pixel ring — animated dots traveling around the slot\n• Spell-proc — golden sparkle\n• Auto-cast — rotating particles around the slot"):format(what),
+      order = order + 0.1,
+      dialogControl = lsmWidget(nil, "plain"),  -- normalise pooled item fonts (LSM Font leak guard)
+      values = MISSING_EFFECT_VALUES,
+      get = function() return Nock.db.profile[effectKey] or "none" end,
+      set = function(_, v) visualsSet(_, effectKey, v) end,
+    },
+    [colorKey] = {
+      type = "color",
+      name = "Color",
+      desc = "Color of the missing highlight on this grid.",
+      hasAlpha = true,
+      order = order + 0.2,
+      disabled = function() return (Nock.db.profile[effectKey] or "none") == "none" end,
+      get = getColor,
+      set = setColor,
+    },
+  }
+end
+
 -- Shared "Background" styling block for the floating panels (MD tracker,
 -- buff/debuff grids, shopping list): fill color + opacity and an LSM border
 -- with size/color/opacity — the same depth as Classic HUD → Background. Keys are
@@ -5258,6 +5296,13 @@ local function buildOptionsTable()
   injectPanelStyle(options.args.misdirect,     "md",            44, "mdBackgroundOpacity")
   injectPanelStyle(options.args.buffTracker,   "buffTracker",   25)
   injectPanelStyle(options.args.debuffTracker, "debuffTracker", 10)
+  -- The grids' own "missing" highlight, right under their Background block.
+  for k, v in pairs(missingHighlightArgs("buffTracker", 26, "buff")) do
+    options.args.buffTracker.args[k] = v
+  end
+  for k, v in pairs(missingHighlightArgs("debuffTracker", 11, "debuff")) do
+    options.args.debuffTracker.args[k] = v
+  end
   injectPanelStyle(options.args.shopping,      "shopping",      7)
   -- Order 60 puts the block between the layout sliders (5.x) and the injected
   -- per-helper boxes (100+).

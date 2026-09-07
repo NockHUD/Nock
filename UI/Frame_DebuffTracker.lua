@@ -62,8 +62,10 @@ local function announceMissingDebuff(label)
 end
 
 -- Shared "pay attention" visual (same as BuffTracker missing buffs).
+-- The grid's own Effect/Color (Debuff Tracker → Missing highlight), off by
+-- default — the greyed icon is the baseline.
 local function setMissingHighlight(slot, on)
-  Nock.UI.SetIconNextHighlight(slot, on, nil, 1)
+  Nock.UI.SetIconMissingHighlight(slot, on, "debuffTracker")
 end
 
 -- Always a thin 1px black border regardless of the global LSM iconBorder.
@@ -204,6 +206,7 @@ function DebuffTrackerView:OnVisualsChanged()
   for _, slot in ipairs(self.slots) do
     slot:SetSize(sz, sz)
     applyMinimalBorder(slot)
+    slot._lastPresent = nil   -- a restyled missing highlight applies now, not on the next flip
   end
   self:ApplyLock()
 end

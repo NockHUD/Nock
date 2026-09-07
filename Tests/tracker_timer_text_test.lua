@@ -66,6 +66,7 @@ Nock.UI = {
   RegisterHeaderFontString = function() end,
   RegisterNudgeable        = function() end,
   SetIconNextHighlight     = function() end,
+  SetIconMissingHighlight  = function() end,
 }
 
 local state = Nock.state

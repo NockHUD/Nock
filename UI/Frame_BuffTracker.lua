@@ -23,12 +23,11 @@ local HEADER_STYLE  = "THICKOUTLINE"
 
 local SOLID_TEX = "Interface\\Buttons\\WHITE8X8"
 
--- "Missing" highlight reuses the configurable next-action effect
--- (Rotation → Next-action highlight: pixel ring / spell-proc / etc.) so the
--- whole addon shares one "pay attention to this" visual language. Passes
--- thickness 1 — these icons are small, so the default 2px ring is too bold.
+-- "Missing" highlight: the grid's own Effect/Color (Buff Tracker → Missing
+-- highlight; Nock.UI.MissingHighlightStyle), off by default — the greyed icon
+-- is the baseline. Thickness 1 — these icons are small.
 local function setMissingHighlight(slot, on)
-  Nock.UI.SetIconNextHighlight(slot, on, nil, 1)
+  Nock.UI.SetIconMissingHighlight(slot, on, "buffTracker")
 end
 
 -- Buff-tracker slots always use a thin 1px black border, regardless of the
@@ -267,6 +266,11 @@ function BuffTrackerView:OnVisualsChanged()
   local sz = iconSize()
   for _, slot in ipairs(self.playerSlots) do slot:SetSize(sz, sz); applyMinimalBorder(slot) end
   for _, slot in ipairs(self.petSlots)    do slot:SetSize(sz, sz); applyMinimalBorder(slot) end
+  -- The missing highlight is only (re)applied when a slot's presence flips, so
+  -- a restyle of it (the grid's own or the rotation's it follows) has to drop
+  -- the presence memo or it shows on the next buff change instead of now.
+  for _, slot in ipairs(self.playerSlots) do slot._lastPresent = nil end
+  for _, slot in ipairs(self.petSlots)    do slot._lastPresent = nil end
   self:ApplyStyle()
 end
 

@@ -833,6 +833,26 @@ end
 ok(child("trackers", "misdirect").args.mdBgOpacity == nil,
    "md: fill opacity stays on the pre-existing mdBackgroundOpacity key")
 
+-- The two grids' own "missing" highlight block (Effect / Color), below their
+-- Background block; no Follow-the-rotation toggle (user, 2026-09-07: the
+-- rotation's control is too deep in the tree to be this border's only one).
+-- The effect select carries the LSM font-leak guard like every other plain
+-- select, and the colour is a real picker whose default is seeded (a nil
+-- get() aborts the AceConfigDialog build loop).
+for _, p in ipairs({ "buffTracker", "debuffTracker" }) do
+  local a = child("trackers", p).args
+  local hdr, effect, color = a[p .. "MissingHeader"], a[p .. "MissingEffect"], a[p .. "MissingColor"]
+  ok(hdr and hdr.type == "header" and hdr.order > a[p .. "StyleHeader"].order,
+     p .. ": Missing highlight header below the Background block")
+  ok(a[p .. "MissingFollow"] == nil, p .. ": no Follow toggle")
+  ok(effect and effect.type == "select" and effect.dialogControl == "Nock_LSM_Plain"
+     and effect.values.none and effect.values.static and effect.values.pixelGlow,
+     p .. ": Effect select (plain LSM widget) with the next-action effects")
+  ok(effect and effect.get() == "none", p .. ": Effect reads None on a fresh profile")
+  ok(color and color.type == "color" and color.hasAlpha == true and color.disabled() == true,
+     p .. ": Color picker with alpha, greyed while the effect is None")
+end
+
 -- Classic cast bar styling: the Background block lands below the existing
 -- styling controls, plus a padding slider the other panels don't expose (the
 -- inset between the panel edge and the icon/bar).
@@ -1059,6 +1079,11 @@ local styleDefaults = {
 }
 for _, e in ipairs(styleDefaults) do
   ok(D[e[1]] == e[2], "defaults: " .. e[1] .. " == " .. tostring(e[2]))
+end
+for _, p in ipairs({ "buffTracker", "debuffTracker" }) do
+  ok(D[p .. "MissingFollow"] == nil and D[p .. "MissingEffect"] == "none"
+     and type(D[p .. "MissingColor"]) == "table",
+     "defaults: " .. p .. " missing-highlight keys seeded (no Follow key, None, a colour)")
 end
 for _, p in ipairs({ "md", "buffTracker", "debuffTracker", "shopping", "castBar" }) do
   ok(D[p .. "Border"] == "None", "defaults: " .. p .. "Border is None (1px line)")

@@ -935,12 +935,15 @@ end
 -- mismatch into thousands of "release object that doesn't belong to this pool"
 -- errors. We stash the applied signature on the slot and no-op when the request
 -- hasn't changed, matching the "frames early-exit when data is unchanged" rule.
-function Nock.UI.SetIconNextHighlight(slot, on, colorOverride, thicknessOverride)
+--
+-- effectOverride (optional): draw with this effect instead of rotNextEffect.
+-- The buff/debuff grids pass their own (see SetIconMissingHighlight).
+function Nock.UI.SetIconNextHighlight(slot, on, colorOverride, thicknessOverride, effectOverride)
   -- Resolve the target parameters first so the signature reflects exactly what
   -- we'd draw (effect + color + thickness), then compare against last applied.
   local effect, color, thickness
   if on then
-    effect = profile("rotNextEffect", "pixelGlow")
+    effect = effectOverride or profile("rotNextEffect", "pixelGlow")
     if effect == "none" then on = false end
   end
   if on then
@@ -977,6 +980,27 @@ function Nock.UI.SetIconNextHighlight(slot, on, colorOverride, thicknessOverride
     -- Fallback if the chosen LCG entrypoint isn't present on this client.
     Nock.UI.SetIconHighlight(slot, color)
   end
+end
+
+-- The buff/debuff grids' "missing" highlight style: the grid's own
+-- <prefix>MissingEffect / <prefix>MissingColor, nothing borrowed from the
+-- rotation's next-action highlight any more (it used to be, and the only
+-- control over a missing-buff border was three tabs away under Rotation).
+-- The effect defaults to "none" -- a greyed icon is the baseline, the border
+-- is opt-in -- and a missing colour falls back to the next-action green so an
+-- old profile never hands AceConfigDialog a nil. Returns effect, color.
+-- LuaJIT-tested in Tests/tracker_missing_highlight_test.lua.
+function Nock.UI.MissingHighlightStyle(prefix)
+  return profile(prefix .. "MissingEffect", "none"),
+         profile(prefix .. "MissingColor", nil) or C.COLORS.NEXT_HIGHLIGHT
+end
+
+-- SetIconNextHighlight for a grid slot, styled by MissingHighlightStyle.
+-- Thickness 1: these icons are small, so the default 2px ring is too bold.
+function Nock.UI.SetIconMissingHighlight(slot, on, prefix)
+  if not on then return Nock.UI.SetIconNextHighlight(slot, false) end
+  local effect, color = Nock.UI.MissingHighlightStyle(prefix)
+  return Nock.UI.SetIconNextHighlight(slot, true, color, 1, effect)
 end
 
 function Nock.UI.CreateZoneSquare(parent, name, width, height)
