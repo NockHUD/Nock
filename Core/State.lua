@@ -725,3 +725,15 @@ function Nock.TonkCancelDelay()
   if v < C.TONK_CANCEL_MIN then return C.TONK_CANCEL_MIN end
   return v
 end
+
+-- Cooldown / aura timer digits for an icon slot's own text layer, used where
+-- no cooldown-text addon (OmniCC, tullaCC, ncCooldown) is there to paint the
+-- Cooldown frame: tenths under ten seconds, whole seconds to 90, minutes past
+-- that, nothing at zero. The buff and debuff grids read this; the cooldown
+-- rows carry the same rule locally.
+function Nock.FormatCD(remaining)
+  if not remaining or remaining <= 0 then return "" end
+  if remaining < 10 then return ("%.1f"):format(remaining) end
+  if remaining < 90 then return ("%d"):format(math.ceil(remaining)) end
+  return ("%dm"):format(math.floor(remaining / 60))
+end

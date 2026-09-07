@@ -4,6 +4,19 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 ## Unreleased
 
+- **Fix: the buff and debuff grids showed no timer without OmniCC.** Each
+  slot's Cooldown frame has its own countdown hidden, and the buff grid only
+  ever showed an empty text layer when no cooldown-text addon was there to
+  paint it; the debuff grid had no fallback at all. Without OmniCC, tullaCC
+  or ncCooldown both grids now write the seconds themselves (tenths under
+  ten, minutes past ninety); with one loaded they stay quiet and leave the
+  Cooldown frame to it, as before.
+- **Fix: drink-walking could leave the DRINKING pill up for good.** Sit, sip
+  a tick, run, repeat every two seconds: the Drink aura is applied and
+  cancelled over and over, often inside one frame. The same-frame fold is the
+  EATING fix below; on top of it, a cancel the client never reports now ends
+  on its own once the drink's thirty seconds would have run, instead of
+  waiting for the next aura change to notice.
 - **Fix: the EATING pill could stick after a food click while moving.** A
   food used on the run is applied and cancelled inside one frame, and the
   client reports both edges in a single aura event. The aura cache took the

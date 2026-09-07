@@ -13,6 +13,11 @@ local C = Nock.Constants
 local MAX_SLOTS    = 40
 local CELL_OVERLAP = 1   -- merge adjacent 1px borders into one shared line
 local SOLID_TEX    = "Interface\\Buttons\\WHITE8X8"
+-- Cooldown-text addons that paint the slots' Cooldown frames themselves; with
+-- one loaded the grid paints no digits of its own (same list as the buff grid
+-- and the cooldown rows; addons load alphabetically, so the check waits for
+-- login).
+local EXTERNAL_CD_ADDONS = { "OmniCC", "tullaCC", "ncCooldown" }
 
 local function profileGet(key, fallback)
   local p = Nock.db and Nock.db.profile
@@ -137,6 +142,35 @@ function DebuffTrackerView:OnInitialize()
   self:RegisterMessage("NOCK_LOCK_CHANGED",           "ApplyLock")
   self:RegisterMessage("NOCK_DEBUFFTRACKER_POSRESET", "ApplyPosition")
   self:RegisterMessage("NOCK_POSITION_RESET",         "ApplyPosition")  -- profile switch
+  self:RegisterEvent("PLAYER_LOGIN",                  "ApplyExternalCdAddon")
+  self:RegisterEvent("PLAYER_ENTERING_WORLD",         "ApplyExternalCdAddon")
+end
+
+-- With OmniCC (or similar) loaded, hide our cdText and leave noCooldownCount
+-- nil so the addon paints the Cooldown frame; without one, Refresh writes the
+-- seconds into cdText itself -- the slot's own countdown is hidden
+-- (Widgets.CreateIconSlot), so nothing else would show a timer (2026-09-07
+-- report). Mirrors UI/Frame_BuffTracker.lua.
+function DebuffTrackerView:ApplyExternalCdAddon()
+  if self._cdAddonApplied then return end
+  self._cdAddonApplied = true
+  local check = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
+  local has = false
+  if check then
+    for _, name in ipairs(EXTERNAL_CD_ADDONS) do
+      if check(name) then has = true; break end
+    end
+  end
+  self._ownCdText = not has
+  for _, slot in ipairs(self.slots) do
+    if has then
+      slot.cooldown.noCooldownCount = nil
+      slot.cdText:Hide()
+    else
+      slot.cooldown.noCooldownCount = true
+      slot.cdText:Show()
+    end
+  end
 end
 
 function DebuffTrackerView:ApplyPosition()
@@ -216,6 +250,7 @@ function DebuffTrackerView:Refresh(state)
   )
 
   local now = GetTime()
+  local ownCdText = self._ownCdText
   for i = 1, MAX_SLOTS do
     local slot = self.slots[i]
     local d    = list[i]
@@ -248,7 +283,8 @@ function DebuffTrackerView:Refresh(state)
         slot._lastPresent = d.present
       end
 
-      if d.present and d.duration > 0 and d.expirationTime > now then
+      local timed = d.present and d.duration > 0 and d.expirationTime > now
+      if timed then
         local start = d.expirationTime - d.duration
         if start ~= slot._lastCdStart or d.duration ~= slot._lastCdDur then
           slot.cooldown:SetCooldown(start, d.duration)
@@ -259,6 +295,16 @@ function DebuffTrackerView:Refresh(state)
         slot.cooldown:Clear()
         slot._lastCdStart = 0
         slot._lastCdDur   = 0
+      end
+
+      -- Our own digits, only without a cooldown-text addon (see
+      -- ApplyExternalCdAddon); diffed so the text is set when it changes.
+      if ownCdText then
+        local txt = timed and Nock.FormatCD(d.expirationTime - now) or ""
+        if txt ~= slot._lastCdText then
+          slot.cdText:SetText(txt)
+          slot._lastCdText = txt
+        end
       end
 
       local countTxt = (d.count and d.count > 1) and tostring(d.count) or ""

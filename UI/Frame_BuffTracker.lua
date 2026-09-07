@@ -282,6 +282,10 @@ function BuffTrackerView:ApplyExternalCdAddon()
   end
   -- When OmniCC (or similar) is loaded, hide our fallback cdText so we don't
   -- double-paint. Leave noCooldownCount nil (default) so OmniCC can paint.
+  -- Otherwise refreshPanel writes the seconds into cdText itself: the slot's
+  -- Cooldown frame has its own countdown hidden (Widgets.CreateIconSlot), so
+  -- without this nothing shows a timer at all (2026-09-07 report).
+  self._ownCdText = not has
   local function applyToList(slots)
     for _, slot in ipairs(slots) do
       if has then
@@ -303,7 +307,7 @@ end
 -- greyed (matches the reference WA), present ones are full colour and drive
 -- the OmniCC swipe.
 -- ---------------------------------------------------------------------------
-local function refreshPanel(panel, slots, list, colCount, sz)
+local function refreshPanel(panel, slots, list, colCount, sz, ownCdText)
   if #list == 0 then
     if panel:IsShown() then panel:Hide() end
     return
@@ -363,7 +367,8 @@ local function refreshPanel(panel, slots, list, colCount, sz)
       -- Cooldown swipe — only when present AND the buff actually carries a
       -- duration. Permanent auras (Trueshot, etc.) have duration = 0 and just
       -- show the icon in colour with no swipe.
-      if b.present and b.duration > 0 and b.expirationTime > now then
+      local timed = b.present and b.duration > 0 and b.expirationTime > now
+      if timed then
         local start = b.expirationTime - b.duration
         if start ~= slot._lastCdStart or b.duration ~= slot._lastCdDur then
           slot.cooldown:SetCooldown(start, b.duration)
@@ -374,6 +379,16 @@ local function refreshPanel(panel, slots, list, colCount, sz)
         slot.cooldown:Clear()
         slot._lastCdStart = 0
         slot._lastCdDur   = 0
+      end
+
+      -- Our own digits, only without a cooldown-text addon (see
+      -- ApplyExternalCdAddon); diffed so the text is set when it changes.
+      if ownCdText then
+        local txt = timed and Nock.FormatCD(b.expirationTime - now) or ""
+        if txt ~= slot._lastCdText then
+          slot.cdText:SetText(txt)
+          slot._lastCdText = txt
+        end
       end
 
       local countTxt = (b.count and b.count > 1) and tostring(b.count) or ""
@@ -423,14 +438,15 @@ function BuffTrackerView:Refresh(state)
   local sz       = iconSize()
   local bt       = state.bufftracker or { player = {}, pet = {} }
 
+  local ownCdText = self._ownCdText
   if isPanelEnabled("Player") then
-    refreshPanel(self.playerPanel, self.playerSlots, bt.player, colCount, sz)
+    refreshPanel(self.playerPanel, self.playerSlots, bt.player, colCount, sz, ownCdText)
   else
     if self.playerPanel:IsShown() then self.playerPanel:Hide() end
   end
 
   if isPanelEnabled("Pet") and UnitExists("pet") then
-    refreshPanel(self.petPanel, self.petSlots, bt.pet, colCount, sz)
+    refreshPanel(self.petPanel, self.petSlots, bt.pet, colCount, sz, ownCdText)
   else
     if self.petPanel:IsShown() then self.petPanel:Hide() end
   end

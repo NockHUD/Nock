@@ -141,10 +141,27 @@ end
 
 -- Slow lane: a scan only when the cache's revision moved for the player or
 -- the target; a clean tick is two integer compares.
+-- A published eating / drinking record whose expiry has passed. The scan
+-- drops such a record (see onPlayerBuff), but the scan only runs when the
+-- cache revision moves -- and a record whose removal the client never
+-- reported moves nothing. Drink-walking (sit, sip a tick, run, every two
+-- seconds) hands the client apply/cancel pairs faster than anything else
+-- does; one missed cancel left DRINKING up until the next aura event
+-- (2026-09-07 report). So an expired record is itself a reason to rescan.
+local function consumeExpired(p, now)
+  local e, d = p.eating, p.drinking
+  if e and e.expirationTime and e.expirationTime > 0 and e.expirationTime <= now then return true end
+  if d and d.expirationTime and d.expirationTime > 0 and d.expirationTime <= now then return true end
+  return false
+end
+
 function Auras:Refresh()
   if not AC then return end
   local rp, rt = AC.Rev("player"), AC.Rev("target")
-  if rp == self._revPlayer and rt == self._revTarget then return end
+  if rp == self._revPlayer and rt == self._revTarget
+     and not consumeExpired(Nock.state.player, GetTime()) then
+    return
+  end
   self._revPlayer, self._revTarget = rp, rt
   self:ScanAll()
 end
