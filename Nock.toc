@@ -55,7 +55,9 @@ Modules\BossMarkEngine.lua
 Modules\SlammerEngine.lua
 Modules\ActionGlowEngine.lua
 Modules\RipperEngine.lua
+Modules\ManaTickEngine.lua
 Modules\Auras.lua
+Modules\ManaTick.lua
 Modules\Rotation.lua
 Modules\ShotPredictor.lua
 Modules\Warnings.lua

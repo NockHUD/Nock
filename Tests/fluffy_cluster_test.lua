@@ -51,9 +51,9 @@ local function eqColor(a, b)
 end
 
 local NUMS = {
-  fluffyWidth = 320, fluffyScale = 1.0, fluffyCastH = 14, fluffySwingH = 12,
-  fluffyRangedH = 18, fluffyMeleeH = 8, fluffyRangeH = 12, fluffyShotWindow = 6.0,
-  fluffyFontSize = 9,
+  fluffyWidth = 320, fluffyScale = 1.0, fluffyCastH = 14, fluffySwingH = 14,
+  fluffyRangedH = 24, fluffyMeleeH = 10, fluffyRangeH = 12, fluffyManaH = 12, fluffyShotWindow = 6.0,
+  fluffyFontSize = 10,
 }
 for k, v in pairs(NUMS) do
   ok(D[k] == v, ("default %s == %s (got %s)"):format(k, tostring(v), tostring(D[k])))
@@ -62,6 +62,7 @@ end
 local BOOLS = {
   fluffyShowCast = true, fluffyShowAutoShotCast = true, fluffyShowSwing = true,
   fluffyShowRanged = true, fluffyShowMelee = true, fluffyShowRange = true,
+  fluffyShowMana = true, fluffyManaTick = false,
   fluffyShowGrid = false, fluffyBuffRows = true,
   fluffyBuffRowPos = false, fluffyCdKeys = false,
   fluffyShowNotation = true, fluffyShowDelay = false,
@@ -69,6 +70,10 @@ local BOOLS = {
   fluffyShowClipTicks = true,
 }
 ok(D.fluffyDirAuto == "converge", "default fluffyDirAuto == converge")
+ok(D.fluffyManaText == "percent", "default fluffyManaText == percent")
+ok(D.fluffyBarOrder == false, "default fluffyBarOrder == false (built-in order)")
+ok(D.fluffyManaTickDirCombat == "ltr" and D.fluffyManaTickDirOoc == "rtl",
+   "default mana tick directions: combat ltr, ooc rtl")
 for k, v in pairs(BOOLS) do
   ok(D[k] == v, ("default %s == %s (got %s)"):format(k, tostring(v), tostring(D[k])))
 end
@@ -100,6 +105,8 @@ local COLORS = {
   fluffyColorRangePerfect  = { 0.17, 0.78, 0.11, 1.00 },
   fluffyColorRangeClose    = { 0.00, 0.83, 0.75, 1.00 },
   fluffyColorRangeResync   = { 1.00, 0.58, 0.10, 1.00 },
+  fluffyColorManaFill      = { 0.20, 0.55, 1.00, 1.00 },
+  fluffyColorManaTick      = { 1.00, 1.00, 1.00, 0.80 },
 }
 for k, v in pairs(COLORS) do
   ok(eqColor(D[k], v), ("default %s color matches reference"):format(k))
@@ -122,6 +129,15 @@ Nock.UI = {
   DeviceWidth        = function(n) return n end,
   PixelSnapCenter    = function(x) return x end,
   DelaySeverityColor = function() return 1, 1, 1 end,
+  -- Order resolver stub (the real one is Widgets', tested in react_order_test).
+  ResolveFluffyBarOrder = function(stored)
+    if type(stored) ~= "table" then return { "swing", "ranged", "melee", "range", "mana" } end
+    return stored
+  end,
+  FormatManaText     = function(mode, cur, max, pct)
+    if mode == "none" then return "" end
+    return tostring(pct) .. "%"
+  end,
   ReactAxisPoint     = function(frac, dir, halfW, innerW)
     if frac < 0 then frac = 0 elseif frac > 1 then frac = 1 end
     if dir == "converge" then
@@ -150,11 +166,14 @@ ok(FC.frame:IsShown() == false, "cluster hidden at build (HUD shows it)")
 local g = FC:Geometry()
 ok(g.showRange == true, "range finder in the default stack, above the CD row")
 ok(g.w == 320, "width = fluffyWidth")
-ok(g.ySwing == 0 and g.hSwing == 12 and g.showSwing, "swing/cast bar at top, 12px")
-ok(g.yRanged == 12 - 1, "ranged after the -1 seam")
-ok(g.yMelee == 11 + 18 - 1, "melee after ranged")
-ok(g.yRange == 28 + 8 - 1, "range after melee")
-ok(g.total == 12 + 18 + 8 + 12 - 3, "total = heights minus 3 seams")
+-- Reference heights (user, 2026-09-07): swing 14, shot lane 24, weave lane
+-- 10, range 12, mana 12.
+ok(g.ySwing == 0 and g.hSwing == 14 and g.showSwing, "swing/cast bar at top, 14px")
+ok(g.yRanged == 14 - 1, "ranged after the -1 seam")
+ok(g.yMelee == 13 + 24 - 1, "melee after ranged")
+ok(g.yRange == 36 + 10 - 1, "range after melee")
+ok(g.showMana == true and g.yMana == 45 + 12 - 1 and g.hMana == 12, "mana bar after range, 12px, on by default")
+ok(g.total == 14 + 24 + 10 + 12 + 12 - 4, "total = heights minus 4 seams")
 ok(FC:ContentHeight() == g.total, "ContentHeight == Geometry().total")
 
 -- A running cast never changes geometry (the cast lives ON the swing bar).
@@ -167,15 +186,31 @@ Nock.state.player.casting = nil
 p.fluffyShowMelee = false
 g = FC:Geometry()
 ok(g.showMelee == false, "melee off")
-ok(g.yRange == 11 + 18 - 1, "range moves up past the missing melee lane")
-ok(g.total == 12 + 18 + 12 - 2, "total without melee")
+ok(g.yRange == 13 + 24 - 1, "range moves up past the missing melee lane")
+ok(g.total == 14 + 24 + 12 + 12 - 3, "total without melee")
 p.fluffyShowMelee = true
 
--- Height overrides go through the skin resolver.
-p.fluffyRangedH = 24
+-- Mana bar off: the stack shrinks back to the four-bar total.
+p.fluffyShowMana = false
 g = FC:Geometry()
-ok(g.hRanged == 24 and g.total == 12 + 24 + 8 + 12 - 3, "fluffyRangedH override honored")
-p.fluffyRangedH = 18
+ok(g.showMana == false and g.yMana == nil, "mana off: no row")
+ok(g.total == 14 + 24 + 10 + 12 - 3, "total without mana")
+p.fluffyShowMana = true
+
+-- The stack is reorderable (fluffyBarOrder, the React Up/Down editor's
+-- cousin): a stored permutation places the bars in that sequence.
+p.fluffyBarOrder = { "mana", "swing", "ranged", "melee", "range" }
+g = FC:Geometry()
+ok(g.yMana == 0 and g.ySwing == 12 - 1, "fluffyBarOrder: mana first, swing after the seam")
+ok(g.yRange == 11 + 14 + 24 + 10 - 3, "fluffyBarOrder: range last")
+ok(g.total == 14 + 24 + 10 + 12 + 12 - 4, "fluffyBarOrder: total unchanged by a permutation")
+p.fluffyBarOrder = false
+
+-- Height overrides go through the skin resolver.
+p.fluffyRangedH = 30
+g = FC:Geometry()
+ok(g.hRanged == 30 and g.total == 14 + 30 + 10 + 12 + 12 - 4, "fluffyRangedH override honored")
+p.fluffyRangedH = 24
 
 -- ---------------------------------------------------------------------------
 -- §3 The transient cast bar — a strip welded above the cluster, HIDDEN while
@@ -388,6 +423,54 @@ ok(FC.range.fill._w == 0.01 and FC.range.label:GetText() == "",
    "range: target gone → cleared")
 
 -- ---------------------------------------------------------------------------
+-- §5b Mana sub-bar painter — fill = manaPct, centered text via the shared
+-- formatter (fluffyManaText), and the opt-in tick spark (fluffyManaTick)
+-- placed at state.player.manaTick.frac of the inner width, hidden when the
+-- tick is not live or the option is off.
+-- ---------------------------------------------------------------------------
+Nock.ManaTickEngine = dofile("Modules/ManaTickEngine.lua")
+Nock.state.player = { manaPct = 50, manaCur = 4000, manaMax = 8000, inCombat = false,
+                      manaTick = { active = true, progress = 0.25 } }
+FC:Refresh(Nock.state)
+ok(FC.mana ~= nil and FC.mana:IsShown(), "mana bar built and shown by default")
+ok(math.abs(FC.mana.fill._w - 0.5 * 318) < 0.01, "mana: fill = manaPct of innerW")
+ok(FC.mana.text:GetText() == "50%", "mana: percent text")
+ok(FC.mana.spark:IsShown() == false, "mana: tick spark hidden while fluffyManaTick is off")
+
+p.fluffyManaTick = true
+FC:ApplyLayout()
+FC:Refresh(Nock.state)
+ok(FC.mana.spark:IsShown() == true, "mana: tick spark shown when opted in and live")
+local _, _, _, sx = FC.mana.spark:GetPoint(1)
+ok(math.abs(sx - (1 + 0.75 * 318)) < 0.01, "mana: ooc default is right-to-left: 0.25 progress sits at 0.75 (+1px border)")
+
+Nock.state.player.inCombat = true
+FC:Refresh(Nock.state)
+_, _, _, sx = FC.mana.spark:GetPoint(1)
+ok(math.abs(sx - (1 + 0.25 * 318)) < 0.01, "mana: combat default is left-to-right")
+
+p.fluffyManaTickDirCombat = "rtl"
+FC:Refresh(Nock.state)
+_, _, _, sx = FC.mana.spark:GetPoint(1)
+ok(math.abs(sx - (1 + 0.75 * 318)) < 0.01, "mana: combat direction setting honored")
+p.fluffyManaTickDirCombat = "ltr"
+Nock.state.player.inCombat = false
+
+Nock.state.player.manaTick.active = false
+FC:Refresh(Nock.state)
+ok(FC.mana.spark:IsShown() == false, "mana: spark hidden when the tick is not live")
+
+p.fluffyManaText = "none"
+FC:ApplyLayout()
+Nock.state.player.manaTick.active = true
+FC:Refresh(Nock.state)
+ok(FC.mana.text:GetText() == "", "mana: text mode none")
+p.fluffyManaText = "percent"
+p.fluffyManaTick = false
+FC:ApplyLayout()
+Nock.state.player = {}
+
+-- ---------------------------------------------------------------------------
 -- §6 Shot lanes — pooled strips over the engine's span lists: ranged draw
 -- order steady/queue/multi/arcane/danger clipped at the GCD/cast lockout,
 -- melee weaveauto/raptor/weaveclip UNCLIPPED, full-height sparks, everything
@@ -485,9 +568,9 @@ ok(FC.ranged.icons[3]._tex == "tex-27019", "icons: arcane wears Arcane Shot")
 ok(shownIcons(FC.melee.icons) == 2, "icons: both melee spans carry one")
 ok(FC.melee.icons[1]._tex == "tex-6603", "icons: weaveauto wears Attack")
 ok(FC.melee.icons[2]._tex == "tex-27014", "icons: raptor wears Raptor Strike")
--- Left-aligned on the span's left edge, sized to the lane height (18 → 16).
+-- Left-aligned on the span's left edge, sized to the lane height (24 → 22).
 local ix1 = math.floor(0.5 * SC + 0.5)
-local isz = 18 - 2
+local isz = 24 - 2
 ok(FC.ranged.icons[1]._w == isz and FC.ranged.icons[1]._h == isz,
    "icons: sized to the lane height")
 ok(FC.ranged.icons[1]._point[4] == 1 + ix1, "icons: left-aligned in the span")

@@ -5035,6 +5035,49 @@ local function buildOptionsTable()
             get = function() return Nock.db.profile.manaBarText or "percent" end,
             set = function(_, v) visualsSet(_, "manaBarText", v) end,
           },
+          tickHeader = { type = "header", name = "Mana tick", order = 50 },
+          showManaTick = {
+            type = "toggle",
+            name = "Mana tick spark",
+            desc = "A thin line on the mana bar riding the server's regen tick: in combat it sweeps the bar every 2 seconds and lands on the far edge as the tick arrives; out of combat a spend starts the five-second rule instead (one sweep landing on the first tick at or after 5 seconds), after which the 2-second tick keeps sweeping until you are full. Never shown at full mana. Potion, Judgement of Wisdom, Mana Spring and drink gains are ignored. Each state has its own direction below.",
+            order = 51,
+            width = "full",
+            get = function() return Nock.db.profile.showManaTick == true end,
+            set = function(_, v) visualsSet(_, "showManaTick", v) end,
+          },
+          manaTickColor = {
+            type = "color",
+            name = "Spark color",
+            desc = "Color of the mana tick line.",
+            hasAlpha = true,
+            order = 52,
+            disabled = function() return Nock.db.profile.showManaTick ~= true end,
+            get = getColor, set = setColor,
+          },
+          manaTickDirCombat = {
+            type = "select",
+            name = "Direction in combat",
+            desc = "Which way the spark travels while you are in combat (the 2-second regen tick). It lands on the far edge as the tick arrives.",
+            order = 53,
+            values = { ltr = "Left to right", rtl = "Right to left" },
+      sorting = { "ltr", "rtl" },
+      dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard,
+            disabled = function() return Nock.db.profile.showManaTick ~= true end,
+            get = function() return Nock.db.profile.manaTickDirCombat or "ltr" end,
+            set = function(_, v) visualsSet(_, "manaTickDirCombat", v) end,
+          },
+          manaTickDirOoc = {
+            type = "select",
+            name = "Direction out of combat",
+            desc = "Which way the spark travels out of combat (the five-second rule after a spend, then the 2-second tick until full).",
+            order = 54,
+            values = { ltr = "Left to right", rtl = "Right to left" },
+      sorting = { "ltr", "rtl" },
+      dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard,
+            disabled = function() return Nock.db.profile.showManaTick ~= true end,
+            get = function() return Nock.db.profile.manaTickDirOoc or "rtl" end,
+            set = function(_, v) visualsSet(_, "manaTickDirOoc", v) end,
+          },
         },
       },
       profiles = nil,
@@ -5553,6 +5596,36 @@ local function buildOptionsTable()
       get = function() return Nock.db.profile.reactManaText or "percent" end,
       set = function(_, v) visualsSet(_, "reactManaText", v) end,
     }
+    sizeArgs.reactManaTick = {
+      type = "toggle",
+      name = "Mana tick spark",
+      desc = "A thin line on the mana bar riding the server's regen tick: in combat it sweeps the bar every 2 seconds and lands on the far edge as the tick arrives; out of combat a spend starts the five-second rule instead (one sweep landing on the first tick at or after 5 seconds), after which the 2-second tick keeps sweeping until you are full. Never shown at full mana. Potion, Judgement of Wisdom, Mana Spring and drink gains are ignored. Each state has its own direction below. Color under Skin.",
+      order = 24.6,
+      width = "full",
+      disabled = function()
+        return notReact() or Nock.db.profile.reactShowManaBar == false
+      end,
+      get = function() return Nock.db.profile.reactManaTick == true end,
+      set = function(_, v) visualsSet(_, "reactManaTick", v) end,
+    }
+    local function reactTickDir(key, name, desc, order, fallback)
+      return {
+        type = "select", name = name, desc = desc, order = order,
+        values = { ltr = "Left to right", rtl = "Right to left" },
+      sorting = { "ltr", "rtl" },
+      dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard,
+        disabled = function()
+          return notReact() or Nock.db.profile.reactShowManaBar == false
+              or Nock.db.profile.reactManaTick ~= true
+        end,
+        get = function() return Nock.db.profile[key] or fallback end,
+        set = function(_, v) visualsSet(_, key, v) end,
+      }
+    end
+    sizeArgs.reactManaTickDirCombat = reactTickDir("reactManaTickDirCombat", "Tick direction in combat",
+      "Which way the spark travels while you are in combat (the 2-second regen tick). It lands on the far edge as the tick arrives.", 24.7, "ltr")
+    sizeArgs.reactManaTickDirOoc = reactTickDir("reactManaTickDirOoc", "Tick direction out of combat",
+      "Which way the spark travels out of combat (the five-second rule after a spend, then the 2-second tick until full).", 24.8, "rtl")
     sizeArgs.reactShowCastBar  = reactToggle("reactShowCastBar",  "Cast bar",        "The cast bar glued above the cluster.", 25)
     sizeArgs.reactShowAutoShotCast = reactToggle("reactShowAutoShotCast",
       "Auto Shot wind-up on cast bar",
@@ -5577,74 +5650,85 @@ local function buildOptionsTable()
     -- CD editor's wipe-and-refill machinery. The stored order self-heals: it
     -- is re-derived through ResolveReactBarOrder on every materialize, so a
     -- stale or hand-damaged profile array can't wedge the executes.
-    sizeArgs.orderHeader = { type = "header", name = "Bar order", order = 29 }
-    local BAR_LABELS = {
+    -- Shared with the FluffyHUD tab below (its stack has five rows).
+    --   args      the subtab table the rows are written into
+    --   storeKey  profile key holding the materialized order (false = built-in)
+    --   resolve   the sanitizer (Nock.UI.Resolve<Hud>BarOrder), called lazily
+    --             so the tree can build before Widgets is loaded (tests)
+    --   labels    key -> display name; n = row count
+    --   inactive  "this HUD is not the live one" predicate (disables the buttons)
+    --   base      AceConfig order of the header; rows follow at +0.1 steps
+    local function buildBarOrderEditor(args, storeKey, resolve, labels, n, inactive, base)
+      args.orderHeader = { type = "header", name = "Bar order", order = base }
+      local function effectiveOrder()
+        return resolve(Nock.db.profile[storeKey])
+      end
+      -- First edit materializes the built-in order into the profile (CD-row
+      -- convention). Copies — the resolver's fallback is its shared built-in
+      -- table, which a swap must never mutate.
+      local function materializedOrder()
+        local p = Nock.db.profile
+        local eff = effectiveOrder()
+        if type(p[storeKey]) ~= "table" then p[storeKey] = {} end
+        local t = p[storeKey]
+        for i = 1, #eff do t[i] = eff[i] end
+        for i = #eff + 1, #t do t[i] = nil end
+        return t
+      end
+      local function orderChanged()
+        Nock:SendMessage("NOCK_VISUALS_CHANGED")
+        notify()
+      end
+      for i = 1, n do
+        local idx = i
+        args["order_lbl_" .. idx] = {
+          type = "description", fontSize = "medium", width = 1.4,
+          order = base + idx * 0.1,
+          name = function()
+            local k = effectiveOrder()[idx]
+            return ("%d.  %s"):format(idx, labels[k] or tostring(k))
+          end,
+        }
+        args["order_up_" .. idx] = {
+          type = "execute", name = "Up", width = 0.4,
+          order = base + idx * 0.1 + 0.01,
+          disabled = function() return inactive() or idx == 1 end,
+          func = function()
+            local t = materializedOrder()
+            t[idx], t[idx - 1] = t[idx - 1], t[idx]
+            orderChanged()
+          end,
+        }
+        args["order_dn_" .. idx] = {
+          type = "execute", name = "Down", width = 0.5,
+          order = base + idx * 0.1 + 0.02,
+          disabled = function() return inactive() or idx == n end,
+          func = function()
+            local t = materializedOrder()
+            t[idx], t[idx + 1] = t[idx + 1], t[idx]
+            orderChanged()
+          end,
+        }
+      end
+      args.order_reset = {
+        type = "execute", name = "Reset order to default", width = 1.2,
+        order = base + 0.9,
+        disabled = function()
+          return inactive() or type(Nock.db.profile[storeKey]) ~= "table"
+        end,
+        func = function()
+          Nock.db.profile[storeKey] = false
+          orderChanged()
+        end,
+      }
+    end
+    buildBarOrderEditor(sizeArgs, "reactBarOrder",
+      function(stored) return Nock.UI.ResolveReactBarOrder(stored) end, {
       auto  = "Auto Shot bar",
       melee = "Melee swing bar",
       range = "Range bar",
       mana  = "Mana bar",
-    }
-    local function effectiveOrder()
-      return Nock.UI.ResolveReactBarOrder(Nock.db.profile.reactBarOrder)
-    end
-    -- First edit materializes the built-in order into the profile (CD-row
-    -- convention). Copies — the resolver's fallback is its shared built-in
-    -- table, which a swap must never mutate.
-    local function materializedOrder()
-      local p = Nock.db.profile
-      local eff = effectiveOrder()
-      if type(p.reactBarOrder) ~= "table" then p.reactBarOrder = {} end
-      local t = p.reactBarOrder
-      for i = 1, #eff do t[i] = eff[i] end
-      for i = #eff + 1, #t do t[i] = nil end
-      return t
-    end
-    local function orderChanged()
-      Nock:SendMessage("NOCK_VISUALS_CHANGED")
-      notify()
-    end
-    for i = 1, 4 do
-      local idx = i
-      sizeArgs["order_lbl_" .. idx] = {
-        type = "description", fontSize = "medium", width = 1.4,
-        order = 29 + idx * 0.1,
-        name = function()
-          local k = effectiveOrder()[idx]
-          return ("%d.  %s"):format(idx, BAR_LABELS[k] or tostring(k))
-        end,
-      }
-      sizeArgs["order_up_" .. idx] = {
-        type = "execute", name = "Up", width = 0.4,
-        order = 29 + idx * 0.1 + 0.01,
-        disabled = function() return notReact() or idx == 1 end,
-        func = function()
-          local t = materializedOrder()
-          t[idx], t[idx - 1] = t[idx - 1], t[idx]
-          orderChanged()
-        end,
-      }
-      sizeArgs["order_dn_" .. idx] = {
-        type = "execute", name = "Down", width = 0.5,
-        order = 29 + idx * 0.1 + 0.02,
-        disabled = function() return notReact() or idx == 4 end,
-        func = function()
-          local t = materializedOrder()
-          t[idx], t[idx + 1] = t[idx + 1], t[idx]
-          orderChanged()
-        end,
-      }
-    end
-    sizeArgs.order_reset = {
-      type = "execute", name = "Reset order to default", width = 1.2,
-      order = 29.9,
-      disabled = function()
-        return notReact() or type(Nock.db.profile.reactBarOrder) ~= "table"
-      end,
-      func = function()
-        Nock.db.profile.reactBarOrder = false
-        orderChanged()
-      end,
-    }
+    }, 4, notReact, 29)
 
     barsArgs.autoHeader = { type = "header", name = "Auto Shot bar", order = 30 }
     -- Annotated miniature of the converge bar (UI/AceGUI_BarLegends.lua). No
@@ -6192,6 +6276,7 @@ local function buildOptionsTable()
       reactColorMeleeReady    = { 0.15, 0.68, 0.38, 1.00 },
       reactColorMeleeAuto     = { 0.55, 0.75, 1.00, 1.00 },
       reactColorManaFill      = { 0.20, 0.55, 1.00, 1.00 },
+      reactColorManaTick      = { 1.00, 1.00, 1.00, 0.80 },
       reactColorCastFill      = { 0.40, 0.70, 1.00, 1.00 },
       reactColorRangeDeadzone = { 0.68, 0.18, 0.20, 1.00 },
       reactColorRangeSweet    = { 0.85, 0.66, 0.00, 1.00 },
@@ -6290,6 +6375,7 @@ local function buildOptionsTable()
     skinArgs.reactColorMeleeReady    = skinColorOpt("Melee: Raptor ready", "Melee fill while Raptor Strike is off cooldown.", 97)
     skinArgs.reactColorMeleeAuto     = skinColorOpt("Melee: auto-only",    "Melee fill while Raptor Strike is on cooldown.", 98)
     skinArgs.reactColorManaFill      = skinColorOpt("Mana fill", nil, 99)
+    skinArgs.reactColorManaTick      = skinColorOpt("Mana tick spark", "The mana tick line (Bars -> Mana tick spark).", 99.5)
     skinArgs.reactColorCastFill      = skinColorOpt("Cast fill", nil, 100)
     -- Auto Shot bar marks. Each mark gets its own width + colour; the mirrored
     -- halves share one setting (they are one mark drawn twice). Deliberately
@@ -6441,7 +6527,63 @@ local function buildOptionsTable()
       set = function(_, v) visualsSet(_, "fluffyShowLaneIcons", v) end,
     }
     fSizeArgs.fluffyShowRange = fluffyToggle("fluffyShowRange", "Range finder",
-      "The weave range bar at the bottom of the stack, above the cooldown grid: finding ladder at long range, then the glide fill toward the sweet spot. Style options are shared with the classic bar (Classic HUD → Range Finder).", 26)
+      "The weave range bar above the mana bar: finding ladder at long range, then the glide fill toward the sweet spot. Style options are shared with the classic bar (Classic HUD → Range Finder).", 26)
+    fSizeArgs.fluffyShowMana = fluffyToggle("fluffyShowMana", "Mana bar",
+      "Thin mana bar at the bottom of the stack, above the cooldown grid, with the percent readout.", 27)
+    fSizeArgs.fluffyManaText = {
+      type = "select",
+      name = "Mana bar text",
+      desc = "Center text on the mana bar: percent, the actual mana value, both, or nothing.",
+      order = 27.5,
+      values = { none = "None", percent = "Percent", value = "Value", both = "Value / Max" },
+      sorting = { "percent", "value", "both", "none" },
+      dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
+      disabled = function()
+        return notFluffy() or Nock.db.profile.fluffyShowMana == false
+      end,
+      get = function() return Nock.db.profile.fluffyManaText or "percent" end,
+      set = function(_, v) visualsSet(_, "fluffyManaText", v) end,
+    }
+    fSizeArgs.fluffyManaTick = {
+      type = "toggle",
+      name = "Mana tick spark",
+      desc = "A thin line on the mana bar riding the server's regen tick: in combat it sweeps the bar every 2 seconds and lands on the far edge as the tick arrives; out of combat a spend starts the five-second rule instead (one sweep landing on the first tick at or after 5 seconds), after which the 2-second tick keeps sweeping until you are full. Never shown at full mana. Potion, Judgement of Wisdom, Mana Spring and drink gains are ignored. Each state has its own direction below. Color under Skin.",
+      order = 27.6,
+      width = "full",
+      disabled = function()
+        return notFluffy() or Nock.db.profile.fluffyShowMana == false
+      end,
+      get = function() return Nock.db.profile.fluffyManaTick == true end,
+      set = function(_, v) visualsSet(_, "fluffyManaTick", v) end,
+    }
+    local function fluffyTickDir(key, name, desc, order, fallback)
+      return {
+        type = "select", name = name, desc = desc, order = order,
+        values = { ltr = "Left to right", rtl = "Right to left" },
+      sorting = { "ltr", "rtl" },
+      dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard,
+        disabled = function()
+          return notFluffy() or Nock.db.profile.fluffyShowMana == false
+              or Nock.db.profile.fluffyManaTick ~= true
+        end,
+        get = function() return Nock.db.profile[key] or fallback end,
+        set = function(_, v) visualsSet(_, key, v) end,
+      }
+    end
+    fSizeArgs.fluffyManaTickDirCombat = fluffyTickDir("fluffyManaTickDirCombat", "Tick direction in combat",
+      "Which way the spark travels while you are in combat (the 2-second regen tick). It lands on the far edge as the tick arrives.", 27.7, "ltr")
+    fSizeArgs.fluffyManaTickDirOoc = fluffyTickDir("fluffyManaTickDirOoc", "Tick direction out of combat",
+      "Which way the spark travels out of combat (the five-second rule after a spend, then the 2-second tick until full).", 27.8, "rtl")
+    -- Bar order editor (React's, over the five-row Fluffy stack). The cast
+    -- bar is not a row: it floats above whatever sits on top.
+    buildBarOrderEditor(fSizeArgs, "fluffyBarOrder",
+      function(stored) return Nock.UI.ResolveFluffyBarOrder(stored) end, {
+      swing  = "Auto Shot bar",
+      ranged = "Shot windows (ranged)",
+      melee  = "Weave lane (melee)",
+      range  = "Range finder",
+      mana   = "Mana bar",
+    }, 5, notFluffy, 29)
     fSizeArgs.timingHeader = { type = "header", name = "Timing", order = 30 }
     fSizeArgs.fluffyShotWindow = {
       type = "range",
@@ -6737,8 +6879,9 @@ local function buildOptionsTable()
     -- Curated skin overrides. Reference values are WRITTEN BACK by the reset
     -- (same reasoning as the React SKIN_REFERENCE above).
     local FLUFFY_SKIN_REFERENCE = {
-      fluffyCastH = 14, fluffySwingH = 12, fluffyRangedH = 18, fluffyMeleeH = 8, fluffyRangeH = 12,
-      fluffyBarTexture = "", fluffyFont = "", fluffyFontSize = 9,
+      fluffyCastH = 14, fluffySwingH = 14, fluffyRangedH = 24, fluffyMeleeH = 10, fluffyRangeH = 12,
+      fluffyManaH = 12,
+      fluffyBarTexture = "", fluffyFont = "", fluffyFontSize = 10,
       fluffyColorCastFill   = { 0.40, 0.70, 1.00, 1.00 },
       fluffyColorSwingFill  = { 1.00, 0.84, 0.00, 1.00 },
       fluffyColorTickSteady = { 1.00, 0.10, 0.10, 1.00 },
@@ -6760,6 +6903,8 @@ local function buildOptionsTable()
       fluffyColorRangePerfect  = { 0.17, 0.78, 0.11, 1.00 },
       fluffyColorRangeClose    = { 0.00, 0.83, 0.75, 1.00 },
       fluffyColorRangeResync   = { 1.00, 0.58, 0.10, 1.00 },
+      fluffyColorManaFill      = { 0.20, 0.55, 1.00, 1.00 },
+      fluffyColorManaTick      = { 1.00, 1.00, 1.00, 0.80 },
     }
     fSkinArgs.skinHeader = { type = "header", name = "Skin", order = 10 }
     fSkinArgs.skinNote = {
@@ -6795,7 +6940,7 @@ local function buildOptionsTable()
       min = 6, max = 16, step = 1,
       order = 13,
       disabled = notFluffy,
-      get = function() return Nock.db.profile.fluffyFontSize or 9 end,
+      get = function() return Nock.db.profile.fluffyFontSize or 10 end,
       set = function(_, v) visualsSet(_, "fluffyFontSize", v) end,
     }
     local function fSkinRange(key, name, order, minV, maxV)
@@ -6811,6 +6956,7 @@ local function buildOptionsTable()
     fSkinArgs.fluffyRangedH = fSkinRange("fluffyRangedH", "Shot lane height",   23, 10, 40)
     fSkinArgs.fluffyMeleeH  = fSkinRange("fluffyMeleeH",  "Weave lane height",  24, 4, 20)
     fSkinArgs.fluffyRangeH  = fSkinRange("fluffyRangeH",  "Range bar height",   25, 6, 28)
+    fSkinArgs.fluffyManaH   = fSkinRange("fluffyManaH",   "Mana bar height",    26, 6, 28)
     local function fSkinColor(name, desc, order)
       return {
         type = "color", name = name, desc = desc, hasAlpha = true, order = order,
@@ -6833,6 +6979,8 @@ local function buildOptionsTable()
     fSkinArgs.fluffyColorDanger     = fSkinColor("Lane: clip band", "Where a cast would clip the next Auto Shot; also the no-weave fill.", 39)
     fSkinArgs.fluffyColorRaptor     = fSkinColor("Weave: Raptor ready", nil, 40)
     fSkinArgs.fluffyColorWeaveAuto  = fSkinColor("Weave: auto-only", "Weave window while Raptor Strike is on cooldown.", 41)
+    fSkinArgs.fluffyColorManaFill   = fSkinColor("Mana fill", nil, 41.5)
+    fSkinArgs.fluffyColorManaTick   = fSkinColor("Mana tick spark", "The mana tick line (Bars -> Mana tick spark).", 41.6)
     fSkinArgs.fluffyColorSpark      = fSkinColor("Auto Shot spark", nil, 42)
     fSkinArgs.fluffyColorRangeDeadzone = fSkinColor("Range: deadzone", "In melee (can't shoot).", 43)
     fSkinArgs.fluffyColorRangeSweet    = fSkinColor("Range: sweet", "Inside the weave ring.", 44)

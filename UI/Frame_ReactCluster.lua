@@ -40,6 +40,7 @@ local REACT = {
   MELEE_BLUE   = { 0.55, 0.75, 1.00, 1.00 },  -- auto-attack-only weave (light blue, separates from the gold auto bar)
   MELEE_GREEN  = { 0.15, 0.68, 0.38, 1.00 },  -- Raptor ready
   MANA_FILL    = { 0.20, 0.55, 1.00, 1.00 },
+  MANA_TICK    = { 1.00, 1.00, 1.00, 0.80 },  -- mana tick spark (off by default)
   -- Range colors = the user's configured values from the reference
   -- melee-weave WA (attribution TBD — the circulating copy is a fork).
   RANGE_MELEE = { 0.68, 0.18, 0.20, 1.00 },  -- MELEE (meleeRangeColor)
@@ -257,6 +258,14 @@ function ReactCluster:OnInitialize()
   mana.fill:SetPoint("TOPLEFT", mana, "TOPLEFT", 1, -1)
   mana.fill:SetPoint("BOTTOMLEFT", mana, "BOTTOMLEFT", 1, 1)
   mana.text = makeText(mana, REACT.FONT_SMALL, "CENTER")
+  -- Mana tick spark (reactManaTick, opt-in): placed by RefreshMana from
+  -- state.player.manaTick.progress along reactManaTickDirCombat/Ooc.
+  local spark = mana:CreateTexture(nil, "OVERLAY")
+  spark:SetTexture(WHITE8X8)
+  spark:SetSize(2, REACT.MANA_H - 2)
+  spark:SetVertexColor(unpack(REACT.MANA_TICK))
+  spark:Hide()
+  mana.spark = spark
   self.mana = mana
 
   self:ApplyLayout()
@@ -449,6 +458,10 @@ function ReactCluster:ApplyLayout()
   auto.fillR:SetVertexColor(cAuto[1], cAuto[2], cAuto[3], cAuto[4] or 1)
   local cMana = skinColor("reactColorManaFill", REACT.MANA_FILL)
   self.mana.fill:SetVertexColor(cMana[1], cMana[2], cMana[3], cMana[4] or 1)
+  local cTick = skinColor("reactColorManaTick", REACT.MANA_TICK)
+  self.mana.spark:SetVertexColor(cTick[1], cTick[2], cTick[3], cTick[4] or 1)
+  self.mana.spark:SetHeight(math.max(1, g.hMana - 2))
+  self._lastManaSparkX = nil
 
   -- Fill directions (React HUD tab). Auto: converge (reference) | ltr | rtl —
   -- fillL doubles as the single directional fill, fillR only participates in
@@ -983,6 +996,23 @@ function ReactCluster:RefreshMana(state)
     mana.text:SetText(Nock.UI.FormatManaText(mode, iCur, max, iPct))
     self._lastManaMode, self._lastManaCur = mode, iCur
     self._lastManaMax,  self._lastManaPct = max, iPct
+  end
+  -- Tick spark (reactManaTick): only while opted in and the tick is live.
+  local mt = pl and pl.manaTick
+  local spark = mana.spark
+  local p = profile()
+  if p.reactManaTick == true and mt and mt.active then
+    local dir = pl.inCombat and p.reactManaTickDirCombat or p.reactManaTickDirOoc
+    local x = 1 + Nock.ManaTickEngine.SparkX(mt.progress, dir, self._innerW or 0)
+    if self._lastManaSparkX ~= x then
+      spark:ClearAllPoints()
+      spark:SetPoint("CENTER", mana, "LEFT", x, 0)
+      self._lastManaSparkX = x
+    end
+    if not spark:IsShown() then spark:Show() end
+  elseif spark:IsShown() then
+    spark:Hide()
+    self._lastManaSparkX = nil
   end
 end
 

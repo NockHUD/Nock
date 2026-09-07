@@ -373,6 +373,19 @@ function Nock:Tick()
   state.player.manaPct = (maxMana > 0) and (mana / maxMana * 100) or 100
   state.context.conserveMana = state.player.manaPct < 50
 
+  -- Mana tick / five-second-rule bar (raw fields from Modules/ManaTick.lua):
+  -- live only below full and before expiry. The direction is each HUD's own
+  -- setting, applied by the views through ManaTickEngine.SparkX.
+  local mt, MTE = state.player.manaTick, Nock.ManaTickEngine
+  if mt and MTE then
+    if MTE.Live(mt.mode, mt.start, mt.expire, now, mana, maxMana) then
+      mt.active   = true
+      mt.progress = MTE.Progress(mt.start, mt.expire, now)
+    else
+      mt.active, mt.progress = false, 0
+    end
+  end
+
   local maxHp = UnitHealthMax("player") or 0
   local hp = UnitHealth("player") or 0
   state.player.healthPct = (maxHp > 0) and (hp / maxHp * 100) or 100

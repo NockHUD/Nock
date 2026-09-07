@@ -88,5 +88,18 @@ for i = 1, #got do seen[got[i]] = (seen[got[i]] or 0) + 1 end
 ok(#got == 4 and seen.auto == 1 and seen.melee == 1 and seen.range == 1
    and seen.mana == 1, "garbage input still yields each bar exactly once")
 
+--------------------------------------------------------------------------------
+-- Fluffy's resolver: the same sanitizer over the five-bar Fluffy stack.
+--------------------------------------------------------------------------------
+local F = Nock.UI.ResolveFluffyBarOrder
+ok(type(F) == "function", "Nock.UI.ResolveFluffyBarOrder exists")
+local FBUILTIN = { "swing", "ranged", "melee", "range", "mana" }
+ok(eq(F(false), FBUILTIN), "fluffy: false resolves to the built-in order")
+ok(eq(F({ "mana", "swing", "range", "melee", "ranged" }), { "mana", "swing", "range", "melee", "ranged" }),
+   "fluffy: a full permutation is honored")
+ok(eq(F({ "mana", "auto" }), { "mana", "swing", "ranged", "melee", "range" }),
+   "fluffy: React's keys are unknown here; missing bars append in built-in order")
+ok(eq(R({ "swing" }), BUILTIN), "react: Fluffy's keys are unknown there")
+
 print(string.format("react_order: %d passed, %d failed", pass, fail))
 if fail > 0 then os.exit(1) end

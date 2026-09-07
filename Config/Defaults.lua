@@ -491,6 +491,13 @@ Nock.Defaults = {
     manaBarHeight = 14,
     manaBarColor  = { 0.20, 0.40, 0.95, 1.00 },
     manaBarText   = "percent",
+    -- Mana tick spark on the bar (opt-in): a thin line riding the regen tick
+    -- (2s, right to left in combat) or the five-second rule after a spend
+    -- (left to right, out of combat). Hidden at full mana.
+    showManaTick  = false,
+    manaTickColor = { 1.00, 1.00, 1.00, 0.80 },
+    manaTickDirCombat = "ltr",   -- "ltr" | "rtl": spark travel while in combat
+    manaTickDirOoc    = "rtl",   -- ... and out of combat (five-second rule, then the tick)
 
     -- Dead-zone audio cues. Distinct sound when you enter / leave the dead zone
     -- (rangeZone "TOO_CLOSE"). Fires on any real zone transition, including a
@@ -673,6 +680,9 @@ Nock.Defaults = {
     reactShowRangeBar    = true,        -- slide range finder
     reactShowManaBar     = true,        -- thin mana bar
     reactManaText        = "percent",   -- mana bar center text: "none" | "percent" | "value" | "both"
+    reactManaTick        = false,       -- mana tick / five-second-rule spark on the mana bar (opt-in)
+    reactManaTickDirCombat = "ltr",     -- spark travel in combat: "ltr" | "rtl"
+    reactManaTickDirOoc    = "rtl",     -- ... out of combat
     -- Top-to-bottom bar order. false = built-in {"auto","melee","range","mana"};
     -- materialized to an array by the first Up/Down on the React HUD tab and
     -- sanitized through Nock.UI.ResolveReactBarOrder on every read.
@@ -760,6 +770,7 @@ Nock.Defaults = {
     reactColorMeleeReady    = { 0.15, 0.68, 0.38, 1.00 },  -- Raptor ready (green)
     reactColorMeleeAuto     = { 0.55, 0.75, 1.00, 1.00 },  -- auto-only weave (light blue)
     reactColorManaFill      = { 0.20, 0.55, 1.00, 1.00 },
+    reactColorManaTick      = { 1.00, 1.00, 1.00, 0.80 },  -- mana tick spark
     reactColorCastFill      = { 0.40, 0.70, 1.00, 1.00 },
     reactColorRangeDeadzone = { 0.68, 0.18, 0.20, 1.00 },  -- MELEE band (red)
     reactColorRangeSweet    = { 0.85, 0.66, 0.00, 1.00 },
@@ -804,17 +815,27 @@ Nock.Defaults = {
     fluffyWidth          = 320,         -- cluster/grid width in px (wider than React by design)
     fluffyScale          = 1.0,         -- shared per-row scale (cluster + CD row)
     fluffyCastH          = 14,          -- transient cast bar height px
-    fluffySwingH         = 12,          -- Auto Shot bar height px
-    fluffyRangedH        = 18,          -- ranged shot-window lane height px
-    fluffyMeleeH         = 8,           -- melee weave lane height px
+    fluffySwingH         = 14,          -- Auto Shot bar height px (reference set by the user, 2026-09-07)
+    fluffyRangedH        = 24,          -- ranged shot-window lane height px
+    fluffyMeleeH         = 10,          -- melee weave lane height px
     fluffyRangeH         = 12,          -- range finder height px
+    fluffyManaH          = 12,          -- mana bar height px
     fluffyShotWindow     = 6.0,         -- shot-lane lookahead seconds
     fluffyShowCast       = true,        -- the transient cast bar above the cluster
     fluffyShowAutoShotCast = true,      -- wind-up drawn as a cast (render-edge gate)
     fluffyShowSwing      = true,
     fluffyShowRanged     = true,
     fluffyShowMelee      = true,
-    fluffyShowRange      = true,        -- bottom of the stack, above the CD row
+    fluffyShowRange      = true,        -- above the mana bar
+    fluffyShowMana       = true,        -- thin mana bar, bottom of the stack, above the CD row
+    fluffyManaText       = "percent",   -- mana bar center text: "none" | "percent" | "value" | "both"
+    fluffyManaTick       = false,       -- mana tick / five-second-rule spark on the mana bar (opt-in)
+    fluffyManaTickDirCombat = "ltr",    -- spark travel in combat: "ltr" | "rtl"
+    fluffyManaTickDirOoc    = "rtl",    -- ... out of combat
+    -- Top-to-bottom bar order. false = built-in {"swing","ranged","melee",
+    -- "range","mana"}; materialized by the first Up/Down on the FluffyHUD
+    -- tab and sanitized through Nock.UI.ResolveFluffyBarOrder on every read.
+    fluffyBarOrder       = false,
     fluffyShowGrid       = false,       -- the 6-icon cooldown grid row (opt-in)
     fluffyShowLaneIcons  = false,       -- spell icons on the shot/weave lane spans (opt-in)
     -- Auto Shot bar extras (FluffyHUD → Auto Shot Bar; React's exact set).
@@ -837,7 +858,7 @@ Nock.Defaults = {
     fluffyActiveFit      = "overflow",  -- "overflow" | "contained"
     fluffyBarTexture     = "",          -- "" = reference flat fill
     fluffyFont           = "",          -- "" = reference font
-    fluffyFontSize       = 9,
+    fluffyFontSize       = 10,
     -- Colors default to the reference constants exactly (FLUFFY table in
     -- Frame_FluffyCluster), so exposing them changes nothing until touched.
     -- The lane palette mirrors shotBarsColor*, the rest React's channel.
@@ -862,6 +883,8 @@ Nock.Defaults = {
     fluffyColorRangePerfect  = { 0.17, 0.78, 0.11, 1.00 },  -- past PERFECT_AT (green)
     fluffyColorRangeClose    = { 0.00, 0.83, 0.75, 1.00 },
     fluffyColorRangeResync   = { 1.00, 0.58, 0.10, 1.00 },
+    fluffyColorManaFill      = { 0.20, 0.55, 1.00, 1.00 },  -- React's mana blue
+    fluffyColorManaTick      = { 1.00, 1.00, 1.00, 0.80 },  -- mana tick spark
     -- Weave rotation notation: when ON, the rotation label auto-switches to the
     -- weave pattern (e.g. "6:9:1:1 3w") while you're in weaving range with a 2H,
     -- and back to the turret pattern at range. OFF = turret notation always.

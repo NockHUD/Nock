@@ -589,7 +589,7 @@ onlyKeys(classicChild("rotation").args,
 onlyKeys(ra, { "intro", "hudMode", "tabSize", "tabBars", "tabRange", "tabGrid", "tabBuff", "tabSkin" },
   "react root")
 onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "elementsNote",
-  "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview", "reactShowRangeBar", "reactShowManaBar", "reactManaText",
+  "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview", "reactShowRangeBar", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
   "reactShowCastBar", "reactShowAutoShotCast", "reactShowGrid", "reactShowAspectIcon", "reactShowMarkIcon",
   "orderHeader", "order_reset", "castBarNonCombatCasts" }, "react tabSize",
   { "order_lbl_", "order_up_", "order_dn_" })
@@ -653,7 +653,7 @@ onlyKeys(raBuff, { "buffHeader", "sharedNote", "reactBuffRows", "reactBuffPositi
 onlyKeys(raSkin, { "skinHeader", "skinNote", "reactBarTexture", "reactFont", "reactFontSize",
   "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH",
   "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY",
-  "reactColorAutoFill", "reactColorMeleeReady", "reactColorMeleeAuto", "reactColorManaFill",
+  "reactColorAutoFill", "reactColorMeleeReady", "reactColorMeleeAuto", "reactColorManaFill", "reactColorManaTick",
   "reactColorCastFill", "reactColorRangeDeadzone", "reactColorRangeSweet", "reactColorRangePerfect",
   "reactColorRangeClose", "reactColorRangeResync", "reactRangeDividerWidth", "reactColorRangeDivider",
   "reactGcdDividerWidth", "reactColorGcdDivider",
@@ -683,8 +683,17 @@ local faSkin = fa.tabSkin and fa.tabSkin.args or {}
 onlyKeys(faSize, { "sizeHeader", "fluffyWidth", "fluffyScale",
   "elementsHeader", "elementsNote", "fluffyShowCast", "fluffyShowAutoShotCast",
   "fluffyShowSwing", "fluffyShowRanged", "fluffyShowMelee", "fluffyShowLaneIcons",
-  "fluffyShowRange",
-  "timingHeader", "fluffyShotWindow", "castBarNonCombatCasts" }, "fluffy tabSize")
+  "fluffyShowRange", "fluffyShowMana", "fluffyManaText", "fluffyManaTick",
+  "fluffyManaTickDirCombat", "fluffyManaTickDirOoc",
+  "orderHeader", "order_reset",
+  "timingHeader", "fluffyShotWindow", "castBarNonCombatCasts" }, "fluffy tabSize",
+  { "order_lbl_", "order_up_", "order_dn_" })
+ok(faSize.orderHeader and faSize.order_reset and faSize.order_lbl_5 and faSize.order_up_5 and faSize.order_dn_5,
+   "fluffy tabSize: five-row bar order editor")
+ok(faSize.fluffyManaTickDirCombat and faSize.fluffyManaTickDirOoc, "fluffy tabSize: tick direction selects")
+ok(raSize.reactManaTickDirCombat and raSize.reactManaTickDirOoc, "react tabSize: tick direction selects")
+ok(CB.manaBar.args.manaTickDirCombat and CB.manaBar.args.manaTickDirOoc, "classic Mana Bar page: tick direction selects")
+ok(faSize.fluffyShowMana and faSize.fluffyManaText and faSize.fluffyManaTick, "fluffy tabSize: mana bar, text and tick controls")
 onlyKeys(faBars, { "autoHeader", "fluffyShowNotation", "fluffyShowClipTicks",
   "showWindupMark", "fluffyShowDelay",
   "fluffyShowBrackets", "fluffyShowGcdDivider", "dirHeader", "fluffyDirAuto",
@@ -727,8 +736,8 @@ onlyKeys(faBuff, { "buffHeader", "sharedNote", "fluffyBuffRows", "reactBuffPosit
   "reactBuffFrenzyMode", "customHeader", "customNote", "addBuffId", "addBuffBtn" },
   "fluffy tabBuff", { "rb_en_", "rbc_" })
 onlyKeys(faSkin, { "skinHeader", "skinNote", "fluffyBarTexture", "fluffyFont", "fluffyFontSize",
-  "fluffyCastH", "fluffySwingH", "fluffyRangedH", "fluffyMeleeH", "fluffyRangeH",
-  "fluffyColorCastFill", "fluffyColorSwingFill",
+  "fluffyCastH", "fluffySwingH", "fluffyRangedH", "fluffyMeleeH", "fluffyRangeH", "fluffyManaH",
+  "fluffyColorCastFill", "fluffyColorSwingFill", "fluffyColorManaFill", "fluffyColorManaTick",
   "fluffyColorTickSteady", "fluffyColorTickMulti", "fluffyColorTickWindup",
   "fluffyColorGcdDivider", "fluffyColorBracket",
   "fluffyColorSteady", "fluffyColorQueue", "fluffyColorQueueLive", "fluffyColorMulti",
@@ -736,6 +745,9 @@ onlyKeys(faSkin, { "skinHeader", "skinNote", "fluffyBarTexture", "fluffyFont", "
   "fluffyColorSpark", "fluffyColorRangeDeadzone", "fluffyColorRangeSweet",
   "fluffyColorRangePerfect", "fluffyColorRangeClose", "fluffyColorRangeResync",
   "resetSkin" }, "fluffy tabSkin")
+ok(faSkin.fluffyManaH and faSkin.fluffyColorManaFill and faSkin.fluffyColorManaTick, "fluffy tabSkin: mana height + colors")
+ok(raSize.reactManaTick and raSkin.reactColorManaTick, "react: mana tick toggle + color")
+ok(CB.manaBar.args.showManaTick and CB.manaBar.args.manaTickColor, "classic Mana Bar page: tick toggle + color")
 
 -- The HUD look picker offers all three values on every home, and a set on
 -- the fluffy landing reads back through the others.

@@ -18,12 +18,13 @@ local C = Nock.Constants
 local WHITE8X8 = "Interface\\Buttons\\WHITE8X8"
 local FLUFFY = {
   CAST_H   = 14,
-  SWING_H  = 12,
-  RANGED_H = 18,
-  MELEE_H  = 8,
+  SWING_H  = 14,
+  RANGED_H = 24,
+  MELEE_H  = 10,
   RANGE_H  = 12,
+  MANA_H   = 12,
   GAP      = -1,  -- bars overlap their 1px borders → one shared black seam
-  FONT     = 9,
+  FONT     = 10,
 
   BAR_BG     = { 0.08, 0.08, 0.08, 0.90 },
   BORDER     = { 0.00, 0.00, 0.00, 1.00 },
@@ -54,6 +55,9 @@ local FLUFFY = {
   RANGE_RESYNC = { 1.00, 0.58, 0.10, 1.00 },
   RANGE_DIVIDER   = { 1.00, 1.00, 1.00, 0.90 },
   RANGE_DIVIDER_W = 1,
+
+  MANA_FILL = { 0.20, 0.55, 1.00, 1.00 },  -- React's mana blue
+  MANA_TICK = { 1.00, 1.00, 1.00, 0.80 },  -- mana tick spark (off by default)
 
   TEXT = { 1.00, 1.00, 1.00, 1.00 },
 }
@@ -235,18 +239,35 @@ function FluffyCluster:OnInitialize()
   range.label = makeText(range, FLUFFY.FONT, "CENTER")
   self.range = range
 
+  -- Mana bar (fluffyShowMana, on by default): React's thin fill + centered
+  -- text, bottom of the built-in stack. The tick spark (fluffyManaTick,
+  -- opt-in) is placed by refreshMana from state.player.manaTick.progress
+  -- along fluffyManaTickDirCombat/Ooc.
+  local mana = createFluffyBar(container, "NockFluffyMana", FLUFFY.MANA_H)
+  mana.fill = makeFill(mana, FLUFFY.MANA_FILL)
+  mana.fill:SetPoint("TOPLEFT", mana, "TOPLEFT", 1, -1)
+  mana.fill:SetPoint("BOTTOMLEFT", mana, "BOTTOMLEFT", 1, 1)
+  mana.text = makeText(mana, FLUFFY.FONT, "CENTER")
+  local spark = mana:CreateTexture(nil, "OVERLAY")
+  spark:SetTexture(WHITE8X8)
+  spark:SetVertexColor(unpack(FLUFFY.MANA_TICK))
+  spark:SetSize(2, FLUFFY.MANA_H - 2)
+  spark:Hide()
+  mana.spark = spark
+  self.mana = mana
+
   self:ApplyLayout()
   container:Hide()  -- HUD:ApplyRowVisibility shows it in fluffy mode
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "ApplyLayout")
 end
 
 -- Single source of truth for the cluster geometry (ReactCluster:Geometry's
--- pattern). Fixed top-to-bottom order: swing (which doubles as the cast
--- bar), ranged, melee, range — the FluffyHUD stack is a designed look, not
--- reorderable. Honors the fluffyShow* element toggles: a hidden sub-bar
--- costs zero height; GAP is only added between shown bars. Geometry NEVER
--- depends on whether a cast is running.
-local ORDER = { "swing", "ranged", "melee", "range" }
+-- pattern). The top-to-bottom SEQUENCE comes from
+-- Nock.UI.ResolveFluffyBarOrder(fluffyBarOrder) -- the Up/Down editor on the
+-- FluffyHUD tab; built-in is swing, ranged, melee, range, mana. Honors the
+-- fluffyShow* element toggles: a hidden sub-bar costs zero height; GAP is
+-- only added between shown bars. Geometry NEVER depends on whether a cast is
+-- running.
 
 function FluffyCluster:Geometry()
   local p = profile()
@@ -256,14 +277,17 @@ function FluffyCluster:Geometry()
     ranged = p.fluffyShowRanged ~= false,
     melee  = p.fluffyShowMelee  ~= false,
     range  = p.fluffyShowRange  ~= false,
+    mana   = p.fluffyShowMana   ~= false,
   }
   local h = {
     swing  = skinNum("fluffySwingH",  FLUFFY.SWING_H),
     ranged = skinNum("fluffyRangedH", FLUFFY.RANGED_H),
     melee  = skinNum("fluffyMeleeH",  FLUFFY.MELEE_H),
     range  = skinNum("fluffyRangeH",  FLUFFY.RANGE_H),
+    mana   = skinNum("fluffyManaH",   FLUFFY.MANA_H),
   }
 
+  local ORDER = Nock.UI.ResolveFluffyBarOrder(p.fluffyBarOrder)
   local ys = {}
   local y = 0
   for i = 1, #ORDER do
@@ -278,11 +302,11 @@ function FluffyCluster:Geometry()
   return {
     w = w,
     showSwing = show.swing, showRanged = show.ranged,
-    showMelee = show.melee, showRange = show.range,
+    showMelee = show.melee, showRange = show.range, showMana = show.mana,
     ySwing = ys.swing, yRanged = ys.ranged,
-    yMelee = ys.melee, yRange = ys.range,
+    yMelee = ys.melee, yRange = ys.range, yMana = ys.mana,
     hSwing = h.swing, hRanged = h.ranged,
-    hMelee = h.melee, hRange = h.range,
+    hMelee = h.melee, hRange = h.range, hMana = h.mana,
     total = math.max(y, 1),
   }
 end
@@ -316,6 +340,7 @@ function FluffyCluster:ApplyLayout()
   placeBar(self.ranged, g.yRanged, g.hRanged, g.showRanged)
   placeBar(self.melee,  g.yMelee,  g.hMelee,  g.showMelee)
   placeBar(self.range,  g.yRange,  g.hRange,  g.showRange)
+  placeBar(self.mana,   g.yMana,   g.hMana,   g.showMana)
 
   -- Fluffy media (FluffyHUD tab → Skin): fluffyBarTexture on the fills,
   -- fluffyFont/fluffyFontSize on the texts; "" = the reference skin
@@ -384,6 +409,13 @@ function FluffyCluster:ApplyLayout()
   local castCol = skinColor("fluffyColorCastFill", FLUFFY.CAST_FILL)
   self.castBar.fill:SetVertexColor(castCol[1], castCol[2], castCol[3], castCol[4] or 1)
   self.range.tick:SetHeight(math.max(1, g.hRange - 2))
+  do
+    local mc = skinColor("fluffyColorManaFill", FLUFFY.MANA_FILL)
+    self.mana.fill:SetVertexColor(mc[1], mc[2], mc[3], mc[4] or 1)
+    local tc = skinColor("fluffyColorManaTick", FLUFFY.MANA_TICK)
+    self.mana.spark:SetVertexColor(tc[1], tc[2], tc[3], tc[4] or 1)
+    self.mana.spark:SetHeight(math.max(1, g.hMana - 2))
+  end
 
   -- Repaint from scratch next Refresh.
   self._castName, self._castTime = nil, nil
@@ -393,6 +425,8 @@ function FluffyCluster:ApplyLayout()
   self._gcdX, self._notation = nil, nil
   self._noteColR, self._noteColG, self._noteColB, self._noteColA = nil, nil, nil, nil
   self._rangeMode, self._rangeRatio, self._rangeText = nil, nil, nil
+  self._manaRatio, self._manaMode, self._manaCur, self._manaMax, self._manaPct = nil, nil, nil, nil, nil
+  self._manaSparkX = nil
   self._lanesOn = nil
   self._hRanged, self._hMelee = g.hRanged, g.hMelee
 end
@@ -915,6 +949,46 @@ local function refreshRange(self, state)
   end
 end
 
+-- Mana sub-bar: fill = manaPct, centered text via the shared formatter
+-- (fluffyManaText), and the opt-in tick spark from state.player.manaTick.
+local function refreshMana(self, state)
+  local mana = self.mana
+  if not mana:IsShown() then return end
+  local pl = state.player or {}
+  local pct = pl.manaPct or 100
+  local ratio = pct / 100
+  if ratio < 0 then ratio = 0 elseif ratio > 1 then ratio = 1 end
+  if not self._manaRatio or math.abs(self._manaRatio - ratio) > 0.005 then
+    mana.fill:SetWidth(math.max(0.01, ratio * (self._innerW or 0)))
+    self._manaRatio = ratio
+  end
+  local mode = profile().fluffyManaText or "percent"
+  local iCur = math.floor((pl.manaCur or 0) + 0.5)
+  local max  = pl.manaMax or 0
+  local iPct = math.floor(pct + 0.5)
+  if mode ~= self._manaMode or iCur ~= self._manaCur
+     or max ~= self._manaMax or iPct ~= self._manaPct then
+    mana.text:SetText(Nock.UI.FormatManaText(mode, iCur, max, iPct))
+    self._manaMode, self._manaCur, self._manaMax, self._manaPct = mode, iCur, max, iPct
+  end
+  local mt = pl.manaTick
+  local spark = mana.spark
+  local p = profile()
+  if p.fluffyManaTick == true and mt and mt.active then
+    local dir = pl.inCombat and p.fluffyManaTickDirCombat or p.fluffyManaTickDirOoc
+    local x = 1 + Nock.ManaTickEngine.SparkX(mt.progress, dir, self._innerW or 0)
+    if self._manaSparkX ~= x then
+      spark:ClearAllPoints()
+      spark:SetPoint("CENTER", mana, "LEFT", x, 0)
+      self._manaSparkX = x
+    end
+    if not spark:IsShown() then spark:Show() end
+  elseif spark:IsShown() then
+    spark:Hide()
+    self._manaSparkX = nil
+  end
+end
+
 function FluffyCluster:Refresh(state)
   local f = self.frame
   if not f or not f:IsVisible() then return end
@@ -930,4 +1004,5 @@ function FluffyCluster:Refresh(state)
   refreshSwing(self, state)
   refreshLanes(self, state)
   refreshRange(self, state)
+  refreshMana(self, state)
 end

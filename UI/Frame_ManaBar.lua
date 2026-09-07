@@ -36,8 +36,19 @@ function ManaBarView:OnInitialize()
   bar:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
   Nock.UI.SetBarFill(bar, 1)
 
+  -- Mana tick spark (showManaTick, opt-in): a thin line riding the regen
+  -- tick / five-second rule. Progress comes from state.player.manaTick
+  -- (derived by the central tick); direction is manaTickDirCombat/Ooc.
+  local spark = bar:CreateTexture(nil, "OVERLAY")
+  spark:SetTexture("Interface\\Buttons\\WHITE8X8")
+  spark:SetSize(2, math.max(1, h - 2))
+  spark:SetVertexColor(unpack(C.COLORS.TEXT))
+  spark:Hide()
+  bar.spark = spark
+
   self.bar   = bar
   self.frame = container
+  self._lastSparkX = nil
   self._lastRatio = nil
   self._lastMode  = nil
   self._lastCur   = nil
@@ -57,6 +68,11 @@ function ManaBarView:ApplyStyle()
   self.frame:SetHeight(h)
   bar:SetHeight(h)
   bar.fill:SetVertexColor(unpack(manaColor()))
+  local sc = profile("manaTickColor", nil)
+  if type(sc) ~= "table" or #sc < 3 then sc = C.COLORS.TEXT end
+  bar.spark:SetVertexColor(sc[1], sc[2], sc[3], sc[4] or 1)
+  bar.spark:SetHeight(math.max(1, h - 2))
+  self._lastSparkX = nil
   self._lastRatio = nil
   self._lastMode  = nil   -- force the label to repaint next Refresh
 end
@@ -89,5 +105,22 @@ function ManaBarView:Refresh(state)
      or max ~= self._lastMax or iPct ~= self._lastPct then
     bar.text:SetText(Nock.UI.FormatManaText(mode, iCur, max, iPct))
     self._lastMode, self._lastCur, self._lastMax, self._lastPct = mode, iCur, max, iPct
+  end
+
+  -- Tick spark: only while opted in and the tick is live (never at full).
+  local mt = pl.manaTick
+  local spark = bar.spark
+  if profile("showManaTick", false) == true and mt and mt.active then
+    local dir = pl.inCombat and profile("manaTickDirCombat", "ltr") or profile("manaTickDirOoc", "rtl")
+    local x = 1 + Nock.ManaTickEngine.SparkX(mt.progress, dir, bar.maxWidth or 0)
+    if self._lastSparkX ~= x then
+      spark:ClearAllPoints()
+      spark:SetPoint("CENTER", bar, "LEFT", x, 0)
+      self._lastSparkX = x
+    end
+    if not spark:IsShown() then spark:Show() end
+  elseif spark:IsShown() then
+    spark:Hide()
+    self._lastSparkX = nil
   end
 end

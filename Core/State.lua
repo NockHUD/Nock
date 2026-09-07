@@ -42,6 +42,14 @@ Nock.state = {
     manaPct  = 100,
     manaCur  = 0,
     manaMax  = 0,
+    -- Mana regen tick / five-second rule. The raw fields (mode "tick"|"fsr",
+    -- start, expire, plus the engine's own anchors) are written by
+    -- Modules/ManaTick.lua on power updates; the tick derives `active` and
+    -- `progress` (0..1 through the bar). Published unconditionally -- whether
+    -- to draw the spark, and which way it travels, is each HUD's own setting
+    -- (showManaTick / reactManaTick / fluffyManaTick + the *DirCombat/*DirOoc
+    -- pairs, applied through ManaTickEngine.SparkX).
+    manaTick = { mode = nil, start = 0, expire = 0, active = false, progress = 0 },
     healthPct = 100,
     -- The Steam Tonk Controller transform. Written by Modules/Auras.lua
     -- UNCONDITIONALLY — whether to act on it is Modules/TonkGuard.lua's

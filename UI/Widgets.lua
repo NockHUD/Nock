@@ -137,8 +137,8 @@ function Nock.UI.GetFluffyFont()
 end
 
 function Nock.UI.GetFluffyFontDelta()
-  local v = tonumber(profile("fluffyFontSize", 9)) or 9
-  return v - 9
+  local v = tonumber(profile("fluffyFontSize", 10)) or 10
+  return v - 10
 end
 
 -- Resolve the icon-slot border from the active profile + LSM. "None" (or an
@@ -1199,32 +1199,47 @@ function Nock.UI.PaintReactSlot(slot, item, now)
   end
 end
 
--- The React cluster's built-in top-to-bottom bar order, and the sanitizer for
--- the user override (profile.reactBarOrder, mutated by Up/Down executes on the
--- React HUD tab). Anything that isn't a table means "built-in"; a table is
--- deduped, stripped of unknown keys, and topped up with whatever it's missing,
--- so every bar always places exactly once no matter what the profile holds.
--- Pure — LuaJIT-tested in Tests/react_order_test.lua. Callers must treat the
--- result as read-only: the fallback IS the shared built-in table.
-local REACT_BAR_ORDER = { "auto", "melee", "range", "mana" }
-local REACT_BAR_SET = {}
-for i = 1, #REACT_BAR_ORDER do REACT_BAR_SET[REACT_BAR_ORDER[i]] = true end
-
-function Nock.UI.ResolveReactBarOrder(stored)
-  if type(stored) ~= "table" then return REACT_BAR_ORDER end
+-- A cluster's built-in top-to-bottom bar order, and the sanitizer for the
+-- user override (profile.reactBarOrder / fluffyBarOrder, mutated by Up/Down
+-- executes on the HUD tabs). Anything that isn't a table means "built-in"; a
+-- table is deduped, stripped of unknown keys, and topped up with whatever it
+-- is missing, so every bar always places exactly once no matter what the
+-- profile holds. Pure — LuaJIT-tested in Tests/react_order_test.lua. Callers
+-- must treat the result as read-only: the fallback IS the shared built-in
+-- table.
+local function resolveBarOrder(stored, builtin, set)
+  if type(stored) ~= "table" then return builtin end
   local out, seen = {}, {}
   for i = 1, #stored do
     local k = stored[i]
-    if REACT_BAR_SET[k] and not seen[k] then
+    if set[k] and not seen[k] then
       seen[k] = true
       out[#out + 1] = k
     end
   end
-  for i = 1, #REACT_BAR_ORDER do
-    local k = REACT_BAR_ORDER[i]
+  for i = 1, #builtin do
+    local k = builtin[i]
     if not seen[k] then out[#out + 1] = k end
   end
   return out
+end
+
+local function orderSet(order)
+  local set = {}
+  for i = 1, #order do set[order[i]] = true end
+  return set
+end
+
+local REACT_BAR_ORDER = { "auto", "melee", "range", "mana" }
+local REACT_BAR_SET   = orderSet(REACT_BAR_ORDER)
+function Nock.UI.ResolveReactBarOrder(stored)
+  return resolveBarOrder(stored, REACT_BAR_ORDER, REACT_BAR_SET)
+end
+
+local FLUFFY_BAR_ORDER = { "swing", "ranged", "melee", "range", "mana" }
+local FLUFFY_BAR_SET   = orderSet(FLUFFY_BAR_ORDER)
+function Nock.UI.ResolveFluffyBarOrder(stored)
+  return resolveBarOrder(stored, FLUFFY_BAR_ORDER, FLUFFY_BAR_SET)
 end
 
 -- ---------------------------------------------------------------------------
