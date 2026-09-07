@@ -1,8 +1,8 @@
 -- UI/Frame_InfoRow.lua
 -- Slim bottom strip: pocket-watch icon + ranged weapon speed (left), arrow
 -- count + equipped-ammo icon (right). Arrow count = ALL ammo in the quiver/
--- pouch (any type) + equipped-type ammo in regular bags + charges of any items
--- in Constants.ARROW_MAKERS.
+-- pouch (any type) + every projectile of the loaded kind (arrows OR bullets,
+-- any item) in regular bags + charges of any items in Constants.ARROW_MAKERS.
 
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 local InfoRow = Nock:NewModule("InfoRow", "AceEvent-3.0")
@@ -43,12 +43,38 @@ local function getEquippedSlotCount()
   return GetInventoryItemCount("player", 0) or 0
 end
 
--- Total arrows in regular bags only (excludes the equipped slot, excludes the
--- quiver/pouch — we report that separately).
+-- Item class of a bag item, from GetItemInfoInstant (synchronous, never a
+-- cache miss). Returns classID, subclassID or nil when unavailable.
+local function itemClass(itemId)
+  local f = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+  if not f then return nil end
+  local _, _, _, _, _, classID, subclassID = f(itemId)
+  return classID, subclassID
+end
+
+-- Does this bag item belong to the reserve? Every projectile counts, not only
+-- the type currently loaded: Phase 3 hands a hunter two or three BoP arrow
+-- types at once (Timeless, Mysterious, Adamantite Stingers) and the shopping
+-- list promises "quiver + bags". `kind` is the loaded ammo's subclass (arrow /
+-- bullet) so a stray box of shells never pads a bow user's total; nil (no ammo
+-- loaded, or no item-class API) accepts any projectile.
+local function isReserveAmmo(itemId, ammoId, kind)
+  if itemId == ammoId then return true end
+  local classID, subclassID = itemClass(itemId)
+  if classID ~= C.ITEM_CLASS_PROJECTILE then return false end
+  return kind == nil or subclassID == kind
+end
+
+-- Total ammo in regular bags only (excludes the quiver/pouch — we report that
+-- separately). Counts every projectile of the loaded kind, whatever the item.
 local function getRegularBagCount(ammoId)
-  if not ammoId then return 0 end
   local numFree, numSlots, info, isC = getContainerApis()
   if not (numFree and numSlots and info) then return 0 end
+  local kind
+  if ammoId then
+    local classID, subclassID = itemClass(ammoId)
+    if classID == C.ITEM_CLASS_PROJECTILE then kind = subclassID end
+  end
   local total = 0
   for bag = 0, 4 do
     local _, family = numFree(bag)
@@ -63,7 +89,9 @@ local function getRegularBagCount(ammoId)
           local _, c, _, _, _, _, _, _, _, id = info(bag, slot)
           itemId, stack = id, c
         end
-        if itemId == ammoId then total = total + (stack or 0) end
+        if itemId and isReserveAmmo(itemId, ammoId, kind) then
+          total = total + (stack or 0)
+        end
       end
     end
   end
@@ -182,7 +210,7 @@ end
 function InfoRow:RefreshArrows()
   local ammoId = getEquippedAmmoId()
   local quiverCount, hasQuiver = getQuiverInfo()
-  local bagCount   = ammoId and getRegularBagCount(ammoId) or 0
+  local bagCount   = getRegularBagCount(ammoId)
   local makerCount = getMakerCount()
 
   -- On Anniversary TBC the ammo-slot stack and the quiver share the same
@@ -210,9 +238,7 @@ function InfoRow:RefreshArrows()
 end
 
 -- /nock arrows — raw container dump so ammo/maker math can be verified against
--- the real client instead of guessed. Builds one plain-text block and pushes it
--- through geterrorhandler() so BugGrabber/BugSack captures it as a single
--- copy-pasteable entry (timestamped so repeat runs aren't deduped into "x2").
+-- the real client instead of guessed. One plain-text block in the copybox.
 function InfoRow:DumpArrows()
   local lines = {}
   local function add(s) lines[#lines + 1] = s end
@@ -249,8 +275,10 @@ function InfoRow:DumpArrows()
         end
         if itemId then
           local name = (GetItemInfo and GetItemInfo(itemId)) or link or "?"
+          local classID, subclassID = itemClass(itemId)
           local tag = (itemId == ammoId and " <EQUIPPED-AMMO>")
                    or (makerSet[itemId] and (" <MAKER x%d>"):format(makerSet[itemId]))
+                   or (classID == C.ITEM_CLASS_PROJECTILE and (" <PROJECTILE sub=%s>"):format(tostring(subclassID)))
                    or ""
           add(("   slot %d: id=%s stack=%s %s%s"):format(
             slot, tostring(itemId), tostring(stack), tostring(name), tag))
@@ -259,7 +287,7 @@ function InfoRow:DumpArrows()
     end
 
     local quiverCount, hasQuiver = getQuiverInfo()
-    local bagCount   = ammoId and getRegularBagCount(ammoId) or 0
+    local bagCount   = getRegularBagCount(ammoId)
     local makerCount = getMakerCount()
     add(("equipped ammo: id=%s  slotCount=%s"):format(
       tostring(ammoId), tostring(getEquippedSlotCount())))
@@ -276,13 +304,11 @@ function InfoRow:DumpArrows()
       quiverCount + bagCount + makerCount))
   end
 
+  -- Project rule: anything the user pastes back goes in a copybox, never chat.
   local out = table.concat(lines, "\n")
-  local eh = geterrorhandler and geterrorhandler()
-  if eh then
-    eh(out)
-    Nock:Print("Arrow dump sent to BugSack — open it and copy the latest entry.")
+  if Nock.UI and Nock.UI.ShowCopyBox then
+    Nock.UI.ShowCopyBox(out)
   else
-    -- No error handler (no BugGrabber): fall back to chat, line by line.
     for _, ln in ipairs(lines) do Nock:Print(ln) end
   end
 end

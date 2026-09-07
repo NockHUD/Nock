@@ -17,6 +17,14 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
   EATING fix below; on top of it, a cancel the client never reports now ends
   on its own once the drink's thirty seconds would have run, instead of
   waiting for the next aura change to notice.
+- **Fix: the arrow counter ignored every arrow type except the one loaded.**
+  With a full quiver and a second kind of arrow in the bags, the info row and
+  the shopping list stopped at the quiver's 4800. Phase 3 makes that the
+  normal case: Mysterious Arrows from Karazhan and Timeless Arrows from the
+  Caverns of Time are both bind-on-pickup, so they sit next to the maker's
+  Adamantite Stingers. The bag pass now counts every projectile of the loaded
+  kind (arrows for a bow, bullets for a gun), whatever the item. `/nock arrows`
+  opens its dump in the copybox instead of BugSack.
 - **Fix: the EATING pill could stick after a food click while moving.** A
   food used on the run is applied and cancelled inside one frame, and the
   client reports both edges in a single aura event. The aura cache took the

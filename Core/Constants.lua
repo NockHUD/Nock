@@ -611,6 +611,13 @@ Nock.Constants = {
     { id = 34504, multiplier = 200 },  -- Adamantite Shell Machine → 200 Adamantite Shells per charge
   },
 
+  -- Item class of ammunition (GetItemInfoInstant's classID / subclassID). The
+  -- bag reserve counts every projectile of the loaded kind, so it never needs
+  -- a per-phase ID list (Timeless 31737/31735, Mysterious 34581/34582, ...).
+  ITEM_CLASS_PROJECTILE = 6,
+  PROJECTILE_ARROW      = 2,
+  PROJECTILE_BULLET     = 3,
+
   -- Shopping List. When the player's current zone (GetRealZoneText) matches one
   -- of these, the floating shopping panel lists curated/custom consumables that
   -- are below their restock threshold. Zone names are localized client-side;
