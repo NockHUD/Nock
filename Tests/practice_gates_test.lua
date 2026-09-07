@@ -342,7 +342,8 @@ local pracMod = Nock.modules.Practice
 local plist = Nock.Profiles.list
 for _, entry in ipairs(plist) do
   local ews = pracMod.LockEWS(plist, entry.name)
-  ok(ews ~= nil and Nock.Profiles:ResolveByEWS(ews) == entry.name,
+  local spec = entry.noBmHaste and "SV" or nil
+  ok(ews ~= nil and Nock.Profiles:ResolveByEWS(ews, spec) == entry.name,
      "LockEWS: " .. entry.name .. " resolves back to its own bracket")
 end
 ok(pracMod.LockEWS(plist, "no such notation") == nil, "LockEWS: unknown notation is nil")

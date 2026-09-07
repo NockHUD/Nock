@@ -26,7 +26,7 @@ for notation, str in pairs(M.CANONICAL) do
   ok(M.Shorthand(str) == notation, "round-trip " .. notation)
   ok(str:sub(1, 1) == "a", notation .. " starts with an auto")
 end
-ok(n == 12, "12 canonical strings")
+ok(n == 13, "13 canonical strings")
 
 -- 2b. The teaching strings (Round 5b) live in the same lookup but are NOT
 --     rotationtools rotations: they are keyed by a teaching name and must never
@@ -49,7 +49,7 @@ do
   -- Nothing was lost in the merge.
   local all = 0
   for _ in pairs(M.STRINGS) do all = all + 1 end
-  ok(all == 18, "M.STRINGS carries all 12 canonical + 6 teaching strings")
+  ok(all == 19, "M.STRINGS carries all 13 canonical + 6 teaching strings")
 end
 
 --------------------------------------------------------------------------------

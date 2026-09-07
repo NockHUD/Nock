@@ -117,7 +117,9 @@ local RHYTHM_LINE = ("%s: qs@5 rf@15 len=%d"):format(RHYTHM_NAME, RHYTHM_LEN)
 -- pin -- the tightest is `french` at 5:5:1:1, whose 1.93 pin yields ~28 whole
 -- cycles against a 16-cycle floor, and the weave rungs' 3.70 pin yields ~16
 -- against 8 cycles / 5 windows. Measured off M.Layout at each pin; see the
--- round-6 report.
+-- round-6 report. The one exception is a Survival hunter's 5:4:1:1, which is
+-- their own rotation at their own swing: seven casts per four autos on a
+-- 3.0 bow leaves ~21 cycles, still past the floor (Tests/practice_ladder_test).
 local DRILL_LEN = 60
 
 local function pick(scenario, line, len)

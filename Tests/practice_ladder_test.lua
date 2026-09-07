@@ -520,7 +520,18 @@ do
     local row = Profiles.list[i]
     local ews = LOCK_PIN[row.name] or (row.lo + 0.1)
     local c = cyclesIn(M.STRINGS[row.name], ews, 60)
-    ok(c >= 16 * 1.5, ("french @ %s (eWS %.2f): %.1f cycles in 60 s"):format(row.name, ews, c))
+    if row.noBmHaste then
+      -- Short French is a Survival hunter's OWN rotation, so the rung runs it
+      -- at the live swing, and the slowest real one is a 3.0 bow over the
+      -- quiver alone (2.61 s). Seven casts per four autos leaves ~21 cycles in
+      -- 60 s: past the 16-cycle floor with a quarter to spare, not the half
+      -- the BM papers have -- the slow swing IS the rotation.
+      local slow = cyclesIn(M.STRINGS[row.name], 3.0 / 1.15, 60)
+      ok(c >= 16 * 1.25, ("french @ %s (eWS %.2f): %.1f cycles in 60 s"):format(row.name, ews, c))
+      ok(slow >= 16 * 1.25, ("french @ %s at the slowest real bow (2.61): %.1f cycles in 60 s"):format(row.name, slow))
+    else
+      ok(c >= 16 * 1.5, ("french @ %s (eWS %.2f): %.1f cycles in 60 s"):format(row.name, ews, c))
+    end
   end
 end
 

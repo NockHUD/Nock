@@ -104,5 +104,58 @@ ok(turret(1.70 / QS, { quickShots = true }) == "1:1",
 ok(turret(BASE / LUST, { inLust = true }) == P:ResolveByEWS(BASE / LUST),
    "Bloodlust alone keeps the live-bracket answer")
 
+--------------------------------------------------------------------------------
+-- 6. Survival: the Short French rotation (rotationtools' SV graph)
+--------------------------------------------------------------------------------
+-- "This only ever appears for survival hunters without the 20% haste out of
+-- the BM talent tree." Without Serpent's Swiftness the quiver is the whole
+-- static haste: 2.9 bow / 1.15 = 2.52 (the rotationtools SV gear), 3.0 bow
+-- = 2.61, and the slowest a real bow gets is 2.7 / 1.15 = 2.35.
+local SV29, SV30, SV27 = 2.9 / 1.15, 3.0 / 1.15, 2.7 / 1.15
+local function sv(ews, p, mh) return (P:ResolveTurret(ews, p, mh, "SV")) end
+
+-- The row exists, sits on top, and only a non-BM spec can reach it.
+ok(P.list[1].name == "5:4:1:1" and P.list[1].noBmHaste == true, "5:4:1:1 is the top row, tagged noBmHaste")
+ok(P:ResolveByEWS(SV29) == "5:5:1:1",        "bracket with no spec (not read yet) never answers 5:4:1:1")
+ok(P:ResolveByEWS(SV29, "BM") == "5:5:1:1",  "bracket for BM never answers 5:4:1:1")
+ok(P:ResolveByEWS(SV29, "SV") == "5:4:1:1",  "bracket for SV answers 5:4:1:1 at 2.52")
+ok(P:ResolveByEWS(SV29, "MM") == "5:4:1:1",  "MM lacks Serpent's Swiftness too: 5:4:1:1")
+ok(P:ResolveByEWS(2.5, "BM") == "5:5:1:1",   "a quiverless BM at 2.5 stays on 5:5:1:1 (reference: a Survival rotation)")
+ok(turret(2.5, {}) == "5:5:1:1",             "  ... and so does ResolveTurret with the spec unread")
+
+-- Nothing up: Short French on every real bow. Drums alone (~5%) do not move it.
+ok(sv(SV29, {}) == "5:4:1:1", "SV, no procs, 2.9 bow: 5:4:1:1")
+ok(sv(SV30, {}) == "5:4:1:1", "SV, no procs, 3.0 bow: 5:4:1:1")
+ok(sv(SV27, {}) == "5:4:1:1", "SV, no procs, 2.7 bow: 5:4:1:1")
+ok(sv(SV30 / 1.05, { drums = true }, 5) == "5:4:1:1", "SV + Drums only stays 5:4:1:1")
+
+-- "The standard rotation for BM hunters and survival hunter with improved
+-- Aspect of the Hawk or DST procs active" -> 5:5:1:1, never Long French.
+ok(sv(SV29 / QS, { quickShots = true }) == "5:5:1:1", "SV + Hawk proc (2.19): 5:5:1:1, not 5:6:1:1")
+ok(sv(SV30 / QS, { quickShots = true }) == "5:5:1:1", "SV + Hawk proc on a 3.0 bow (2.27, above the edge): still 5:5:1:1")
+ok(sv(SV30 / 1.206, {}, 20) == "5:5:1:1",             "SV + DST proc (both-haste 20%): 5:5:1:1")
+ok(sv(SV29 / 1.25, {}, 25) == "5:5:1:1",              "SV + Haste Potion: 5:5:1:1")
+
+-- Everything else is the live bracket: Rapid Fire + Hawk is 1:1 on the SV
+-- graph, Skipping needs Lust on top, and Lust alone is French territory.
+ok(sv(SV29 / RF, { rapidFire = true }) == P:ResolveByEWS(SV29 / RF, "SV"), "SV + RF: live bracket")
+ok(sv(SV29 / (RF * QS), { rapidFire = true, quickShots = true }) == "1:1", "SV + RF + Hawk: 1:1 (not Skipping)")
+ok(sv(SV29 / (RF * LUST), { rapidFire = true, inLust = true }) == "1:1",   "SV + RF + Lust: 1:1")
+ok(sv(SV29 / (RF * QS * LUST), { rapidFire = true, quickShots = true, inLust = true }) == "5:9:1:1",
+   "SV + RF + Hawk + Lust: 5:9:1:1")
+ok(sv(SV29 / LUST, { inLust = true }, 30) == "5:5:1:1",        "SV + Lust alone: 5:5:1:1 (bracket)")
+ok(sv(SV29 / (LUST * QS), { quickShots = true, inLust = true }, 30) == "5:6:1:1",
+   "SV + Lust + Hawk: live bracket (1.68 -> 5:6:1:1), the Hawk rung does not apply under Lust")
+ok(sv(SV29 / (LUST * 1.2), { inLust = true }, 50) == "1:1",    "SV + Lust + DST: live bracket (1.6 -> 1:1)")
+
+-- Static-haste gear that already sits in French territory is not Short French
+-- and its Hawk proc goes to the live bracket, like a BM's fast tier does.
+ok(sv(2.0, {}) == "5:5:1:1",                                   "SV with static haste (2.0): 5:5:1:1")
+ok(sv(2.0 / QS, { quickShots = true }) == "5:6:1:1",           "  ... and a Hawk proc there is the live bracket (1.74)")
+
+-- The BM path is untouched by the new argument.
+ok(P:ResolveTurret(BASE / QS, { quickShots = true }, 0, "BM") == "5:6:1:1", "BM + Hawk still shows 5:6:1:1")
+ok(P:ResolveTurret(BASE / QS, { quickShots = true }, 0, nil) == "5:6:1:1",  "spec unread + Hawk still shows 5:6:1:1")
+
 print(string.format("turret_resolver: %d passed, %d failed", pass, fail))
 if fail > 0 then os.exit(1) end

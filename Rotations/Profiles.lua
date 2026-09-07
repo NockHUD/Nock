@@ -11,9 +11,11 @@ local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 -- Turret notations, named for the same two reasons as WEAVE below: one
 -- definition site per string, and ResolveTurret's proc ladder needs to name
 -- specific rotations rather than re-derive them from brackets.
--- rotationtools nicknames: FRENCH "French", LONG_FRENCH "Long French" (the
--- Hawk-proc rotation), SKIPPING "Skipping" (RF+Hawk / RF+Lust).
+-- rotationtools nicknames: SHORT_FRENCH "Short French" (the no-BM-haste
+-- rotation), FRENCH "French", LONG_FRENCH "Long French" (the Hawk-proc
+-- rotation), SKIPPING "Skipping" (RF+Hawk / RF+Lust).
 local TURRET = {
+  SHORT_FRENCH = "5:4:1:1",
   FRENCH      = "5:5:1:1",
   LONG_FRENCH = "5:6:1:1",
   ONE_ONE     = "1:1",
@@ -23,7 +25,17 @@ local TURRET = {
   SKIP_ALL    = "2:5",
 }
 
+-- SHORT_FRENCH is rotationtools' "This only ever appears for survival hunters
+-- without the 20% haste out of the BM talent tree": seven casts over FOUR
+-- autos, which only pays when the swing is slow enough to hold them. Its edge
+-- is read off the rotationtools SV graph, where 5:4:1:1 and 5:5:1:1 cross at
+-- the Hawk-proc mark (2.9 bow / 1.15 quiver / 1.15 Hawk = 2.19). A Beast
+-- Master's swing (quiver x Serpent's Swiftness = 1.38) never gets there on a
+-- real bow, and the row is tagged noBmHaste so the resolver skips it for a BM
+-- anyway: the reference calls it a Survival rotation, so a BM's label must not
+-- flip to it on a quiverless day either.
 local list = {
+  { name = TURRET.SHORT_FRENCH, lo = 2.20, weights = {}, noBmHaste = true },
   { name = TURRET.FRENCH,      lo = 1.83, weights = {} },
   { name = TURRET.LONG_FRENCH, lo = 1.63, weights = {} },
   { name = TURRET.ONE_ONE,     lo = 1.24, weights = {} },
@@ -38,10 +50,20 @@ Nock.Profiles = {
   list = list,
 }
 
-function Nock.Profiles:ResolveByEWS(ews)
+-- `spec` is state.player.spec: "BM" / "MM" / "SV" by talent-tab majority, nil
+-- until the tabs have been read. Rows tagged noBmHaste are for hunters WITHOUT
+-- Serpent's Swiftness (Survival, and Marksmanship for that matter); an unknown
+-- spec is read as BM so the label is what it always was until the talents
+-- are in, never a flash of 5:4:1:1 at login.
+local function lacksBmHaste(spec)
+  return spec ~= nil and spec ~= "BM"
+end
+
+function Nock.Profiles:ResolveByEWS(ews, spec)
   if not ews or ews <= 0 then return nil, nil end
+  local noBm = lacksBmHaste(spec)
   for _, p in ipairs(self.list) do
-    if ews > p.lo then return p.name, p end
+    if ews > p.lo and (noBm or not p.noBmHaste) then return p.name, p end
   end
   local last = self.list[#self.list]
   return last.name, last
@@ -62,6 +84,13 @@ local LUST_MUL        = 1.30
 -- 2:5 trigger. Approximate + easy to tune in-game, like MODERATE_MELEE_HASTE.
 local TURRET_EXTREME_MELEE_HASTE = 25
 
+-- meleeHaste (%) that counts as a real BOTH-haste buff — above Drums-only
+-- (~5%), catching DST(~20)/Abacus(~16)/Haste Pot(~25)/Bloodlust(~30).
+-- Approximate + easy to tune; verified in-game. Read by ResolveWeave (one
+-- moderate source → 2:2 1w) and by ResolveTurret's Survival rung (a DST proc
+-- moves a Survival hunter from 5:4:1:1 onto 5:5:1:1).
+local MODERATE_MELEE_HASTE = 12
+
 local function findByName(l, name)
   for i = 1, #l do
     if l[i].name == name then return l[i].name, l[i] end
@@ -80,23 +109,41 @@ end
 --   2:5                   — Hawk + RF + a heavy both-haste stack on top
 -- Faster STATIC tiers keep the live-bracket answer (their rotations are about
 -- raw swing/GCD alignment, which the live eWS states exactly), and so does a
--- proc-less tick — bit-identical to ResolveByEWS then. Pure; LuaJIT-tested in
--- Tests/turret_resolver_test.lua.
-function Nock.Profiles:ResolveTurret(ews, p, meleeHaste)
+-- proc-less tick — bit-identical to ResolveByEWS then.
+--
+-- A hunter WITHOUT Serpent's Swiftness (`spec` ~= "BM") is a different graph
+-- (rotationtools, "SV rotations over haste"): the static tier is Short French,
+-- a Hawk or DST proc on it is the plain French ("The standard rotation for BM
+-- hunters and survival hunter with improved Aspect of the Hawk or DST procs
+-- active"), and everything else is the live bracket — Rapid Fire + Hawk lands
+-- on 1:1, Skipping needs Lust on top. The BM ladder never applies to them:
+-- Long French is "for BM hunters" and a Survival Hawk proc used to show it.
+-- Pure; LuaJIT-tested in Tests/turret_resolver_test.lua.
+function Nock.Profiles:ResolveTurret(ews, p, meleeHaste, spec)
   if not ews or ews <= 0 then return nil, nil end
   local qs = p and p.quickShots
   local rf = p and p.rapidFire
+  local lust = p and p.inLust
+  if lacksBmHaste(spec) then
+    local base = ews * (qs and QUICK_SHOTS_MUL or 1) * (rf and RAPID_FIRE_MUL or 1)
+    local baseName = self:ResolveByEWS(base, spec)
+    local moderate = meleeHaste and meleeHaste >= MODERATE_MELEE_HASTE
+    if baseName == TURRET.SHORT_FRENCH and not rf and not lust and (qs or moderate) then
+      return findByName(self.list, TURRET.FRENCH)
+    end
+    return self:ResolveByEWS(ews, spec)
+  end
   if not (qs or rf) then return self:ResolveByEWS(ews) end
   local base = ews
     * (qs and QUICK_SHOTS_MUL or 1)
     * (rf and RAPID_FIRE_MUL or 1)
-    * ((p.inLust and LUST_MUL) or 1)
+    * ((lust and LUST_MUL) or 1)
   local baseName = self:ResolveByEWS(base)
   if baseName == TURRET.FRENCH then
-    local heavyStack = p.inLust or p.drums
+    local heavyStack = lust or p.drums
       or (meleeHaste and meleeHaste >= TURRET_EXTREME_MELEE_HASTE)
     if qs and rf and heavyStack then return findByName(self.list, TURRET.SKIP_ALL) end
-    if rf and (qs or p.inLust)  then return findByName(self.list, TURRET.SKIPPING) end
+    if rf and (qs or lust)      then return findByName(self.list, TURRET.SKIPPING) end
     if qs                       then return findByName(self.list, TURRET.LONG_FRENCH) end
     -- Rapid Fire alone has no dedicated rotationtools pattern here — fall
     -- through to the live bracket like every other unlisted combination.
@@ -116,10 +163,8 @@ end
 --   6:9:1:1 3w  — Rapid Fire (± imp Aspect)
 --   2:2 1w      — one moderate haste source (imp Aspect, or ≥ ~one buff of melee haste)
 --   5:5:1:1 3w  — "French": no haste effect (Drums-only stays here)
--- MODERATE_MELEE_HASTE is the % of melee haste that counts as a real buff —
--- above Drums-only (~5%), catching DST(~20)/Abacus(~16)/Haste Pot(~25)/Bloodlust
--- (~30). Approximate + easy to tune; verified in-game.
-local MODERATE_MELEE_HASTE = 12
+-- MODERATE_MELEE_HASTE (declared above ResolveTurret, which shares it) is the
+-- % of melee haste that counts as a real buff.
 
 -- The weave notations, named rather than left as inline literals in ResolveWeave.
 -- Two reasons: each string now has exactly ONE definition site, and the Options

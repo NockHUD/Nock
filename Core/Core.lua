@@ -44,10 +44,27 @@ function Nock:OnEnable()
   self:StartTick()
   self:RegisterEvent("PLAYER_REGEN_DISABLED", "OnCombatChanged")
   self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnCombatChanged")
-  self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnCombatChanged")
+  self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnEnteringWorld")
   self:RegisterEvent("SPELL_UPDATE_COOLDOWN", "ProbeGcd")
+  self:RegisterEvent("CHARACTER_POINTS_CHANGED", "UpdateSpec")
+  self:RegisterEvent("PLAYER_TALENT_UPDATE", "UpdateSpec")
+  self:RegisterEvent("SPELLS_CHANGED", "UpdateSpec")
   self:OnCombatChanged()
+  self:UpdateSpec()
   self:ProbeGcd()
+end
+
+function Nock:OnEnteringWorld()
+  self:OnCombatChanged()
+  -- The talent tabs are not always populated at OnEnable; re-read here.
+  self:UpdateSpec()
+end
+
+-- state.player.spec, re-read on every talent event. Rotations/Profiles.lua
+-- reads it to keep the Survival-only 5:4:1:1 off a Beast Master's label; nil
+-- (not read yet) resolves as BM there.
+function Nock:UpdateSpec()
+  self.state.player.spec = Nock.SpecFromTabs(GetTalentTabInfo)
 end
 
 -- Global cooldown probe. Steady Shot has no real cooldown, so whatever
@@ -373,7 +390,7 @@ function Nock:Tick()
     -- rotationtools proc ladder instead of the raw eWS bracket (which the
     -- 12s Hawk proc often fails to move across an edge). Identical to
     -- ResolveByEWS whenever no ranged proc is up.
-    local name, profile = self.Profiles:ResolveTurret(ews, state.player, meleeHaste)
+    local name, profile = self.Profiles:ResolveTurret(ews, state.player, meleeHaste, state.player.spec)
     state.rotation.profileName = name
     state.rotation.profile = profile
 

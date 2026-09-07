@@ -18,6 +18,7 @@ M.CANONICAL = {
   ["1:2"]         = "asa",
   ["2:3"]         = "asaas",
   ["2:5"]         = "asaaasa",
+  ["5:4:1:1"]     = "asmasasAass",
   ["5:5:1:1"]     = "asmasasAasas",
   ["5:6:1:1"]     = "asAamasasasas",
   ["5:9:1:1"]     = "asasasaAaasasama",

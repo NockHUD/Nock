@@ -6,6 +6,10 @@ local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 Nock.state = {
   player = {
     inCombat = false,
+    -- "BM" / "MM" / "SV" by talent-tab majority (Nock.SpecFromTabs), nil until
+    -- the tabs have been read. Written by Core on the talent events; read by
+    -- Rotations/Profiles.lua, where the Survival-only 5:4:1:1 hangs on it.
+    spec = nil,
     -- A REAL cast in progress: { name, spellId, icon, startTime, endTime,
     -- isChannel } or nil. If this is set, the player is locked out — that is the
     -- invariant every consumer depends on, so nothing that merely *looks* like a
@@ -517,6 +521,22 @@ end
 --
 -- Pure: no globals beyond `state`. Covered in Tests/practice_gates_test.lua.
 --------------------------------------------------------------------------------
+-- Talent-tab majority -> "BM" / "MM" / "SV" (hunter tabs 1 / 2 / 3), nil when
+-- the API is missing or no tab holds a point yet. Ties go to the earlier tab.
+-- `getTab` is GetTalentTabInfo -- its 5th return is the points spent on the
+-- Anniversary client, the same read the Cooldowns Spec row makes -- injected
+-- so Tests/spec_from_tabs_test.lua can drive it. Pure.
+local SPEC_BY_TAB = { "BM", "MM", "SV" }
+function Nock.SpecFromTabs(getTab)
+  if type(getTab) ~= "function" then return nil end
+  local best, idx = 0, nil
+  for i = 1, 3 do
+    local called, _, _, _, _, pts = pcall(getTab, i)
+    if called and type(pts) == "number" and pts > best then best, idx = pts, i end
+  end
+  return idx and SPEC_BY_TAB[idx] or nil
+end
+
 function Nock.HudNotation(state, turretName, weaveName, weaveEnabled, proxMin)
   local sim = state.sim
   if sim and sim.active and sim.notation then return sim.notation end

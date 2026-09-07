@@ -4,6 +4,19 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 ## Unreleased
 
+- **Fix: the rotation label never checked the spec, so a Survival hunter was
+  told to play the Beast Master rotation.** rotationtools' Short French,
+  `5:4:1:1`, "only ever appears for survival hunters without the 20% haste out
+  of the BM talent tree": without Serpent's Swiftness the swing is slow enough
+  to hold seven casts over four autos, and the label used to land in the
+  `5:5:1:1` bracket regardless. The HUD now reads the talent-tab majority
+  (BM / MM / SV, re-read on every talent change) and a hunter without the BM
+  haste gets `5:4:1:1` with nothing up, `5:5:1:1` on a Hawk or DST proc (the
+  reference's own rule; a Survival Hawk proc used to show the BM-only Long
+  French), and the live bracket for Rapid Fire and Bloodlust (`1:1` under
+  Rapid Fire + Hawk, Skipping only with Lust on top). A Beast Master's labels
+  are unchanged, spec unread resolves as before, and the new notation has its
+  paper string, its rename/color row and its practice drill like the others.
 - **Fix: the buff and debuff grids showed no timer without OmniCC.** Each
   slot's Cooldown frame has its own countdown hidden, and the buff grid only
   ever showed an empty text layer when no cooldown-text addon was there to

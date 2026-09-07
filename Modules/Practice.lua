@@ -581,6 +581,14 @@ end
 -- silently loaded the 1:1 paper and the lesson explained THAT.
 local NO_PROCS = {}
 local ladderCtx = {}
+-- The character's spec (state.player.spec) for the turret resolvers: a
+-- Survival hunter's own rotation is 5:4:1:1, and the bracket alone cannot
+-- know that. Read live, never from the sim -- a drill pins the haste, not the
+-- talents.
+local function playerSpec()
+  local st = Nock.state
+  return st and st.player and st.player.spec or nil
+end
 function Practice:LadderContext()
   local st = Nock.state
   if not st.sim.active then
@@ -589,7 +597,7 @@ function Practice:LadderContext()
   end
   local ews = self._liveEws or 2.174   -- the P1 BM baseline, until the swing is measured
   local P = Nock.Profiles
-  ladderCtx.turret = (P and P:ResolveByEWS(ews)) or "1:1"
+  ladderCtx.turret = (P and P:ResolveByEWS(ews, playerSpec())) or "1:1"
   -- No procs, no melee haste: the weave rotation you hold with nothing up is
   -- where the ladder starts, and it is the one the weave paper drill pins.
   ladderCtx.weave = (P and P:ResolveWeave(ews, NO_PROCS, 0)) or "5:5:1:1 3w"
@@ -1244,7 +1252,8 @@ function Practice:ResolveNotation(ews, flags, meleeHaste, weave)
     local w = P:ResolveWeave(ews, flags, meleeHaste)
     if w then return w end
   end
-  return (P:ResolveTurret(ews, flags, meleeHaste)) or (P:ResolveByEWS(ews))
+  local spec = playerSpec()
+  return (P:ResolveTurret(ews, flags, meleeHaste, spec)) or (P:ResolveByEWS(ews, spec))
 end
 
 -- The grader's per-window notation: what rotationtools would call the rotation
