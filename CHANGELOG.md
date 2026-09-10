@@ -2,7 +2,7 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
-## Unreleased
+## 1.1.10
 
 - **The warnings row can be moved.** `/nock unlock` (or the Unlock button)
   now shows a bordered box where the alert squares appear, draggable and
