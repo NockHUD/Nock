@@ -2,10 +2,12 @@
 -- Renders state.warnings as small icon-squares centered horizontally at 25% screen height.
 -- Each active warning is one square. Red severity gets the buttonOverlay alert glow.
 -- This frame is anchored to UIParent (NOT the HUD), so warnings stay visible in your
--- top-center field of view independent of where the HUD is positioned.
+-- top-center field of view independent of where the HUD is positioned. Unlocked
+-- (/nock unlock) it is draggable and nudgeable like the boss banner; the spot is
+-- saved in warningsPosition (false = the stock 25%-down-from-top anchor).
 
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
-local WarningsView = Nock:NewModule("WarningsView")
+local WarningsView = Nock:NewModule("WarningsView", "AceEvent-3.0")
 local C = Nock.Constants
 local LSM = LibStub("LibSharedMedia-3.0", true)
 
@@ -28,9 +30,8 @@ function WarningsView:OnInitialize()
   local container = CreateFrame("Frame", "NockWarnings", UIParent)
   container:SetSize(maxSlots * size + (maxSlots - 1) * C.DIM.WARN_ICON_GAP, size + 18)
   container:SetFrameStrata("HIGH")
-
-  local screenH = UIParent:GetHeight() or 768
-  container:SetPoint("CENTER", UIParent, "TOP", 0, -screenH * C.DIM.WARN_TOP_FRACTION)
+  container:SetMovable(true)
+  container:SetClampedToScreen(true)
 
   self.squares = {}
   for i = 1, maxSlots do
@@ -55,9 +56,68 @@ function WarningsView:OnInitialize()
 
   self.frame = container
 
+  -- Edit overlay: the row is empty most of the time, so while unlocked a
+  -- bordered box the size of the full slot row stands in for it (the
+  -- transient-frame preview every hidden-when-idle panel needs) and catches
+  -- the drag above the squares. Hidden while locked, so nothing changes for
+  -- play. Same shape as the free side panels' overlay in UI/Widgets.lua.
+  local editBG = CreateFrame("Frame", nil, container, "BackdropTemplate")
+  editBG:SetAllPoints(container)
+  editBG:SetFrameLevel(container:GetFrameLevel() + 10)
+  Nock.UI.ApplyBackdrop(editBG)
+  editBG:SetBackdropColor(0, 0, 0, 0.25)
+  editBG:SetBackdropBorderColor(unpack(C.COLORS.BORDER_UNLOCK))
+  editBG:EnableMouse(true)
+  editBG:RegisterForDrag("LeftButton")
+  editBG:SetScript("OnDragStart", function() container:StartMoving() end)
+  editBG:SetScript("OnDragStop", function()
+    container:StopMovingOrSizing()
+    local point, _, relPoint, x, y = container:GetPoint()
+    Nock.db.profile.warningsPosition = { point = point, relPoint = relPoint, x = x, y = y }
+  end)
+  editBG:Hide()
+  container._editBG = editBG
+
+  Nock.UI.RegisterNudgeable(container, {
+    label   = "Warnings",
+    clickTarget = editBG,
+    get     = function() return Nock.db.profile.warningsPosition end,
+    set     = function(pos)
+      Nock.db.profile.warningsPosition = pos
+      WarningsView:ApplyPosition()
+    end,
+    -- `false` is a real value (the stock spot) and must reach set().
+    default = function() return false end,
+  })
+
+  self:ApplyPosition()
+  self:ApplyLock()
+  self:RegisterMessage("NOCK_LOCK_CHANGED", "ApplyLock")
+  self:RegisterMessage("NOCK_POSITION_RESET", "ApplyPosition")   -- profile switch
+
   if not Nock.isHunter then
     container:Hide()
   end
+end
+
+function WarningsView:ApplyPosition()
+  local p = Nock.db and Nock.db.profile
+  local pos = p and p.warningsPosition
+  local f = self.frame
+  f:ClearAllPoints()
+  if type(pos) == "table" and pos.point then
+    f:SetPoint(pos.point, UIParent, pos.relPoint or pos.point, pos.x or 0, pos.y or 0)
+  else
+    local screenH = UIParent:GetHeight() or 768
+    f:SetPoint("CENTER", UIParent, "TOP", 0, -screenH * C.DIM.WARN_TOP_FRACTION)
+  end
+end
+
+-- Unlocked -> the overlay shows and takes the drag; locked -> it is gone and
+-- the row is mouse-transparent as before.
+function WarningsView:ApplyLock()
+  local bg = self.frame._editBG
+  if Nock.IsLocked() then bg:Hide() else bg:Show() end
 end
 
 local function setGlow(sq, severity)

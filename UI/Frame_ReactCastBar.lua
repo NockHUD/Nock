@@ -87,9 +87,9 @@ function ReactCastBar:ApplyLayout()
   if not h or h <= 0 then h = REACT.CAST_H end
   self.frame:SetHeight(h)
   self.iconF:SetSize(h, h)
-  local c = p.reactColorCastFill
-  if type(c) ~= "table" or not c[1] then c = REACT.CAST_FILL end
-  self.bar.fill:SetVertexColor(c[1], c[2], c[3], c[4] or 1)
+  -- Fill colour is per source (cast vs Auto Shot wind-up): Refresh paints it
+  -- through ApplyFillColor; clearing the cache here forces the repaint.
+  self._fillKind = nil
   -- React media (reactBarTexture / reactFont / reactFontSize; "" / 9 = the
   -- reference skin).
   self.bar.fill:SetTexture(Nock.UI.GetReactBarTexture() or WHITE8X8)
@@ -97,6 +97,17 @@ function ReactCastBar:ApplyLayout()
   local size = math.max(6, REACT.FONT + Nock.UI.GetReactFontDelta())
   Nock.UI.SafeSetFont(self.bar.nameText, font, size, "OUTLINE")
   Nock.UI.SafeSetFont(self.bar.timeText, font, size, "OUTLINE")
+end
+
+-- Recolour the fill when the source flips between a real cast and the Auto
+-- Shot wind-up (reactColorCastFill / reactColorAutoShotFill).
+function ReactCastBar:ApplyFillColor(c)
+  local kind = Nock.CastFillKind(c)
+  if kind == self._fillKind then return end
+  self._fillKind = kind
+  local p = (Nock.db and Nock.db.profile) or {}
+  local col = Nock.CastFillColor(p, kind, "reactColorCastFill", "reactColorAutoShotFill", REACT.CAST_FILL)
+  self.bar.fill:SetVertexColor(col[1], col[2], col[3], col[4] or 1)
 end
 
 function ReactCastBar:Refresh(state)
@@ -112,6 +123,7 @@ function ReactCastBar:Refresh(state)
   end
   if not self.frame:IsShown() then self.frame:Show() end
 
+  self:ApplyFillColor(c)
   if c.icon and c.icon ~= self._lastIcon then
     self.icon:SetTexture(c.icon)
     self._lastIcon = c.icon

@@ -145,6 +145,7 @@ Nock.Defaults = {
     fontFace         = "Friz Quadrata TT",
     iconBorder       = "None",   -- LSM border name; "None" = 1px solid line
     iconBorderSize   = 8,        -- only used when iconBorder ~= "None"
+    warningsPosition   = false,  -- false = stock spot (top centre, 25% down); a table once dragged
     warningIconSize    = 44,
     warningBorderSize  = 3,
     warningLabelOffset = 10,
@@ -585,6 +586,7 @@ Nock.Defaults = {
     castBarTexture  = "",   -- "" = inherit global barTexture
     castBarShowIcon = true,
     castBarColor    = { 0.40, 0.70, 1.00, 1.00 },  -- light blue (matches C.COLORS.CAST_BAR)
+    castBarAutoShotColor = { 0.40, 0.70, 1.00, 1.00 },  -- the Auto Shot wind-up; same blue until set
     castBarPadding  = 4,    -- panel inset around icon + bar (matches C.DIM.OUTER_PAD)
     -- Cast bar panel Background block (same shape as the floating panels).
     castBarBgColor        = { 0.0, 0.0, 0.0 },
@@ -772,6 +774,7 @@ Nock.Defaults = {
     reactColorManaFill      = { 0.20, 0.55, 1.00, 1.00 },
     reactColorManaTick      = { 1.00, 1.00, 1.00, 0.80 },  -- mana tick spark
     reactColorCastFill      = { 0.40, 0.70, 1.00, 1.00 },
+    reactColorAutoShotFill  = { 0.40, 0.70, 1.00, 1.00 },   -- the Auto Shot wind-up on the cast bar
     reactColorRangeDeadzone = { 0.68, 0.18, 0.20, 1.00 },  -- MELEE band (red)
     reactColorRangeSweet    = { 0.85, 0.66, 0.00, 1.00 },
     reactColorRangePerfect  = { 0.17, 0.78, 0.11, 1.00 },  -- past PERFECT_AT (green)
@@ -863,6 +866,7 @@ Nock.Defaults = {
     -- Frame_FluffyCluster), so exposing them changes nothing until touched.
     -- The lane palette mirrors shotBarsColor*, the rest React's channel.
     fluffyColorCastFill   = { 0.40, 0.70, 1.00, 1.00 },
+    fluffyColorAutoShotFill = { 0.40, 0.70, 1.00, 1.00 }, -- the Auto Shot wind-up on the cast bar
     fluffyColorSwingFill  = { 1.00, 0.84, 0.00, 1.00 },
     fluffyColorTickSteady = { 1.00, 0.10, 0.10, 1.00 },
     fluffyColorTickMulti  = { 1.00, 0.65, 0.10, 1.00 },

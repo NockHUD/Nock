@@ -406,8 +406,9 @@ function FluffyCluster:ApplyLayout()
   else swing.notationText:Hide(); swing.notationText:SetText("") end
 
   self.castBar:SetHeight(skinNum("fluffyCastH", FLUFFY.CAST_H))
-  local castCol = skinColor("fluffyColorCastFill", FLUFFY.CAST_FILL)
-  self.castBar.fill:SetVertexColor(castCol[1], castCol[2], castCol[3], castCol[4] or 1)
+  -- The cast fill is per source (cast vs Auto Shot wind-up) and painted by
+  -- refreshCastBar; clearing the cache forces the repaint on a skin change.
+  self._castFillKind = nil
   self.range.tick:SetHeight(math.max(1, g.hRange - 2))
   do
     local mc = skinColor("fluffyColorManaFill", FLUFFY.MANA_FILL)
@@ -451,6 +452,15 @@ local function refreshCastBar(self)
     return
   end
   if not bar:IsShown() then bar:Show() end
+
+  -- Fill colour per source: fluffyColorCastFill for a cast,
+  -- fluffyColorAutoShotFill for the wind-up. Repainted only on a flip.
+  local kind = Nock.CastFillKind(c)
+  if kind ~= self._castFillKind then
+    self._castFillKind = kind
+    local col = Nock.CastFillColor(p, kind, "fluffyColorCastFill", "fluffyColorAutoShotFill", FLUFFY.CAST_FILL)
+    bar.fill:SetVertexColor(col[1], col[2], col[3], col[4] or 1)
+  end
 
   local total = c.endTime - c.startTime
   local now = GetTime()

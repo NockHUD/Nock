@@ -700,6 +700,26 @@ function Nock.CastBarSource(showAutoShot)
   return nil
 end
 
+-- Which of the two the bar is drawing: "auto" for the wind-up record (the
+-- producer stamps it `auto = true`), "cast" for anything else, nil for none.
+-- Views diff on this and recolour the fill only when it flips.
+function Nock.CastFillKind(c)
+  if not c then return nil end
+  if c.auto then return "auto" end
+  return "cast"
+end
+
+-- The profile colour for that kind: castKey for a cast, autoKey for the
+-- wind-up, `ref` when the chosen key is missing or not a colour table. Pure;
+-- shared by the classic, React and Fluffy cast bars so the three can't drift.
+function Nock.CastFillColor(p, kind, castKey, autoKey, ref)
+  local key
+  if kind == "auto" then key = autoKey elseif kind == "cast" then key = castKey end
+  local c = key and p and p[key]
+  if type(c) == "table" and c[1] then return c end
+  return ref
+end
+
 -- THE one reading of the HUD mode string. Every branch on the mode resolves
 -- through these three, never through a raw `p.hudMode == "react"` compare —
 -- half of those historically meant "classic" and half meant "not the React

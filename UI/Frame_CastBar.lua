@@ -123,8 +123,21 @@ function CastBarView:ApplyStyle()
   -- SetBarFill scales against this cached width, so it must track the anchors.
   self.bar.maxWidth = C.DIM.HUD_WIDTH - pad - left - 2
 
-  local c = p.castBarColor or C.COLORS.CAST_BAR
-  self.bar.fill:SetVertexColor(c[1], c[2], c[3], c[4] or 1)
+  -- The fill colour depends on what is being drawn (cast vs Auto Shot
+  -- wind-up), so Refresh owns it; a visuals change just forces a repaint.
+  self._fillKind = nil
+end
+
+-- Recolour the fill when the source flips between a real cast and the Auto
+-- Shot wind-up (castBarColor / castBarAutoShotColor). One string compare per
+-- tick, no allocation.
+function CastBarView:ApplyFillColor(c)
+  local kind = Nock.CastFillKind(c) or "cast"   -- the edit preview paints as a cast
+  if kind == self._fillKind then return end
+  self._fillKind = kind
+  local p = (Nock.db and Nock.db.profile) or {}
+  local col = Nock.CastFillColor(p, kind, "castBarColor", "castBarAutoShotColor", C.COLORS.CAST_BAR)
+  self.bar.fill:SetVertexColor(col[1], col[2], col[3], col[4] or 1)
 end
 
 -- Screen-space position, matching HUD.lua's captureFreePos so a freed cast bar
@@ -211,6 +224,7 @@ function CastBarView:Refresh(state)
   if isEditing() then
     if not self.frame:IsShown() then self.frame:Show() end
     self.editBG:Show()
+    self:ApplyFillColor(nil)
     if self._lastIcon ~= EDIT_ICON then
       self.icon:SetTexture(EDIT_ICON)
       self._lastIcon = EDIT_ICON
@@ -236,6 +250,7 @@ function CastBarView:Refresh(state)
 
   if not self.frame:IsShown() then self.frame:Show() end
 
+  self:ApplyFillColor(c)
   if c.icon and c.icon ~= self._lastIcon then
     self.icon:SetTexture(c.icon)
     self._lastIcon = c.icon

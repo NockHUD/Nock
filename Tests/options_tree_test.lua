@@ -482,6 +482,9 @@ ok(r.grpEngine.args.rotRaptorWeaveHeadroom.get() == 1.25,
 local cCast = classicChild("castBar")
 ok(cCast and cCast.args.showAutoShotCast and cCast.args.castBarNonCombatCasts,
    "classic branch has the Cast Bar node with both settings")
+ok(cCast and cCast.args.castBarAutoShotColor and cCast.args.castBarAutoShotColor.type == "color"
+   and cCast.args.castBarAutoShotColor.order > cCast.args.castBarColor.order,
+   "classic Cast Bar: Auto Shot wind-up color picker follows the fill color")
 ok(raSize.castBarNonCombatCasts, "react Size & Elements mirrors non-combat casts")
 ok(raSize.castBarNonCombatCasts
    and raSize.castBarNonCombatCasts.desc:find("same setting", 1, true),
@@ -570,10 +573,18 @@ onlyKeys(root.hud.args, { "intro", "hudMode", "classic", "react", "fluffy" }, "h
 onlyKeys(root.experimental.args, { "intro", "grpMedallion", "grpSapper", "grpZoom", "grpRelease" }, "experimental")
 onlyKeys(wa, { "masterToggle", "intro", "settings" }, "warnings", { "cat_" })
 onlyKeys(wa.settings and wa.settings.args or {},
-  { "appearanceHeader", "warningIconSize", "warningBorderSize", "warningLabelOffset",
+  { "appearanceHeader", "warningsPositionNote", "warningsResetPosition",
+    "warningIconSize", "warningBorderSize", "warningLabelOffset",
     "warningLabelSize", "warningLabelFont", "warningLabelStyle", "warningLabelUpper",
     "previewHeader", "previewIntro", "previewButton", "noReleasePreview" },
   "warnings settings")
+-- The warnings row is draggable while unlocked (2026-09-10); Appearance holds
+-- the reset button that puts it back at the stock spot.
+local wsReset = wa.settings and wa.settings.args.warningsResetPosition
+ok(wsReset and wsReset.type == "execute", "warnings: Reset position button present")
+Nock.db.profile.warningsPosition = { point = "TOPLEFT", relPoint = "TOPLEFT", x = 1, y = -1 }
+if wsReset then pcall(wsReset.func) end
+ok(Nock.db.profile.warningsPosition == false, "warnings: reset writes false (the stock spot)")
 onlyKeys(classicChild("layout").args,
   { "grpPlacement", "grpElements", "grpPanels", "grpScaling" },
   "layout")
@@ -654,13 +665,17 @@ onlyKeys(raSkin, { "skinHeader", "skinNote", "reactBarTexture", "reactFont", "re
   "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH",
   "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY",
   "reactColorAutoFill", "reactColorMeleeReady", "reactColorMeleeAuto", "reactColorManaFill", "reactColorManaTick",
-  "reactColorCastFill", "reactColorRangeDeadzone", "reactColorRangeSweet", "reactColorRangePerfect",
+  "reactColorCastFill", "reactColorAutoShotFill",
+  "reactColorRangeDeadzone", "reactColorRangeSweet", "reactColorRangePerfect",
   "reactColorRangeClose", "reactColorRangeResync", "reactRangeDividerWidth", "reactColorRangeDivider",
   "reactGcdDividerWidth", "reactColorGcdDivider",
   "autoMarksHeader", "reactTickSteadyWidth", "reactColorTickSteady",
   "reactTickMultiWidth", "reactColorTickMulti", "reactTickWindupWidth",
   "reactColorTickWindup", "reactBracketWidth", "reactColorBracket",
   "resetSkin" }, "react tabSkin")
+ok(raSkin.reactColorAutoShotFill and raSkin.reactColorAutoShotFill.type == "color"
+   and raSkin.reactColorAutoShotFill.order > raSkin.reactColorCastFill.order,
+   "react tabSkin: Auto Shot wind-up fill picker follows the cast fill")
 
 -- FluffyHUD branch (the third look, 2026-08-31): four subtabs, its own key
 -- family, the shared grid-look keys mirrored from the React grid tab.
@@ -737,7 +752,7 @@ onlyKeys(faBuff, { "buffHeader", "sharedNote", "fluffyBuffRows", "reactBuffPosit
   "fluffy tabBuff", { "rb_en_", "rbc_" })
 onlyKeys(faSkin, { "skinHeader", "skinNote", "fluffyBarTexture", "fluffyFont", "fluffyFontSize",
   "fluffyCastH", "fluffySwingH", "fluffyRangedH", "fluffyMeleeH", "fluffyRangeH", "fluffyManaH",
-  "fluffyColorCastFill", "fluffyColorSwingFill", "fluffyColorManaFill", "fluffyColorManaTick",
+  "fluffyColorCastFill", "fluffyColorAutoShotFill", "fluffyColorSwingFill", "fluffyColorManaFill", "fluffyColorManaTick",
   "fluffyColorTickSteady", "fluffyColorTickMulti", "fluffyColorTickWindup",
   "fluffyColorGcdDivider", "fluffyColorBracket",
   "fluffyColorSteady", "fluffyColorQueue", "fluffyColorQueueLive", "fluffyColorMulti",
@@ -746,6 +761,9 @@ onlyKeys(faSkin, { "skinHeader", "skinNote", "fluffyBarTexture", "fluffyFont", "
   "fluffyColorRangePerfect", "fluffyColorRangeClose", "fluffyColorRangeResync",
   "resetSkin" }, "fluffy tabSkin")
 ok(faSkin.fluffyManaH and faSkin.fluffyColorManaFill and faSkin.fluffyColorManaTick, "fluffy tabSkin: mana height + colors")
+ok(faSkin.fluffyColorAutoShotFill and faSkin.fluffyColorAutoShotFill.type == "color"
+   and faSkin.fluffyColorAutoShotFill.order > faSkin.fluffyColorCastFill.order,
+   "fluffy tabSkin: Auto Shot wind-up fill picker follows the cast fill")
 ok(raSize.reactManaTick and raSkin.reactColorManaTick, "react: mana tick toggle + color")
 ok(CB.manaBar.args.showManaTick and CB.manaBar.args.manaTickColor, "classic Mana Bar page: tick toggle + color")
 

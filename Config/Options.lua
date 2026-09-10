@@ -2084,6 +2084,23 @@ local function buildOptionsTable()
             name = "Appearance",
             order = 10,
           },
+          warningsPositionNote = {
+            type = "description",
+            name = "Position: unlock the frames (/nock unlock, or the Unlock button under General) and drag the warnings row, or click it once for a nudge pad. Locked, it takes no mouse.",
+            order = 10.2,
+            fontSize = "medium",
+          },
+          warningsResetPosition = {
+            type = "execute",
+            name = "Reset position",
+            desc = "Put the warnings row back at its stock spot: top centre of the screen, a quarter of the way down.",
+            order = 10.4,
+            func = function()
+              Nock.db.profile.warningsPosition = false
+              local view = Nock:GetModule("WarningsView", true)
+              if view and view.ApplyPosition then view:ApplyPosition() end
+            end,
+          },
           warningIconSize = {
             type = "range",
             name = "Icon size",
@@ -6278,6 +6295,7 @@ local function buildOptionsTable()
       reactColorManaFill      = { 0.20, 0.55, 1.00, 1.00 },
       reactColorManaTick      = { 1.00, 1.00, 1.00, 0.80 },
       reactColorCastFill      = { 0.40, 0.70, 1.00, 1.00 },
+      reactColorAutoShotFill  = { 0.40, 0.70, 1.00, 1.00 },
       reactColorRangeDeadzone = { 0.68, 0.18, 0.20, 1.00 },
       reactColorRangeSweet    = { 0.85, 0.66, 0.00, 1.00 },
       reactColorRangePerfect  = { 0.17, 0.78, 0.11, 1.00 },
@@ -6377,6 +6395,7 @@ local function buildOptionsTable()
     skinArgs.reactColorManaFill      = skinColorOpt("Mana fill", nil, 99)
     skinArgs.reactColorManaTick      = skinColorOpt("Mana tick spark", "The mana tick line (Bars -> Mana tick spark).", 99.5)
     skinArgs.reactColorCastFill      = skinColorOpt("Cast fill", nil, 100)
+    skinArgs.reactColorAutoShotFill  = skinColorOpt("Cast: Auto Shot wind-up fill", "Cast bar fill while it shows the Auto Shot wind-up instead of a cast. Defaults to the cast fill.", 100.5)
     -- Auto Shot bar marks. Each mark gets its own width + colour; the mirrored
     -- halves share one setting (they are one mark drawn twice). Deliberately
     -- NOT the classic clipTick* keys -- React runs its own skin channel, so the
@@ -6883,6 +6902,7 @@ local function buildOptionsTable()
       fluffyManaH = 12,
       fluffyBarTexture = "", fluffyFont = "", fluffyFontSize = 10,
       fluffyColorCastFill   = { 0.40, 0.70, 1.00, 1.00 },
+      fluffyColorAutoShotFill = { 0.40, 0.70, 1.00, 1.00 },
       fluffyColorSwingFill  = { 1.00, 0.84, 0.00, 1.00 },
       fluffyColorTickSteady = { 1.00, 0.10, 0.10, 1.00 },
       fluffyColorTickMulti  = { 1.00, 0.65, 0.10, 1.00 },
@@ -6965,6 +6985,7 @@ local function buildOptionsTable()
       }
     end
     fSkinArgs.fluffyColorCastFill   = fSkinColor("Cast fill", nil, 31)
+    fSkinArgs.fluffyColorAutoShotFill = fSkinColor("Cast: Auto Shot wind-up fill", "Cast bar fill while it shows the Auto Shot wind-up instead of a cast. Defaults to the cast fill.", 31.5)
     fSkinArgs.fluffyColorSwingFill  = fSkinColor("Auto Shot fill", "The converging gold halves.", 32)
     fSkinArgs.fluffyColorTickSteady = fSkinColor("Auto: Steady tick", "The tick marking where a Steady Shot cast would clip the next Auto Shot.", 32.5)
     fSkinArgs.fluffyColorTickMulti  = fSkinColor("Auto: Multi tick", "The tick marking where a Multi-Shot cast would clip the next Auto Shot.", 32.7)
@@ -7148,7 +7169,8 @@ local function buildOptionsTable()
   -- category nodes start at 10), keeping the landing page to just the master
   -- toggle + intro.
   regroup("warnings", "settings", "Appearance & Preview", 1,
-    { "appearanceHeader", "warningIconSize", "warningBorderSize", "warningLabelOffset",
+    { "appearanceHeader", "warningsPositionNote", "warningsResetPosition",
+      "warningIconSize", "warningBorderSize", "warningLabelOffset",
       "warningLabelSize", "warningLabelFont", "warningLabelStyle", "warningLabelUpper",
       "previewHeader", "previewIntro", "previewButton", "noReleasePreview" }, true)
 
@@ -7258,6 +7280,15 @@ local function buildOptionsTable()
       desc = "Fill color of the cast bar.",
       hasAlpha = true,
       order = 54,
+      get = getColor,
+      set = setColor,
+    }
+    castBarArgs.castBarAutoShotColor = {
+      type = "color",
+      name = "Auto Shot wind-up color",
+      desc = "Fill color while the bar shows the Auto Shot wind-up (Behavior: Show Auto Shot wind-up). Defaults to the fill color, so the two only differ once you set it.",
+      hasAlpha = true,
+      order = 54.5,
       get = getColor,
       set = setColor,
     }

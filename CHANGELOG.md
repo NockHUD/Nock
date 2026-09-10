@@ -4,6 +4,18 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 ## Unreleased
 
+- **The warnings row can be moved.** `/nock unlock` (or the Unlock button)
+  now shows a bordered box where the alert squares appear, draggable and
+  with the usual nudge pad, name tag and element-list entry; the spot is
+  saved per character. Warnings → Appearance gains a Reset position button
+  that puts it back at the stock top-centre spot. Until now the row was the
+  one panel that ignored unlock.
+- **Own color for the Auto Shot wind-up on every cast bar.** Each HUD's cast
+  bar gets a second fill color used while it shows the Auto Shot wind-up
+  instead of a real cast: Classic HUD → Cast Bar → Auto Shot wind-up color,
+  React → Skin → Cast: Auto Shot wind-up fill, FluffyHUD → Skin → Cast: Auto
+  Shot wind-up fill. Each defaults to that bar's cast color, so nothing
+  changes until you set it.
 - **Mana tick on every HUD, and FluffyHUD gets a mana bar.** Each mana bar
   can show a thin spark riding the server's mana regen tick, opt-in per HUD
   (Classic HUD → Mana Bar, React → Bars, FluffyHUD → Bars, with a color under
