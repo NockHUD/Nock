@@ -102,11 +102,12 @@ Onboarding.Pages = {
     kind    = "checks",
     eyebrow = "First-time setup",
     title   = "Welcome to Nock",
-    blurb   = "A hunter HUD built around TBC weaving. First, a few client settings Nock can fix for you.",
+    blurb   = "A hunter HUD built around TBC weaving. Each step puts one part of Nock on screen; drag it where you like before moving on. First, a few client settings Nock can fix for you.",
   },
   {
     key     = "hudstyle",
     kind    = "cards",
+    reveals = { "hud", "castbar", "petstatus" },
     eyebrow = "You can swap back anytime",
     title   = "Pick your HUD style",
     blurb   = "This swaps your real HUD live - watch it change behind this window.",
@@ -144,6 +145,7 @@ Onboarding.Pages = {
   {
     key     = "reactcorners",
     kind    = "toggles",
+    reveals = { "react.corners", "react.buffs" },
     eyebrow = "Reference WeakAura parity",
     title   = "Corner status icons",
     blurb   = "The React WeakAura flanks its cluster with two status icons. Nock's warning system already covers both, so these ship off - flip them on if you want the original look.",
@@ -423,6 +425,7 @@ Onboarding.Pages = {
   {
     key     = "warnings",
     kind    = "toggles",
+    reveals = { "warnings", "bossbanner", "aggro", "ripper" },
     eyebrow = "Big center-screen alerts",
     title   = "Warnings that save you",
     blurb   = "Three sample alerts are showing right now - try the switches.",
@@ -439,11 +442,18 @@ Onboarding.Pages = {
         label = "Tranq alert", desc = "Your target enrages - shoot Tranquilizing Shot." },
       { key = "warnManaEnabled", dependsOn = "showWarnings",
         label = "Low mana", desc = "Swap to Viper before you run dry." },
+      { key = "aggroEnabled", dependsOn = "showWarnings",
+        label = "Aggro flash", desc = "A red starburst at screen centre while a mob is on you, with a cue the moment it happens." },
+      { key = "warnBossMarkEnabled", dependsOn = "showWarnings",
+        label = "Boss alert", desc = "A big banner for a boss mechanic that wants Feign Death (Archimonde's Doomfire and the like), and DO NOT RELEASE while a mechanic keeps you dead." },
+      { key = "warnRipperEnabled", dependsOn = "showWarnings",
+        label = "Ripper countdown", desc = "A teleporter trinket cast on you counts down to the moment to close the client (ALT F4) so it fails." },
     },
   },
   {
     key     = "trackers",
     kind    = "toggles",
+    reveals = { "misdirect", "buffs.player", "buffs.pet", "debuffs", "totemtracker" },
     eyebrow = "Small panels - drag them anywhere",
     title   = "Raid trackers",
     blurb   = "Misdirection is on already - see it below. Flip the others to try them.",
@@ -465,6 +475,7 @@ Onboarding.Pages = {
     -- one anywhere in page text, and the Settings page is where they belong.
     key     = "steamtonk",
     kind    = "toggles",
+    reveals = { "tonkdial" },
     eyebrow = "Stops the tonk welding you",
     title   = "Steam Tonk safety",
     blurb   = "The Steam Tonk Controller saves a pet from a boss mechanic. But the obvious one-button macro cancels the transform in the same instant it starts it, and the game regularly leaves you stuck in place, unable to move or cast.\n\nUse the tonk from any button, on its own, and take any /cancelaura line out of your macro. Nock steps you back out a moment later - in combat as well as out of it.",
@@ -475,6 +486,26 @@ Onboarding.Pages = {
       { key = "tonkDialEnabled", sub = true,
         label = "Show the countdown dial",
         desc  = "A small tonk icon with a sweep running down to the moment you step out, so it is never a surprise." },
+    },
+  },
+  {
+    key     = "helpers",
+    kind    = "toggles",
+    eyebrow = "Small helpers you place once",
+    title   = "Helpers & alerts",
+    blurb   = "Each switch puts a frame on screen. Drag it where you want it before moving on.",
+    reveals = { "helpers", "consume", "releasebar", "pvpbadge" },
+    onEnter = function(self) Nock.state.demo.helpersSample = true end,
+    onLeave = function(self) Nock.state.demo.helpersSample = false end,
+    options = {
+      { key = "showHelpers", recommendOn = true,
+        label = "Helpers row", desc = "Food, flask, scrolls and sharpening stones before a pull, one click to apply." },
+      { key = "consumeBannerEnabled",
+        label = "Eating / drinking pill", desc = "A small pill while you eat or drink, so you never stand up early." },
+      { key = "releaseBarEnabled",
+        label = "Retry timer", desc = "A bar for the weave key's retry grid. Off unless you weave with a snowball poke." },
+      { key = "pvpBadge",
+        label = "PvP tag", desc = "A small PVP tag on screen while PvP mode is active." },
     },
   },
   {
@@ -497,6 +528,7 @@ Onboarding.Pages = {
   {
     key     = "finish",
     kind    = "finish",
+    reveals = { "*" },
     eyebrow = "Setup complete",
     title   = "You're set!",
     blurb   = "Your HUD is live and configured like this:",
@@ -685,12 +717,52 @@ function Onboarding:StopWarningDemo()
   if w and w.StopDemo then w:StopDemo() end
 end
 
+-- Guided reveal: which frame keys the screen may show once page `index` is
+-- current (the union of every visible page's `reveals` up to it) and which are
+-- live (that page's own). "*" stands for every key. Pure, so the test can walk
+-- a script of its own.
+function Onboarding.RevealedSet(pages, index, isVisible)
+  local revealed, live = {}, {}
+  for i = 1, math.min(index, #pages) do
+    local page = pages[i]
+    if isVisible(page) and page.reveals then
+      for _, key in ipairs(page.reveals) do
+        revealed[key] = true
+        if i == index then live[key] = true end
+      end
+    end
+  end
+  return revealed, live
+end
+
+-- Recompute the sets for the current page and tell every frame. Only the
+-- guided wizard writes them; highlight mode leaves the plain lock in charge.
+function Onboarding:ApplyReveals()
+  local demo = Nock.state.demo
+  if not demo.guided then return end
+  demo.revealed, demo.live = Onboarding.RevealedSet(self.Pages, self._page or 1,
+    function(page) return self:IsPageVisible(page) end)
+  -- Frames re-read IsLockedFor from their ApplyLock, which listens to this.
+  Nock:SendMessage("NOCK_LOCK_CHANGED", Nock.IsLocked())
+end
+
+-- Put the pad on the first frame this page introduces, in both modes.
+function Onboarding:SelectPageFrame(page)
+  local edit = Nock:GetModule("EditMode", true)
+  if not (edit and edit.SelectByKey and page.reveals) then return end
+  for _, key in ipairs(page.reveals) do
+    if key ~= "*" and edit:SelectByKey(key) then return end
+  end
+end
+
 function Onboarding:EnterPage(index)
   local page = self.Pages[index]
   if not page then return end
   self._page = index
   self:SeedRecommendations(page)
+  self:ApplyReveals()
   if page.onEnter then page.onEnter(self) end
+  self:SelectPageFrame(page)
 end
 
 function Onboarding:LeavePage()
@@ -778,7 +850,10 @@ function Onboarding:IsOpen()
   return view and view.frame and view.frame:IsShown() or false
 end
 
-function Onboarding:Open(index)
+-- `guided`: the spotlight run (frames revealed step by step, only the current
+-- step's editable). Off = highlight mode: everything on screen, each page's
+-- frames merely selected.
+function Onboarding:Open(index, guided)
   local view = Nock:GetModule("OnboardingView", true)
   if not view then return end
 
@@ -786,6 +861,7 @@ function Onboarding:Open(index)
   -- user normally hides it out of combat, or every page would demo an
   -- invisible HUD.
   Nock.state.demo.hudForceShow = true
+  Nock.state.demo.guided = guided and true or false
   -- Unlock everything while the wizard is open so frames can be dragged into
   -- place; Teardown locks again on every close path. The char flag survives a
   -- /reload or logout that kills the wizard before Teardown runs — the next
@@ -858,7 +934,7 @@ function Onboarding:AutoOpen()
   -- halfway through has still seen it, and shouldn't be greeted again.
   Nock.db.global.onboarding = { seenVersion = VERSION }
   self._firstRun = true
-  self:Open(1)
+  self:Open(1, true)
 end
 
 function Onboarding:OnCombatEnded()
@@ -866,9 +942,9 @@ function Onboarding:OnCombatEnded()
   self:ScheduleTimer("AutoOpen", 1)
 end
 
--- /nock setup. Not a first run: recommendations are not re-seeded, so an
--- earlier "no thanks" survives.
-function Onboarding:Command()
+-- /nock setup [guided]. Not a first run: recommendations are not re-seeded,
+-- so an earlier "no thanks" survives. "guided" replays the spotlight run.
+function Onboarding:Command(arg)
   -- The auto-open already defers past combat; the manual entry points must
   -- refuse too — Open unlocks frames (pokes the protected Misdirect panel)
   -- and drops the demo HUD over a live fight.
@@ -878,5 +954,5 @@ function Onboarding:Command()
   end
   self._firstRun = false
   if self:IsOpen() then self:Close() end
-  self:Open(1)
+  self:Open(1, arg == "guided")
 end

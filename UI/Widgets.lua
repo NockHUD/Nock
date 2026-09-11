@@ -1417,6 +1417,7 @@ function Nock.UI.EnsureFreePanel(panel, key, label, applyGlue)
   panel._editBG = bg
 
   Nock.UI.RegisterNudgeable(panel, {
+    key     = key:lower(),   -- "petstatus" / "totemtracker": the guided wizard's name for it
     label   = label,
     -- Drags are caught by the bg overlay above the content, so the selection
     -- click never reaches the panel itself.
@@ -1453,7 +1454,7 @@ function Nock.UI.ApplyFreePanelPosition(panel, key, applyGlue, scale)
   local s = scale or 1.0
   if free then
     if s ~= panel._nockScale then panel:SetScale(s); panel._nockScale = s end
-    panel._editBG:SetShown(not Nock.IsLocked())
+    panel._editBG:SetShown(not Nock.IsLockedFor(key:lower()))
     if not panel._nockDragging then
       local p = Nock.db.profile
       p.elementPositions = p.elementPositions or {}

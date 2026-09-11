@@ -230,14 +230,14 @@ end
 
 function ReleaseBar:Refresh(state)
   local p = Nock.db and Nock.db.profile
-  if not (p and p.releaseBarEnabled) then
+  if not (p and p.releaseBarEnabled) or Nock.WizardHides("releasebar") then
     if self.frame:IsShown() then self.frame:Hide() end
     self._wasHeld = false
     return
   end
 
   local now = GetTime()
-  local editing = not Nock.IsLocked()
+  local editing = Nock.EditPreview("releasebar")
   -- Always-mode (the verification default): the bar stays on screen whenever
   -- it is enabled. With no swing recharging, rem clamps to 0 — playhead at
   -- ready, cost +0.00, field dimmed — which is truthful (releasing now is

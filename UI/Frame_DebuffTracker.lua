@@ -34,7 +34,7 @@ local function isEnabled()
   return profileGet("debuffTrackerEnabled", true) and true or false
 end
 local function isRaidOnly() return profileGet("debuffTrackerRaidOnly", false) and true or false end
-local function isLocked()   return Nock.IsLocked() end
+local function isLocked()   return Nock.IsLockedFor("debuffs") end
 local function cols()       return profileGet("debuffTrackerCols", 8) end
 local function iconSize()   return profileGet("debuffTrackerIconSize", 26) end
 local function position()
@@ -104,6 +104,7 @@ function DebuffTrackerView:OnInitialize()
     Nock.db.profile.debuffTrackerPosition = { point = point, relPoint = relPoint, x = x, y = y }
   end)
   Nock.UI.RegisterNudgeable(panel, {
+    key     = "debuffs",
     label   = "Debuff Tracker",
     get     = function() return Nock.db.profile.debuffTrackerPosition end,
     set     = function(pos)
@@ -231,6 +232,7 @@ function DebuffTrackerView:Refresh(state)
   local demo      = state.demo.debuffTracker
   local hasTarget = UnitExists and UnitExists("target")
   local gated = not isEnabled()
+             or Nock.WizardHides("debuffs")
              or (not hasTarget and not demo)
              or (isRaidOnly() and not inRaid() and not demo and not pvpActive())
   local list  = state.debufftracker or {}

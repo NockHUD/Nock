@@ -124,6 +124,8 @@ local DEFAULTS = {
   petTrainerHelperEnabled = true, repairWarnEnabled = true,
   weaveBindMacroDown = MACRO_DOWN, weaveBindMacroUp = MACRO_UP,
   tonkAutoCancel = true, tonkDialEnabled = true,
+  aggroEnabled = true, warnBossMarkEnabled = true, warnRipperEnabled = true,
+  showHelpers = true, consumeBannerEnabled = true, releaseBarEnabled = false, pvpBadge = true,
 }
 
 local function freshProfile()
@@ -153,7 +155,7 @@ end
 --------------------------------------------------------------------------------
 -- 1. Page script shape
 --------------------------------------------------------------------------------
-ok(#O.Pages == 12, "twelve pages in the script")
+ok(#O.Pages == 13, "thirteen pages in the script")
 ok(O.Pages[1].key == "welcome" and O.Pages[#O.Pages].key == "finish", "welcome first, finish last")
 for _, page in ipairs(O.Pages) do
   local kind = page.kind
@@ -306,8 +308,10 @@ ok(DEFAULTS.tonkAutoCancel == true,  "tonkAutoCancel ships on")
 ok(DEFAULTS.tonkDialEnabled == true, "tonkDialEnabled ships on")
 -- Sits between trackers and the out-of-combat helpers, so it disturbs none of
 -- the navigation assertions below (which pin weavemacro to playstyle + 1).
-ok(tonkIndex and tonkIndex == select(2, pageByKey("utility")) - 1,
-   "steamtonk sits directly before the utility page")
+ok(tonkIndex and tonkIndex == select(2, pageByKey("helpers")) - 1,
+   "steamtonk sits directly before the helpers page")
+ok(select(2, pageByKey("helpers")) == select(2, pageByKey("utility")) - 1,
+   "helpers sits directly before the utility page")
 
 -- 4a. Rotation page is Classic-only
 --------------------------------------------------------------------------------
@@ -336,17 +340,17 @@ ok(O:AdjacentPage(-1) == select(2, pageByKey("reactcorners")),
 -- gained one when the unconditionally-visible Steam Tonk page landed.
 p = freshProfile()
 O._page = 1
-ok(select(2, O:Progress()) == 9, "classic turret: 9 steps")
+ok(select(2, O:Progress()) == 10, "classic turret: 10 steps")
 p.weaveNotationEnabled = true
-ok(select(2, O:Progress()) == 11, "classic weaver: 11 steps (macro shapes + extras)")
+ok(select(2, O:Progress()) == 12, "classic weaver: 12 steps (macro shapes + extras)")
 p.hudMode = "react"
-ok(select(2, O:Progress()) == 11, "react weaver: 11 steps")
+ok(select(2, O:Progress()) == 12, "react weaver: 12 steps")
 p.weaveNotationEnabled = false
-ok(select(2, O:Progress()) == 9, "react turret: 9 steps")
+ok(select(2, O:Progress()) == 10, "react turret: 10 steps")
 p = freshProfile()
 p.hudEnabled = false
 O._page = 1
-ok(select(2, O:Progress()) == 8, "no-HUD turret: 8 steps")
+ok(select(2, O:Progress()) == 9, "no-HUD turret: 9 steps")
 
 --------------------------------------------------------------------------------
 -- 4b. Weave macro page: visibility and the three shapes
@@ -372,10 +376,10 @@ ok(O:AdjacentPage(1) == macroIndex, "weaver: next page is macros")
 p = freshProfile()
 O._page = 1
 local step, total = O:Progress()
-ok(step == 1 and total == 9, "turret run is 9 steps")
+ok(step == 1 and total == 10, "turret run is 10 steps")
 p.weaveNotationEnabled = true
 step, total = O:Progress()
-ok(total == 11, "weaver run is 11 steps")
+ok(total == 12, "weaver run is 12 steps")
 
 -- The last page is the last VISIBLE page, not the last in the script.
 O._page = #O.Pages
@@ -823,6 +827,76 @@ ok(recapValue(O:BuildRecap(), "HUD style") == "FluffyHUD", "recap names FluffyHU
 ok(not O:IsPageVisible(pageByKey("rotation")), "fluffy skips the classic shot-display page")
 ok(not O:IsPageVisible(pageByKey("reactcorners")), "fluffy skips the React corner-icons page")
 ok(recapValue(O:BuildRecap(), "Shot display") == nil, "fluffy recap omits the shot display row")
+
+--------------------------------------------------------------------------------
+-- Guided reveal (2026-09-12)
+--------------------------------------------------------------------------------
+do
+  local pages = {
+    { key = "a", reveals = { "hud" } },
+    { key = "b", reveals = { "warnings" }, visible = function() return false end },
+    { key = "c", reveals = { "misdirect", "buffs.player" } },
+    { key = "d" },
+    { key = "e", reveals = { "*" } },
+  }
+  local vis = function(pg) return not pg.visible or pg.visible({}) end
+  local r, l = O.RevealedSet(pages, 1, vis)
+  ok(r.hud and not r.warnings and l.hud and not l.misdirect, "page 1: hud revealed and live")
+  r, l = O.RevealedSet(pages, 3, vis)
+  ok(r.hud and r.misdirect and r["buffs.player"] and not r.warnings, "page 3: union of visible pages, invisible page skipped")
+  ok(l.misdirect and l["buffs.player"] and not l.hud, "page 3: live = this page only")
+  r, l = O.RevealedSet(pages, 4, vis)
+  ok(r.hud and r.misdirect and next(l) == nil, "a page that reveals nothing: earlier frames stay, nothing live")
+  r, l = O.RevealedSet(pages, 5, vis)
+  ok(r["*"] and l["*"], "finish reveals everything")
+end
+
+-- Every page's reveals name known frame keys, and the script has a helpers page
+do
+  local KNOWN = { hud = 1, castbar = 1, petstatus = 1, totemtracker = 1, ["react.corners"] = 1, ["react.buffs"] = 1,
+    warnings = 1, bossbanner = 1, aggro = 1, misdirect = 1, ["buffs.player"] = 1, ["buffs.pet"] = 1, debuffs = 1,
+    tonkdial = 1, helpers = 1, consume = 1, releasebar = 1, pvpbadge = 1, ripper = 1, ["*"] = 1 }
+  local bad, helpersPage = {}, nil
+  for _, pg in ipairs(O.Pages) do
+    if pg.key == "helpers" then helpersPage = pg end
+    for _, k in ipairs(pg.reveals or {}) do if not KNOWN[k] then bad[#bad + 1] = pg.key .. ":" .. k end end
+  end
+  ok(#bad == 0, "every reveal key is a known frame key (" .. table.concat(bad, ", ") .. ")")
+  ok(helpersPage and helpersPage.kind == "toggles", "a helpers page exists")
+  local keys = {}
+  for _, o in ipairs(helpersPage and helpersPage.options or {}) do keys[o.key] = true end
+  ok(keys.showHelpers and keys.consumeBannerEnabled and keys.releaseBarEnabled and keys.pvpBadge, "helpers page toggles the four orphans")
+  local last = O.Pages[#O.Pages]
+  ok(last.key == "finish" and last.reveals and last.reveals[1] == "*", "finish reveals '*'")
+  local wk = {}
+  for _, o in ipairs(pageByKey("warnings").options) do wk[o.key] = true end
+  ok(wk.aggroEnabled and wk.warnBossMarkEnabled and wk.warnRipperEnabled, "aggro, boss alert and ripper toggles joined the warnings page")
+end
+
+-- Open/Command: guided vs highlight
+do
+  p = freshProfile()
+  Nock.db.char = {}
+  Nock.state.demo = {}
+  sentMessages = {}
+  O:Open(1, true)
+  ok(Nock.state.demo.guided == true, "Open(1, true) turns the spotlight on")
+  ok(type(Nock.state.demo.revealed) == "table" and type(Nock.state.demo.live) == "table", "reveal sets computed on open")
+  O:Next()
+  ok(Nock.state.demo.revealed.hud == true and Nock.state.demo.live.hud == true, "page 2 (hudstyle) reveals hud")
+  local seenLock = 0
+  for _, m in ipairs(sentMessages) do if m == "NOCK_LOCK_CHANGED" then seenLock = seenLock + 1 end end
+  ok(seenLock >= 2, "a guided page move re-broadcasts NOCK_LOCK_CHANGED so frames re-read IsLockedFor")
+  O:Close()
+  ok(Nock.state.demo.guided == false and Nock.state.demo.revealed == false and Nock.state.demo.live == false, "teardown wipes the guided fields")
+
+  O:Command()
+  ok(Nock.state.demo.guided == false, "plain Command = highlight mode")
+  O:Close()
+  O:Command("guided")
+  ok(Nock.state.demo.guided == true and O._firstRun == false, "Command('guided') = spotlight, no re-seeding")
+  O:Close()
+end
 
 print(("%d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

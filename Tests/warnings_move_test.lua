@@ -31,6 +31,10 @@ function Nock:GetModule(name) return Nock.modules[name] end
 function Nock:SendMessage() end
 local locked = true
 function Nock.IsLocked() return locked end
+-- The guided-wizard readings fall back to the plain lock here (Core/State.lua is not loaded).
+function Nock.IsLockedFor() return Nock.IsLocked() end
+function Nock.EditPreview() return not Nock.IsLocked() end
+function Nock.WizardHides() return false end
 Nock.db = { profile = { warningsPosition = false } }
 _G.LibStub = setmetatable({}, { __call = function(_, lib, silent)
   if lib == "AceAddon-3.0" then return { GetAddon = function() return Nock end } end

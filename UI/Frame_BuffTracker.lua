@@ -63,7 +63,7 @@ local function iconSize()       return profileGet("buffTrackerIconSize", 24) end
 
 -- Per-panel config helpers, parameterised by suffix ("Player" / "Pet").
 local function isPanelEnabled(which) return profileGet("buffTracker" .. which .. "Enabled", true) and true or false end
-local function isPanelLocked() return Nock.IsLocked() end
+local function isPanelLocked(which) return Nock.IsLockedFor("buffs." .. (which or "Player"):lower()) end
 local function panelPosition(which)
   local p = profileGet("buffTracker" .. which .. "Position", nil)
   if p then return p end
@@ -199,6 +199,7 @@ function BuffTrackerView:OnInitialize()
         { point = point, relPoint = relPoint, x = x, y = y }
     end)
     Nock.UI.RegisterNudgeable(panel, {
+      key     = "buffs." .. which:lower(),
       label   = which == "Pet" and "Pet Buffs" or "Player Buffs",
       get     = function() return Nock.db.profile["buffTracker" .. which .. "Position"] end,
       set     = function(pos)
@@ -238,7 +239,7 @@ function BuffTrackerView:ApplyLock()
     { panel = self.playerPanel, which = "Player", slots = self.playerSlots },
     { panel = self.petPanel,    which = "Pet",    slots = self.petSlots    },
   }) do
-    local locked = isPanelLocked()
+    local locked = isPanelLocked(info.which)
     -- Panel mouse drives dragging (only when unlocked); slot mouse drives the
     -- click-to-announce (only when locked) so the two never fight.
     info.panel:EnableMouse(not locked)
@@ -250,8 +251,8 @@ end
 -- User Background block (buffTracker* keys), shared by BOTH grids; the green
 -- unlock border wins while the panels are draggable so they stay findable.
 function BuffTrackerView:ApplyStyle()
-  local locked = isPanelLocked()
   for _, panel in ipairs({ self.playerPanel, self.petPanel }) do
+    local locked = isPanelLocked(panel == self.petPanel and "Pet" or "Player")
     Nock.UI.ApplyUserPanelStyle(panel, "buffTracker")
     if not locked then
       panel:SetBackdropBorderColor(unpack(C.COLORS.BORDER_UNLOCK))
@@ -424,6 +425,12 @@ function BuffTrackerView:Refresh(state)
   -- utility auras, but the player/pet buff tracker (food, scrolls, tracked
   -- consumables) stays useful alongside it — user call.
   if not isEnabled() then
+    if self.playerPanel:IsShown() then self.playerPanel:Hide() end
+    if self.petPanel:IsShown()    then self.petPanel:Hide()    end
+    return
+  end
+  -- Guided wizard: both grids belong to the trackers step.
+  if Nock.WizardHides("buffs.player") then
     if self.playerPanel:IsShown() then self.playerPanel:Hide() end
     if self.petPanel:IsShown()    then self.petPanel:Hide()    end
     return

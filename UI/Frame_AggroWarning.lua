@@ -64,6 +64,7 @@ function View:OnInitialize()
   f._editBG = editBG
 
   Nock.UI.RegisterNudgeable(f, {
+    key = "aggro",
     label = "Aggro flash",
     clickTarget = editBG,
     get = function() local p = profile(); return p and p.aggroPosition end,
@@ -82,6 +83,9 @@ end
 function View:ApplyVisuals()
   local p = profile()
   if not p then return end
+  -- The edit overlay follows the on/off switch (ApplyLock); a visuals change
+  -- is how the settings window and the wizard announce a flip of it.
+  if self.frame and self.frame._editBG then self:ApplyLock() end
   local size = tonumber(p.aggroSize) or 300
   self.frame:SetSize(size, size)
   local path = p.aggroTexture
@@ -112,7 +116,10 @@ end
 -- Unlocked: the overlay shows (and the frame with it) so it can be found and
 -- dragged; locked: the overlay goes and the flash follows state again.
 function View:ApplyLock()
-  local locked = Nock.IsLocked()
+  -- The flash is invisible when idle, so its preview IS the edit overlay:
+  -- one keyed reading covers both.
+  local p = profile()
+  local locked = Nock.IsLockedFor("aggro") or (p ~= nil and p.aggroEnabled == false)
   self.frame._editBG:SetShown(not locked)
   if not locked then
     self.tex:Hide(); self.frame:Show()
@@ -131,7 +138,12 @@ function View:Demo(seconds)
 end
 
 function View:Refresh(state)
-  if not Nock.IsLocked() then return end   -- edit mode owns the frame
+  if Nock.WizardHides("aggro") then
+    if self.frame:IsShown() then self.frame:Hide() end
+    self._shown = nil
+    return
+  end
+  if not Nock.IsLockedFor("aggro") then return end   -- edit mode owns the frame
   local on = state and state.aggro and state.aggro.active or false
   if self._demoUntil and GetTime() < self._demoUntil then on = true end
   if on == self._shown then return end

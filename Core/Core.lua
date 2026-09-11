@@ -887,10 +887,10 @@ function Nock:HandleSlashCommand(input)
     else
       self:Print("Mailbox not loaded.")
     end
-  elseif input == "setup" or input == "wizard" then
+  elseif input == "setup" or input == "wizard" or input == "setup guided" or input == "wizard guided" then
     local m = self:GetModule("Onboarding", true)
     if m and m.Command then
-      m:Command()
+      m:Command(input:find("guided") and "guided" or nil)
     else
       self:Print("Onboarding not loaded.")
     end

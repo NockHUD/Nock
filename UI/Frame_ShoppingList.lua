@@ -37,7 +37,7 @@ local COLOR_TOGGLE_OFF = { 0.45, 0.45, 0.45, 1 } -- the show-stocked toggle at r
 
 local function isEnabled() return (Nock.db and Nock.db.profile and Nock.db.profile.shoppingEnabled) ~= false end
 local function showCompleted() return (Nock.db and Nock.db.profile and Nock.db.profile.shoppingShowCompleted) == true end
-local function isLocked()  return Nock.IsLocked() end
+local function isLocked()  return Nock.IsLockedFor("shopping") end
 local function contentWidth()
   local p = Nock.db and Nock.db.profile
   return (p and p.shoppingWidth) or 210
@@ -115,6 +115,7 @@ function ShoppingView:OnInitialize()
     Nock.db.profile.shoppingPosition = { point = point, relPoint = relPoint, x = x, y = y }
   end)
   Nock.UI.RegisterNudgeable(panel, {
+    key     = "shopping",
     label   = "Shopping List",
     get     = function() return Nock.db.profile.shoppingPosition end,
     set     = function(pos)
@@ -251,6 +252,11 @@ function ShoppingView:SetManual(mode)
 end
 
 function ShoppingView:Refresh(state)
+  -- Guided wizard: this frame's step has not been reached yet.
+  if Nock.WizardHides("shopping") then
+    if self.panel:IsShown() then self.panel:Hide() end
+    return
+  end
   local sp = state.shopping
 
   -- Re-arm a manual dismiss/show whenever we (re-)enter a shopping zone, so a

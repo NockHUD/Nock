@@ -118,6 +118,7 @@ function ReactCorners:SetupMove(slot, posKey, toggleKey, label)
     view:ApplyLayout()
   end)
   Nock.UI.RegisterNudgeable(slot, {
+    key     = "react.corners",
     label   = label,
     active  = function()
       local p = profile()
@@ -137,7 +138,7 @@ end
 -- can grab this" cue; locked = mouse-transparent so combat clicks pass through.
 -- PaintReactSlot never touches the border, so the tint survives repaints.
 function ReactCorners:ApplyLock()
-  local editing = not Nock.IsLocked()
+  local editing = not Nock.IsLockedFor("react.corners")
   self.aspect:EnableMouse(editing)
   self.mark:EnableMouse(editing)
   if editing then
@@ -219,7 +220,8 @@ ReactCorners.refreshInterval = 0.1
 
 function ReactCorners:Refresh(state)
   local p = Nock.db and Nock.db.profile
-  local react = Nock.HudIsReact()
+  -- Guided wizard: the corners come with the React page, not the HUD page.
+  local react = Nock.HudIsReact() and not Nock.WizardHides("react.corners")
 
   -- Aspect: full colour for whatever is up, desaturated Hawk when none.
   -- exp/dur are forced to 0 -- an aspect is a steady aura and a countdown on it

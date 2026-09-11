@@ -94,5 +94,24 @@ Nock.UI.RegisterNudgeable(c, { label = "Late", get = function() end, set = funct
 EditMode:RefreshPads()
 ok(reg[3].tag and reg[3].tag:IsShown() and reg[3].tag.text:GetText() == "Late", "late registration tagged")
 
+-- Guided wizard: a tag shows only for a frame whose step is live.
+local liveKeys = nil   -- nil = not guided
+function Nock.IsLockedFor(key)
+  if Nock.IsLocked() then return true end
+  if liveKeys == nil then return false end
+  return not (liveKeys["*"] or (key and liveKeys[key]))
+end
+Nock.UI.RegisterNudgeable(a, { label = "Cast Bar", key = "castbar", get = function() end, set = function() end })
+Nock.UI.RegisterNudgeable(b, { label = "HUD box", key = "hud", get = function() end, set = function() end })
+locked = false
+liveKeys = { hud = true }
+EditMode:RefreshPads()
+ok(reg[2].tag and reg[2].tag:IsShown(), "guided: the live frame keeps its tag")
+ok(not (reg[1].tag and reg[1].tag:IsShown()), "guided: a frame off the current step wears no tag")
+liveKeys = { ["*"] = true }
+EditMode:RefreshPads()
+ok(reg[1].tag and reg[1].tag:IsShown(), "guided finish ('*'): every tag shows again")
+liveKeys = nil
+
 print(("edit_tags_test: %d passed, %d failed"):format(pass, fail))
 if fail > 0 then os.exit(1) end

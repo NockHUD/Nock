@@ -40,6 +40,11 @@ function HUD:ApplyShown()
     self.frame:Hide()
     return false
   end
+  -- Guided wizard: the HUD is the first thing revealed, but not on page one.
+  if Nock.WizardHides("hud") then
+    self.frame:Hide()
+    return false
+  end
 
   local inCombat = Nock.state.player.inCombat
   -- demo.hudForceShow: the onboarding wizard previews the real HUD, so it must
@@ -168,7 +173,7 @@ function HUD:ApplyBackground()
   -- visuals changes (incl. the free-placement toggle) repaint through.
   -- Draggable while unlocked, except in free placement, where the box is
   -- invisible and must not eat clicks meant for the world behind it.
-  f:EnableMouse(not Nock.IsLocked() and not Nock.FreeLayoutActive())
+  f:EnableMouse(not Nock.IsLockedFor("hud") and not Nock.FreeLayoutActive())
   -- Rebuild the edge texture/size first (SetBackdrop resets colors, set below).
   Nock.UI.ApplyHudBackdrop(f)
   -- Keep the seamless glued panels (totem / pet status / repair) in sync.
@@ -188,7 +193,7 @@ function HUD:ApplyBackground()
     f:SetBackdropBorderColor(0, 0, 0, 0)
     return
   end
-  if not Nock.IsLocked() then
+  if not Nock.IsLockedFor("hud") then
     f:SetBackdropColor(unpack(C.COLORS.BG))
     f:SetBackdropBorderColor(unpack(C.COLORS.BORDER_UNLOCK))
     return
@@ -456,6 +461,7 @@ function HUD:RegisterRowNudgeables()
     local m = Nock:GetModule(name, true)
     if m and m.frame then
       Nock.UI.RegisterNudgeable(m.frame, {
+        key     = "hud",   -- the rows travel with the box in the guided wizard
         label   = ROW_LABEL[name] or name,
         active  = function() return Nock.FreeLayoutActive() end,
         get     = function()
@@ -514,7 +520,7 @@ function HUD:LayoutChildrenFree()
     end
   end
 
-  local editable = not Nock.IsLocked()
+  local editable = not Nock.IsLockedFor("hud")
   for i = 1, #LAYOUT do
     local entry = LAYOUT[i]
     local m = Nock:GetModule(entry.module, true)
@@ -551,7 +557,7 @@ end
 -- Flip the per-row edit state (mouse + border) on lock/unlock without a full
 -- relayout. Only meaningful in free mode; grid mode keeps rows non-interactive.
 function HUD:ApplyRowDragState()
-  local editable = Nock.FreeLayoutActive() and not Nock.IsLocked()
+  local editable = Nock.FreeLayoutActive() and not Nock.IsLockedFor("hud")
   for i = 1, #LAYOUT do
     local m = Nock:GetModule(LAYOUT[i].module, true)
     if m and m.frame and m.frame._editBG then
@@ -580,6 +586,7 @@ function HUD:BuildFrame()
   end)
   self.frame = f
   Nock.UI.RegisterNudgeable(f, {
+    key     = "hud",
     label   = "HUD box",
     tagPoint = "TOPRIGHT",   -- the rows' tags take the top-left corners
     -- In free placement the box is hidden and every piece moves itself — a pad

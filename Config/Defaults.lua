@@ -1225,6 +1225,8 @@ Nock.Defaults = {
     -- /reload or logout kills the wizard before Teardown can relock, the
     -- next login sees this and restores the locked state.
     wizardLockPending = false,
+    -- The wizard window's last drag spot; false = docked to the right edge.
+    wizardPosition    = false,
   },
 
   -- Account-wide caches. Weapon/ammo tooltip parsing is expensive, so the

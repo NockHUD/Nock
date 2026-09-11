@@ -115,6 +115,7 @@ function HelpersView:OnInitialize()
     Nock.db.profile.helpersPosition = { point = point, relPoint = relPoint, x = x, y = y }
   end)
   Nock.UI.RegisterNudgeable(panel, {
+    key     = "helpers",
     label   = "Helpers",
     get     = function()
       local p = Nock.db.profile.helpersPosition
@@ -255,7 +256,7 @@ function HelpersView:ApplyPosition()
 end
 
 function HelpersView:ApplyLock()
-  local locked = Nock.IsLocked()
+  local locked = Nock.IsLockedFor("helpers")
   self.frame:EnableMouse(not locked)
   self:ApplyStyle()
 end
@@ -264,7 +265,7 @@ end
 -- the panel is draggable so it stays findable.
 function HelpersView:ApplyStyle()
   Nock.UI.ApplyUserPanelStyle(self.frame, "helpers")
-  if not Nock.IsLocked() then
+  if not Nock.IsLockedFor("helpers") then
     self.frame:SetBackdropBorderColor(unpack(C.COLORS.BORDER_UNLOCK))
   end
 end
@@ -344,7 +345,13 @@ local function getPreviewList()
 end
 
 function HelpersView:Refresh(state)
-  local unlocked = not Nock.IsLocked()
+  -- Guided wizard: the helpers step has not been reached yet.
+  if Nock.WizardHides("helpers") then
+    if self.frame:IsShown() then self.frame:Hide() end
+    return
+  end
+  -- Preview pills: unlocked (and revealed), or the wizard's helpers page.
+  local unlocked = Nock.EditPreview("helpers") or state.demo.helpersSample == true
   local list = state.helpers
   if unlocked and #list == 0 then list = getPreviewList() end
 
@@ -356,7 +363,9 @@ function HelpersView:Refresh(state)
     or Nock.PvPHides(p, "pvpHideHelpers")
     or Nock.state.helpersHiddenByWA
     or Nock.state.player.inCombat
-  if suppressed and not unlocked then
+  -- Switched off: no preview either -- the absence is the preview of that
+  -- choice (the wizard's Helpers row switch must take effect on the spot).
+  if (p and p.showHelpers == false) or (suppressed and not unlocked) then
     if self.frame:IsShown() then
       for _, slot in ipairs(self.slots) do slot:Hide() end
       self.frame:Hide()

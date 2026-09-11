@@ -79,6 +79,7 @@ function WarningsView:OnInitialize()
   container._editBG = editBG
 
   Nock.UI.RegisterNudgeable(container, {
+    key     = "warnings",
     label   = "Warnings",
     clickTarget = editBG,
     get     = function() return Nock.db.profile.warningsPosition end,
@@ -117,7 +118,7 @@ end
 -- the row is mouse-transparent as before.
 function WarningsView:ApplyLock()
   local bg = self.frame._editBG
-  if Nock.IsLocked() then bg:Hide() else bg:Show() end
+  if Nock.IsLockedFor("warnings") then bg:Hide() else bg:Show() end
 end
 
 local function setGlow(sq, severity)
@@ -149,7 +150,8 @@ end
 
 function WarningsView:Refresh(state)
   -- Global disable: hide the whole panel + stop any active alert glows.
-  if Nock.db and Nock.db.profile and Nock.db.profile.showWarnings == false then
+  -- ...or the guided wizard has not reached the warnings step yet.
+  if (Nock.db and Nock.db.profile and Nock.db.profile.showWarnings == false) or Nock.WizardHides("warnings") then
     if not self._hidden then
       for _, sq in ipairs(self.squares) do
         if sq._glowing then

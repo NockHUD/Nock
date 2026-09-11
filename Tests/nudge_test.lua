@@ -195,5 +195,46 @@ Nock.EditMode:Nudge({
 }, "right", 1)
 ok(plain.x == 11 and plain.point == "CENTER", "no capture: GetPoint seeding unchanged")
 
+-- Guided wizard: SelectByKey and FindNudgeable
+do
+  local fr = { IsShown = function() return true end }
+  Nock.UI.RegisterNudgeable(fr, { label = "Warnings", key = "warnings", get = function() end, set = function() end })
+  local e = Nock.UI.FindNudgeable("warnings")
+  ok(e and e.frame == fr, "FindNudgeable returns the keyed entry")
+  ok(Nock.UI.FindNudgeable("nope") == nil, "unknown key: nil")
+  ok(Nock.EditMode:SelectByKey("warnings") == fr, "SelectByKey selects and returns the frame")
+  ok(Nock.EditMode:IsSelected(fr), "it is the selection")
+  ok(Nock.EditMode:SelectByKey("nope") == nil, "unknown key: nothing selected, nil")
+end
+
+-- Edit focus: ToggleFocus from the element list; a same-value lock broadcast keeps the selection
+do
+  Nock.state = Nock.state or {}
+  Nock.state.editFocus = false
+  local hadIsLocked = Nock.IsLocked
+  Nock.IsLocked = Nock.IsLocked or function() return false end
+  local sent = {}
+  Nock.SendMessage = function(_, msg, payload) sent[#sent + 1] = { msg = msg, payload = payload } end
+  local fx = { IsShown = function() return true end }
+  local fy = { IsShown = function() return true end }
+  Nock.UI.RegisterNudgeable(fx, { label = "X", key = "x", get = function() end, set = function() end })
+  Nock.UI.RegisterNudgeable(fy, { label = "Y", key = "y", get = function() end, set = function() end })
+  Nock.EditMode._lastLocked = false
+  Nock.EditMode:ToggleFocus(fx)
+  ok(Nock.state.editFocus == "x" and Nock.EditMode:IsSelected(fx), "list click: selected and focused")
+  ok(sent[#sent] and sent[#sent].msg == "NOCK_LOCK_CHANGED", "focus is announced on the lock channel")
+  Nock.EditMode:OnLockChanged(nil, false)
+  ok(Nock.EditMode:IsSelected(fx) and Nock.state.editFocus == "x", "same lock value: selection and focus survive")
+  Nock.EditMode:ToggleFocus(fy)
+  ok(Nock.state.editFocus == "y" and Nock.EditMode:IsSelected(fy), "another row: focus moves")
+  Nock.EditMode:ToggleFocus(fy)
+  ok(Nock.state.editFocus == false and not Nock.EditMode:IsSelected(fy), "same row again: unfocused and deselected")
+  Nock.EditMode:ToggleFocus(fx)
+  Nock.EditMode:OnLockChanged(nil, true)
+  ok(Nock.state.editFocus == false and not Nock.EditMode:IsSelected(fx), "a real lock flip clears focus and selection")
+  Nock.SendMessage = nil
+  Nock.IsLocked = hadIsLocked
+end
+
 print(("nudge_test: %d passed, %d failed"):format(pass, fail))
 if fail > 0 then os.exit(1) end

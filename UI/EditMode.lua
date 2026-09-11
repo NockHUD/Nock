@@ -40,6 +40,13 @@ end
 -- module whose OnInitialize runs twice replaces its spec instead of duplicating.
 local registry = {}   -- array of { frame = frame, spec = spec }
 
+-- Lock reading for one registration: the guided wizard (Modules/Onboarding)
+-- narrows the global unlock to the current step's keys -- Core/State.lua.
+local function lockedFor(spec)
+  if Nock.IsLockedFor then return Nock.IsLockedFor(spec and spec.key) end
+  return Nock.IsLocked() and true or false
+end
+
 function Nock.UI.RegisterNudgeable(frame, spec)
   for i = 1, #registry do
     if registry[i].frame == frame then
@@ -51,6 +58,7 @@ function Nock.UI.RegisterNudgeable(frame, spec)
 
   -- Click-to-select. Every panel does EnableMouse(not locked), so OnMouseDown
   -- fires exactly while unlocked — the window where selecting means anything.
+  -- The guided wizard narrows that to the current step's frames (lockedFor).
   -- Selecting on the DOWN edge (not a click/drag disambiguation) is deliberate:
   -- grabbing a frame to drag it should also bring up its pad.
   -- clickTarget covers the totem tracker, whose drag is caught by an overlay
@@ -59,6 +67,7 @@ function Nock.UI.RegisterNudgeable(frame, spec)
   if target and target.HookScript and not target._nockSelectHooked then
     target._nockSelectHooked = true
     target:HookScript("OnMouseDown", function()
+      if lockedFor(spec) then return end
       EditMode:SelectByFrame(frame)
     end)
   end
@@ -70,7 +79,7 @@ function Nock.UI.RegisterNudgeable(frame, spec)
   local handle = spec.dragTarget or spec.clickTarget or frame
   if handle and handle.HookScript and not handle._nockSnapHooked then
     handle._nockSnapHooked = true
-    handle:HookScript("OnDragStart", function() EditMode:OnDragBegin(frame) end)
+    handle:HookScript("OnDragStart", function() if not lockedFor(spec) then EditMode:OnDragBegin(frame) end end)
     handle:HookScript("OnDragStop",  function() EditMode:OnDragEnd(frame) end)
   end
   -- The element list hooks and lists frames as they register; most register
@@ -222,6 +231,16 @@ function EditMode:DragTick()
   grid:SetGhost({ left = rect.left + dx, right = rect.right + dx, top = rect.top + dy, bottom = rect.bottom + dy })
 end
 
+-- The first registration carrying this key (the HUD rows all say "hud"; the
+-- box registers first, so it is the one a wizard page auto-selects).
+function Nock.UI.FindNudgeable(key)
+  if key == nil then return nil end
+  for i = 1, #registry do
+    if registry[i].spec.key == key then return registry[i] end
+  end
+  return nil
+end
+
 function Nock.UI.GetNudgeables()
   return registry
 end
@@ -231,14 +250,19 @@ end
 -- the list itself: spec.chrome) left out, sorted by label. Each row is
 -- { label, frame, selected }; a fresh list every call -- this runs on events,
 -- never on the tick.
-function Nock.UI.EditListRows(entries, selectedFrame)
+-- `lockedFor(spec)` (optional) drops the entries the guided wizard has locked;
+-- `hiddenByScope(spec)` (optional) keeps a row whose frame is off screen only
+-- because another frame holds the focus -- the list is how you leave it.
+function Nock.UI.EditListRows(entries, selectedFrame, lockedFor, hiddenByScope)
   local rows = {}
   for i = 1, #entries do
     local e = entries[i]
     local spec = e.spec
     local shown = e.frame and e.frame.IsShown and e.frame:IsShown()
+    if not shown and hiddenByScope and hiddenByScope(spec) then shown = true end
     local activeOk = (not spec.active) or (spec.active() and true or false)
-    if shown and activeOk and not spec.chrome then
+    local editable = (not lockedFor) or not lockedFor(spec)
+    if shown and activeOk and editable and not spec.chrome then
       rows[#rows + 1] = { label = spec.label or "?", frame = e.frame, selected = (e.frame == selectedFrame) }
     end
   end
@@ -286,6 +310,15 @@ function EditMode:SelectByFrame(frame)
   self:NotifySelection()
 end
 
+-- The wizard's "put the pad on this page's frame": the first shown
+-- registration with the key, or nil when there is none on screen.
+function EditMode:SelectByKey(key)
+  local e = Nock.UI.FindNudgeable(key)
+  if not (e and e.frame and e.frame.IsShown and e.frame:IsShown()) then return nil end
+  self:SelectByFrame(e.frame)
+  return e.frame
+end
+
 -- The element list mirrors the selection; it hears about changes here.
 function EditMode:NotifySelection()
   if self.SendMessage then self:SendMessage("NOCK_EDIT_SELECTION") end
@@ -296,16 +329,56 @@ function EditMode:IsSelected(frame)
 end
 
 function EditMode:ClearSelection()
-  if self._selected == nil then return end
+  if self._selected == nil and not (Nock.state and Nock.state.editFocus) then return end
   self._selected = nil
+  self:SetFocus(nil)
   self:RefreshPads()
   self:NotifySelection()
 end
 
-function EditMode:OnLockChanged()
+-- Focus: one frame singled out, every other keyed frame hidden (Core/State.lua
+-- WizardHides / IsLockedFor read state.editFocus). Frames re-read their lock
+-- from NOCK_LOCK_CHANGED, so the scope change is announced the same way; the
+-- payload is the unchanged lock, which OnLockChanged tells apart from a real
+-- lock flip so the selection survives.
+function EditMode:SetFocus(key)
+  local st = Nock.state
+  if not st then return end
+  key = key or false
+  if st.editFocus == key then return end
+  st.editFocus = key
+  if Nock.SendMessage then Nock:SendMessage("NOCK_LOCK_CHANGED", Nock.IsLocked()) end
+end
+
+function EditMode:IsFocused(frame)
+  local st = Nock.state
+  local e = frame and entryFor(frame)
+  return (st and st.editFocus and e and e.spec.key == st.editFocus) and true or false
+end
+
+-- The element list's click: select + focus; the same row again lets go.
+function EditMode:ToggleFocus(frame)
+  if self._selected == frame and self:IsFocused(frame) then
+    self:ClearSelection()
+    return
+  end
+  local e = entryFor(frame)
+  self:SelectByFrame(frame)
+  self:SetFocus(e and e.spec.key or nil)
+end
+
+function EditMode:OnLockChanged(_, locked)
   -- Relocking ends the editing session; unlocking starts a fresh one. Either
-  -- way the old selection is stale, so drop it before rebuilding.
+  -- way the old selection is stale, so drop it before rebuilding. A broadcast
+  -- carrying the lock value already seen is a scope change (wizard step,
+  -- focus): repaint, keep the selection.
+  if locked ~= nil and locked == self._lastLocked then
+    self:RefreshPads()
+    return
+  end
+  self._lastLocked = locked
   self._selected = nil
+  if Nock.state then Nock.state.editFocus = false end
   self:RefreshPads()
   self:NotifySelection()
 end
@@ -503,12 +576,11 @@ function Nock.UI.TagVisible(locked)
 end
 
 function EditMode:RefreshTags()
-  local locked = Nock.IsLocked() and true or false
   local entries = Nock.UI.GetNudgeables()
   for i = 1, #entries do
     local e = entries[i]
     -- The edit-mode chrome (the bar, the element list) needs no name tag.
-    if Nock.UI.TagVisible(locked) and not e.spec.chrome then
+    if Nock.UI.TagVisible(lockedFor(e.spec)) and not e.spec.chrome then
       if not e.tag then e.tag = buildTag(e.frame) end
       local label = e.spec.label or "?"
       if e.tag._label ~= label then
@@ -562,7 +634,7 @@ local function padWanted(entry)
   local activeOk = true
   if entry.spec.active then activeOk = entry.spec.active() and true or false end
   return Nock.UI.PadVisible(
-    Nock.IsLocked() and true or false,
+    lockedFor(entry.spec),
     entry.frame:IsShown() and true or false,
     activeOk,
     EditMode:IsSelected(entry.frame))
@@ -614,7 +686,8 @@ local OUTLINE_EDGE = 2
 
 function EditMode:RefreshOutline()
   local frame = self._selected
-  local wanted = frame and not Nock.IsLocked() and frame:IsShown()
+  local entry = frame and entryFor(frame)
+  local wanted = frame and frame:IsShown() and not lockedFor(entry and entry.spec)
   if not wanted then
     if self.outline and self.outline:IsShown() then self.outline:Hide() end
     return

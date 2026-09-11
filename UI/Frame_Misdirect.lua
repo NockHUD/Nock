@@ -113,7 +113,7 @@ local function isSapperEnabled()
   return p.mdSapperEnabled == true
 end
 local function isLocked()
-  return Nock.IsLocked()
+  return Nock.IsLockedFor("misdirect")
 end
 local function announceOn()
   local p = Nock.db and Nock.db.profile
@@ -583,6 +583,7 @@ function MisdirectView:OnInitialize()
   panel:Hide()
 
   Nock.UI.RegisterNudgeable(panel, {
+    key     = "misdirect",
     label   = "Misdirection",
     secure  = true,   -- parents secure click-cast rows; SetPoint blocked in combat
     get     = function() return Nock.db.profile.misdirectPosition end,
@@ -917,6 +918,12 @@ function MisdirectView:Refresh(state)
   -- PvP mode (sidebar PvP): the MD panel is a raid tool. Zone changes happen
   -- out of combat; a manual flip mid-fight waits for the next regen.
   if Nock.PvPHides(Nock.db and Nock.db.profile, "pvpHideMisdirect") then
+    if self.panel:IsShown() and not InCombatLockdown() then self.panel:Hide() end
+    self._trackerN = 0
+    return
+  end
+  -- Guided wizard: the tracker step has not been reached yet (same guard).
+  if Nock.WizardHides("misdirect") then
     if self.panel:IsShown() and not InCombatLockdown() then self.panel:Hide() end
     self._trackerN = 0
     return

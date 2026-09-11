@@ -161,6 +161,7 @@ function SlammerButton:OnInitialize()
   self.waitBar = bar
 
   Nock.UI.RegisterNudgeable(a, {
+    key     = "slammer",
     label   = "Slammer button",
     get     = function() return Nock.db.profile.slammerButtonPosition end,
     set     = function(pos)
@@ -258,7 +259,7 @@ end
 function SlammerButton:ApplyLock()
   if inLockdown() then self._lockDirty = true; return end
   self._lockDirty = false
-  local editable = not Nock.IsLocked()
+  local editable = not Nock.IsLockedFor("slammer")
   self.anchor:EnableMouse(editable)
   self.button:EnableMouse(not editable)
   self._rendered = nil
@@ -285,7 +286,8 @@ function SlammerButton:Refresh(state)
   end
 
   -- Visibility: the watcher's wish, or the unlock preview.
-  local want = (s.visible or not Nock.IsLocked()) and Nock.isHunter or false
+  local want = (s.visible or Nock.EditPreview("slammer")) and Nock.isHunter
+    and not Nock.WizardHides("slammer") or false
   if want ~= self.anchor:IsShown() then
     if inLockdown() then
       self._visDirty = want

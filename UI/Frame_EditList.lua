@@ -85,8 +85,9 @@ local function buildRow(f, i)
   end
   b:SetHeight(ROW_H)
   b:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -(TITLE_H + 1 + PAD + (i - 1) * (ROW_H + ROW_GAP)))
+  -- Select + focus (everything else hides); the same row again lets go.
   b:SetScript("OnClick", function(self)
-    if self.frame and Nock.EditMode then Nock.EditMode:SelectByFrame(self.frame) end
+    if self.frame and Nock.EditMode then Nock.EditMode:ToggleFocus(self.frame) end
   end)
   return b
 end
@@ -94,7 +95,9 @@ end
 function View:PaintRows()
   local S = Skin()
   local selected = Nock.EditMode and Nock.EditMode._selected
-  local rows = Nock.UI.EditListRows(Nock.UI.GetNudgeables(), selected)
+  local rows = Nock.UI.EditListRows(Nock.UI.GetNudgeables(), selected,
+    function(spec) return Nock.IsLockedFor and Nock.IsLockedFor(spec.key, true) or false end,
+    function(spec) return Nock.WizardHides and Nock.WizardHides(spec.key) or false end)
   local f = self.panel
   local base = f:GetFrameLevel()
   for i = 1, #rows do

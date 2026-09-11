@@ -81,6 +81,7 @@ function BossBanner:OnInitialize()
   self.frame = f
 
   Nock.UI.RegisterNudgeable(f, {
+    key     = "bossbanner",
     label   = "Boss alert",
     get     = function() return Nock.db.profile.bossBannerPosition end,
     set     = function(pos)
@@ -135,7 +136,7 @@ end
 -- only up for 2.5 seconds every thirty cannot otherwise be dragged, nudged or
 -- even found — the same problem the cast bar and the tonk dial each hit.
 function BossBanner:ApplyLock()
-  local editable = not Nock.IsLocked()
+  local editable = not Nock.IsLockedFor("bossbanner")
   self.frame:EnableMouse(editable)
   self._rendered = nil
 end
@@ -158,11 +159,15 @@ function BossBanner:Refresh(state)
   local b = state.bossMark
   local nr = state.noRelease
   local source, label
-  if b.active then
+  -- The preview follows the switch: off means nothing to place.
+  local previewOn = profile("showWarnings", true) ~= false and profile("warnBossMarkEnabled", true) ~= false
+  if Nock.WizardHides("bossbanner") then
+    source, label = nil, nil   -- guided wizard: not this step yet
+  elseif b.active then
     source, label = "mark", b.text
   elseif nr and nr.active then
     source, label = "norelease", "DO NOT RELEASE"
-  elseif not Nock.IsLocked() then
+  elseif previewOn and Nock.EditPreview("bossbanner") then
     source, label = "preview", "FEIGN DEATH NOW"
   end
 

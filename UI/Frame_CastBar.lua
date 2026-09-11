@@ -71,6 +71,7 @@ function CastBarView:OnInitialize()
   self.editBG = editBG
 
   Nock.UI.RegisterNudgeable(panel, {
+    key     = "castbar",
     label   = "Cast Bar",
     active  = function() return Nock.FreeLayoutActive() end,
     get     = function() return Nock.db.profile.castBarPosition end,
@@ -156,7 +157,12 @@ local EDIT_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 -- own position means anything, and the only time it is held open while idle.
 local function isEditing()
   if not Nock.FreeLayoutActive() then return false end
-  return not Nock.IsLocked()
+  return Nock.EditPreview("castbar")
+end
+-- Draggable: the same window, narrowed to the wizard's current step.
+local function isDraggable()
+  if not Nock.FreeLayoutActive() then return false end
+  return not Nock.IsLockedFor("castbar")
 end
 
 local function freePos()
@@ -191,7 +197,7 @@ end
 function CastBarView:ApplyLock()
   -- Mouse only; the edit border rides on the panel's visibility, which Refresh
   -- owns (it reopens the panel while editing and closes it again after).
-  self.frame:EnableMouse(isEditing())
+  self.frame:EnableMouse(isDraggable())
 end
 
 function CastBarView:OnVisualsChanged()
@@ -202,6 +208,11 @@ function CastBarView:OnVisualsChanged()
 end
 
 function CastBarView:Refresh(state)
+  -- Guided wizard: this frame's step has not been reached yet.
+  if Nock.WizardHides("castbar") then
+    if self.frame:IsShown() then self.frame:Hide() end
+    return
+  end
   -- The cluster modes carry their own glued cast bars (UI/Frame_ReactCastBar.lua,
   -- the FluffyCluster's cast slot) — this bar is Classic's.
   local p = Nock.db and Nock.db.profile

@@ -184,6 +184,7 @@ function TotemTrackerView:Refresh(state)
   local showTotem = isEnabled()
                     and Nock.HudIsClassic()
                     and (forceShaman() or (mod and mod.HasShaman and mod:HasShaman()))
+                    and not Nock.WizardHides("totemtracker")
 
   if not showTotem then
     Nock.UI.SetIconNextHighlight(self.windfurySlot, false)
@@ -195,7 +196,7 @@ function TotemTrackerView:Refresh(state)
     -- two-slot preview. Grid mode: glued, so it rides the box drag and shows
     -- where it will sit. Free placement: draggable itself (edit border via
     -- ApplyFreePanelPosition above).
-    if not Nock.IsLocked() and isEnabled()
+    if Nock.EditPreview("totemtracker") and isEnabled()
        and Nock.HudIsClassic() then
       local sz, OUTER, INNER = self._iconSz, self._OUTER, self._INNER
       self.windfurySlot:Hide()

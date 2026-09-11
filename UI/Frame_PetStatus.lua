@@ -246,9 +246,9 @@ function PetStatusView:Refresh(state)
   -- The panel is transient (hidden without a pet / active slot) and a hidden
   -- frame can't be dragged — while editing (free placement, unlocked) it's held
   -- open as a static preview instead, like the cast bar's edit preview.
-  local editing = Nock.FreeLayoutActive() and not Nock.IsLocked()
+  local editing = Nock.FreeLayoutActive() and Nock.EditPreview("petstatus")
 
-  if not (UnitExists and UnitExists("pet")) and not editing then
+  if Nock.WizardHides("petstatus") or (not (UnitExists and UnitExists("pet")) and not editing) then
     if self.frame:IsShown() then self.frame:Hide() end
     return
   end

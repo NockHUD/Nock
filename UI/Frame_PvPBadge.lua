@@ -52,6 +52,7 @@ function View:OnInitialize()
   f._editBG = editBG
 
   Nock.UI.RegisterNudgeable(f, {
+    key = "pvpbadge",
     label = "PvP tag",
     clickTarget = editBG,
     get = function() local p = profile(); return p and p.pvpBadgePosition end,
@@ -80,8 +81,9 @@ end
 
 function View:ApplyShown()
   local p = profile()
-  local unlocked = not Nock.IsLocked()
-  local on = p ~= nil and p.pvpBadge ~= false and pvpActive()
+  -- Switched off: no preview either; the wizard's toggle must show on the spot.
+  local unlocked = Nock.EditPreview("pvpbadge") and p ~= nil and p.pvpBadge ~= false
+  local on = p ~= nil and p.pvpBadge ~= false and pvpActive() and not Nock.WizardHides("pvpbadge")
   if on or unlocked then
     if not self.frame:IsShown() then self.frame:Show() end
   elseif self.frame:IsShown() then
@@ -90,7 +92,7 @@ function View:ApplyShown()
 end
 
 function View:ApplyLock()
-  local unlocked = not Nock.IsLocked()
+  local unlocked = not Nock.IsLockedFor("pvpbadge")
   self.frame._editBG:SetShown(unlocked)
   self.frame:SetBackdropBorderColor(unpack(unlocked and C.COLORS.BORDER_UNLOCK or { 1, 0.35, 0.35, 0.9 }))
   self:ApplyShown()

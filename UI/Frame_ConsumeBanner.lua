@@ -212,6 +212,7 @@ function ConsumeBanner:OnInitialize()
   showSide(self.drink, false)
 
   Nock.UI.RegisterNudgeable(f, {
+    key     = "consume",
     label   = "Eating / drinking",
     get     = function() return Nock.db.profile.consumeBannerPosition end,
     set     = function(pos)
@@ -278,7 +279,7 @@ function ConsumeBanner:ApplyVisuals()
 end
 
 function ConsumeBanner:ApplyLock()
-  local editable = not Nock.IsLocked()
+  local editable = not Nock.IsLockedFor("consume")
   self.frame:EnableMouse(editable)
   -- No border on a capsule; the unlock tint is the whole pill going green.
   if editable then
@@ -435,9 +436,13 @@ local PREVIEW_DRINK = { icon = "Interface\\Icons\\INV_Drink_18", expirationTime 
 
 function ConsumeBanner:Refresh(state)
   if not (self.eat and self.drink) then return end
+  if Nock.WizardHides("consume") then
+    if self.frame:IsShown() then self.frame:Hide() end
+    return
+  end
   local p = state.player
   local now = GetTime()
-  local unlocked = not Nock.IsLocked()
+  local unlocked = Nock.EditPreview("consume")
   local enabled = profile("consumeBannerEnabled", true) and Nock.isHunter
 
   -- No gates beyond the on/off: eating and drinking are shown wherever they

@@ -988,6 +988,20 @@ local dbfRebuildEntries
 -- buff custom lists). Filled by buildOptionsTable; run by RebuildOptionsArgs.
 local ARG_REBUILDERS = {}
 
+-- The two wizard buttons on General: close every settings surface first, the
+-- Blizzard AddOns panel included (launched from there, that fullscreen window
+-- would otherwise stay up over the wizard's live HUD previews).
+local function runWizard(arg)
+  if Nock.Settings then Nock.Settings:Close() end
+  LibStub("AceConfigDialog-3.0"):Close("Nock")
+  local blizz = _G.SettingsPanel or _G.InterfaceOptionsFrame
+  if blizz and blizz.IsShown and blizz:IsShown() and HideUIPanel then
+    HideUIPanel(blizz)
+  end
+  local m = Nock:GetModule("Onboarding", true)
+  if m and m.Command then m:Command(arg) end
+end
+
 local function buildOptionsTable()
   for i = #ARG_REBUILDERS, 1, -1 do ARG_REBUILDERS[i] = nil end
   -- The HUD look picker appears in three homes: General → HUD look
@@ -1390,20 +1404,16 @@ local function buildOptionsTable()
           runWizard = {
             type = "execute",
             name = "Run setup wizard",
-            desc = "Replay the first-run setup. All frames unlock while it is open (drag them into place) and lock again when it closes. Your existing choices are kept. Opens out of combat only.",
+            desc = "Replay the setup pages with everything on screen; each step highlights its frames. All frames unlock while it is open and lock again when it closes. Your existing choices are kept. Opens out of combat only.",
             order = 30.2,
-            func = function()
-              if Nock.Settings then Nock.Settings:Close() end
-              LibStub("AceConfigDialog-3.0"):Close("Nock")
-              -- Launched from the Blizzard AddOns panel, that fullscreen window
-              -- would otherwise stay up over the wizard's live HUD previews.
-              local blizz = _G.SettingsPanel or _G.InterfaceOptionsFrame
-              if blizz and blizz.IsShown and blizz:IsShown() and HideUIPanel then
-                HideUIPanel(blizz)
-              end
-              local m = Nock:GetModule("Onboarding", true)
-              if m and m.Command then m:Command() end
-            end,
+            func = function() runWizard(nil) end,
+          },
+          runWizardGuided = {
+            type = "execute",
+            name = "Guided walkthrough",
+            desc = "The first-run journey again: frames appear one step at a time and only the current step's frames can be dragged. Your existing choices are kept. Opens out of combat only.",
+            order = 30.25,
+            func = function() runWizard("guided") end,
           },
           bgHeader = {
             type = "header",

@@ -1,7 +1,7 @@
 -- UI/Frame_Onboarding.lua
 -- The setup wizard window: one page at a time, drawn from the page script in
--- Modules/Onboarding.lua. Deliberately sits high on the screen so the HUD it is
--- describing stays visible underneath.
+-- Modules/Onboarding.lua. Docked to the right edge by default so the centre of
+-- the screen stays free for placing frames; draggable, spot remembered.
 
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 local View = Nock:NewModule("OnboardingView", "AceEvent-3.0")
@@ -12,6 +12,7 @@ local HEADER_FONT = "Numen"
 
 local PANEL_W     = 470
 local PANEL_H     = 430
+local DOCK        = { point = "RIGHT", relPoint = "RIGHT", x = -24, y = 0 }
 local OUTER       = 16
 local BODY_TOP    = 96      -- below eyebrow + title + blurb
 local BODY_BOTTOM = 74      -- above the footer
@@ -69,19 +70,42 @@ end
 --------------------------------------------------------------------------------
 -- Window
 --------------------------------------------------------------------------------
+-- A saved spot is honoured only while its anchor (offset from the screen
+-- centre, PANEL_W/H wide) still overlaps the screen; a resolution change or a
+-- drag off the edge falls back to the dock. Pure, for the test.
+function View.PositionValid(pos, screenW, screenH)
+  if type(pos) ~= "table" then return false end
+  if type(pos.x) ~= "number" or type(pos.y) ~= "number" or type(pos.point) ~= "string" then return false end
+  local halfW, halfH = screenW / 2 + PANEL_W, screenH / 2 + PANEL_H
+  return pos.x > -halfW and pos.x < halfW and pos.y > -halfH and pos.y < halfH
+end
+
+local function savedPosition()
+  local ch = Nock.db and Nock.db.char
+  local pos = ch and ch.wizardPosition
+  local w = UIParent and UIParent.GetWidth and UIParent:GetWidth() or 1920
+  local h = UIParent and UIParent.GetHeight and UIParent:GetHeight() or 1080
+  return View.PositionValid(pos, w, h) and pos or DOCK
+end
+
 function View:EnsureFrame()
   if self.frame then return self.frame end
 
   local f = CreateFrame("Frame", "NockOnboarding", UIParent, "BackdropTemplate")
   f:SetSize(PANEL_W, PANEL_H)
-  -- High on the screen: the HUD sits at CENTER,-150 by default and the whole
-  -- point of the wizard is watching the HUD react.
-  f:SetPoint("CENTER", UIParent, "CENTER", 0, 170)
+  local pos = savedPosition()
+  f:SetPoint(pos.point, UIParent, pos.relPoint, pos.x, pos.y)
   f:SetFrameStrata("DIALOG")
   Nock.UI.ApplyBackdrop(f, { 0.03, 0.04, 0.05, 0.96 }, COL_BORDER)
   f:SetMovable(true); f:EnableMouse(true); f:RegisterForDrag("LeftButton")
   f:SetScript("OnDragStart", f.StartMoving)
-  f:SetScript("OnDragStop", f.StopMovingOrSizing)
+  f:SetScript("OnDragStop", function(self)
+    self:StopMovingOrSizing()
+    local point, _, relPoint, x, y = self:GetPoint()
+    if Nock.db and Nock.db.char then
+      Nock.db.char.wizardPosition = { point = point, relPoint = relPoint, x = x, y = y }
+    end
+  end)
   f:Hide()
   f:SetScript("OnHide", function()
     local e = engine()

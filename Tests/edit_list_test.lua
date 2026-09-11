@@ -87,5 +87,23 @@ ok(a ~= b, "fresh table per call")
 --------------------------------------------------------------------------------
 ok(#Nock.UI.EditListRows({}, nil) == 0, "empty registry lists nothing")
 
+-- Guided wizard: rows are filtered by a lockedFor(spec) predicate when given.
+do
+  local fa = frame(true)
+  local fb = frame(true)
+  local two = {
+    { frame = fa, spec = { label = "Cast Bar", key = "castbar" } },
+    { frame = fb, spec = { label = "HUD box",  key = "hud" } },
+  }
+  local filtered = Nock.UI.EditListRows(two, nil, function(spec) return spec.key ~= "hud" end)
+  ok(#filtered == 1 and filtered[1].label == "HUD box", "EditListRows drops entries the predicate calls locked")
+  ok(#Nock.UI.EditListRows(two, nil) == 2, "no predicate: unfiltered")
+  -- focus: fb is hidden on screen, but only by the scope -> its row stays
+  fb:Hide()
+  ok(#Nock.UI.EditListRows(two, nil, nil, function(spec) return spec.key == "hud" end) == 2, "hiddenByScope keeps the focused-out row")
+  ok(#Nock.UI.EditListRows(two, nil, nil, function() return false end) == 1, "a frame hidden for its own reasons still drops")
+  fb:Show()
+end
+
 print(("edit_list_test: %d passed, %d failed"):format(pass, fail))
 if fail > 0 then os.exit(1) end

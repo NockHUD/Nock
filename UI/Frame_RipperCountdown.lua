@@ -105,6 +105,7 @@ function Ripper:OnInitialize()
   self.frame = f
 
   Nock.UI.RegisterNudgeable(f, {
+    key     = "ripper",
     label   = "Ripper countdown",
     get     = function() return Nock.db.profile.ripperCountdownPosition end,
     set     = function(pos)
@@ -177,7 +178,7 @@ end
 -- for ten seconds once a raid night cannot otherwise be dragged, nudged or
 -- even found.
 function Ripper:ApplyLock()
-  local editable = not Nock.IsLocked()
+  local editable = not Nock.IsLockedFor("ripper")
   self.frame:EnableMouse(editable)
   self._rendered = nil
 end
@@ -196,6 +197,12 @@ local function itemIcon()
 end
 
 function Ripper:Refresh(state)
+  -- Guided wizard: this frame's step has not been reached yet.
+  if Nock.WizardHides("ripper") then
+    if self.frame:IsShown() then self.frame:Hide() end
+    self._rendered = nil
+    return
+  end
   -- The size slider lives in the warning catalog, whose generic threshold
   -- setter writes the profile key without broadcasting a visuals change.
   local size = profile("ripperTextSize", 72)
@@ -209,7 +216,7 @@ function Ripper:Refresh(state)
   local label, go, icon
   if on and r.active and r.label then
     label, go, icon = r.label, r.go, r.icon
-  elseif not Nock.IsLocked() then
+  elseif on and Nock.EditPreview("ripper") then   -- off = nothing to place
     label, go = "ALT F4", true
   end
 

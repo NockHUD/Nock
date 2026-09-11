@@ -4,6 +4,21 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 ## Unreleased
 
+- **Guided setup.** The first-run wizard now reveals Nock one step at a time:
+  the screen starts empty, each page puts its own frames on it (HUD, then
+  warnings, then trackers, then helpers) and only that page's frames can be
+  dragged, with the first one already selected. Earlier frames stay where you
+  put them. The wizard window docks to the right edge, drags, and remembers
+  its spot. A replay from Settings (`Run setup wizard`) shows everything and
+  highlights each page's frames instead; `Guided walkthrough` (or
+  `/nock wizard guided`) runs the step-by-step version again. A new
+  Helpers & alerts page switches on the helpers row, the eating/drinking pill,
+  the retry timer and the PvP tag, and the aggro flash joined the Warnings
+  page.
+- **Edit focus.** While frames are unlocked, clicking a frame in the element
+  list singles it out: everything else hides until you click that row again
+  (or lock). Rows stay listed, so you can hop from one frame to the next.
+
 - **A new settings window.** `/nock`, the minimap button and Interface → AddOns
   → Nock now open Nock's own window instead of the stock addon dialog: a
   sidebar of pages grouped as General, HUD & Bars, Alerts, Trackers and

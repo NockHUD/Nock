@@ -224,6 +224,7 @@ function ReactBuffs:SetupMove()
   end)
   -- One pad for the frame, mode-aware: the position key follows the host.
   Nock.UI.RegisterNudgeable(panel, {
+    key    = "react.buffs",
     label  = "Buff Row",
     active = function() return view:IsEnabled() end,
     get    = function() return Nock.db.profile[view:PosKey()] end,
@@ -239,7 +240,7 @@ end
 -- Unlocked = draggable; locked = mouse-transparent so combat clicks pass
 -- through the (invisible) row. The slot children never take the mouse.
 function ReactBuffs:ApplyLock()
-  self.frame:EnableMouse(not Nock.IsLocked())
+  self.frame:EnableMouse(not Nock.IsLockedFor("react.buffs"))
 end
 
 -- THE single place the row anchors.
@@ -539,7 +540,7 @@ ReactBuffs.refreshInterval = 0.1
 
 function ReactBuffs:Refresh(state)
   local p = Nock.db and Nock.db.profile
-  if not (p and self:IsEnabled()) then
+  if not (p and self:IsEnabled()) or Nock.WizardHides("react.buffs") then
     if self.frame:IsShown() then self.frame:Hide() end
     return
   end
@@ -576,7 +577,7 @@ function ReactBuffs:Refresh(state)
   -- the user sees exactly where live procs will appear. Spell textures resolve
   -- lazily (ReactCorners:HawkIcon convention -- a cold login may not have the
   -- spellbook yet), falling back to the question mark until they land.
-  if not Nock.IsLocked() then
+  if Nock.EditPreview("react.buffs") then
     if not self.editBG:IsShown() then self.editBG:Show() end
     if not self._previewIcons then
       local a = spellIcon(C.SpellID.RAPID_FIRE)

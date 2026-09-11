@@ -134,6 +134,7 @@ function TonkDial:OnInitialize()
   -- tonkDialPosition defaults to `false`, so get() returns false and
   -- ComputeNudge seeds from the live frame rather than teleporting to {0,0}.
   Nock.UI.RegisterNudgeable(f, {
+    key     = "tonkdial",
     label   = "Steam Tonk dial",
     get     = function() return Nock.db.profile.tonkDialPosition end,
     set     = function(pos)
@@ -179,7 +180,7 @@ end
 -- unlocked the dial holds itself open as an edit preview, and a frame that is
 -- hidden when idle cannot be dragged, resized or reached by the nudge pad.
 function TonkDial:ApplyLock()
-  local editable = not Nock.IsLocked()
+  local editable = not Nock.IsLockedFor("tonkdial")
   self.frame:EnableMouse(editable)
   if editable then self.grip:Show() else self.grip:Hide() end
   self._rendered = nil
@@ -196,6 +197,12 @@ function TonkDial:EnsureIcon()
 end
 
 function TonkDial:Refresh(state)
+  -- Guided wizard: this frame's step has not been reached yet.
+  if Nock.WizardHides("tonkdial") then
+    if self.frame:IsShown() then self.frame:Hide() end
+    self._rendered = nil
+    return
+  end
   local t = state.player.tonk
   -- Off, or with the guard itself off, there is no countdown to draw: nothing
   -- is going to happen at the end of it.
@@ -209,7 +216,7 @@ function TonkDial:Refresh(state)
   -- would make it the exception. Re-armed from inside Refresh rather than by a
   -- standing timer -- the tick is already running, and a timer that outlives an
   -- unlock is a leak waiting to happen.
-  if not since and not Nock.IsLocked() then
+  if not since and on and Nock.EditPreview("tonkdial") then
     local now = GetTime()
     if not self._previewUntil or now >= self._previewUntil then
       self._previewUntil = now + PREVIEW_LAP

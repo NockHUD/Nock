@@ -336,10 +336,20 @@ Nock.state = {
   -- Never persisted, always wiped on wizard teardown. Modules read these to
   -- render sample content out of combat so a wizard page can show a real frame
   -- doing something instead of an empty one.
+  -- Edit focus (UI/EditMode): the key of the one frame the element list has
+  -- singled out; every other keyed frame hides until it is cleared. false = none.
+  editFocus = false,
   demo = {
     hudForceShow   = false,  -- keep the HUD visible even with hideOoc set
     rotationSample = false,  -- light a next-action icon with no target
     debuffTracker  = false,  -- fill the target-debuff grid with samples
+    helpersSample  = false,  -- show the helpers row's preview pills
+    -- Guided (spotlight) wizard: frames are revealed step by step. `revealed`
+    -- = keys the screen may show so far, `live` = the current step's keys
+    -- (the only editable ones). Both are key -> true tables, or false.
+    guided         = false,
+    revealed       = false,
+    live           = false,
   },
   -- Practice mode (Modules/Practice.lua). `active` is THE gate every live
   -- producer checks before writing the fields the simulator owns — see the
@@ -460,6 +470,49 @@ function Nock.PvPHides(p, key, active)
   end
   if not active then return false end
   return p ~= nil and p[key] == true
+end
+
+-- Guided wizard readings. A frame names itself by the `key` of its nudge
+-- registration (UI/EditMode.lua). Outside the guided wizard all three fall back
+-- to the plain lock, so no frame behaves differently on an ordinary unlock.
+-- nil = unscoped (no focus, no guided wizard); else whether `key` is inside
+-- the scope. An edit focus (one frame singled out from the element list)
+-- outranks the wizard's sets; `ignoreFocus` reads the wizard alone, for the
+-- element list, which must keep every row while one of them is focused.
+local function scoped(field, key, ignoreFocus)
+  local st = Nock.state
+  if not st then return nil end
+  local focus = st.editFocus
+  if focus and not ignoreFocus then return key == focus end
+  local d = st.demo
+  if not (d and d.guided == true) then return nil end
+  local set = d[field]
+  if type(set) ~= "table" then return false end
+  return set["*"] == true or (key ~= nil and set[key] == true)
+end
+
+-- Out of scope: the guided wizard has not reached this frame's step yet, or
+-- another frame holds the edit focus. Hide it, whatever its own toggle says.
+function Nock.WizardHides(key)
+  if key == nil then return false end
+  return scoped("revealed", key) == false
+end
+
+-- Editable now: unlocked, and inside the scope (the wizard's current step, or
+-- the focused frame). `ignoreFocus`: the wizard's reading alone.
+function Nock.IsLockedFor(key, ignoreFocus)
+  if Nock.IsLocked() then return true end
+  local l = scoped("live", key, ignoreFocus)
+  if l == nil then return false end
+  return not l
+end
+
+-- A transient frame (boss alert, eating pill, aggro overlay, ...) holds itself
+-- open as a preview exactly while it is editable: on its own wizard step, or
+-- focused, or any ordinary unlock. Earlier steps' frames stay on screen only
+-- when they show on their own, so nothing pops up "at random" later.
+function Nock.EditPreview(key)
+  return not Nock.IsLockedFor(key)
 end
 
 -- Two class sets (token -> true) differ.
