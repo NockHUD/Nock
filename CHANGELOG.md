@@ -4,6 +4,12 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 ## Unreleased
 
+## 2.0.0-alpha.1
+
+- **Alpha of the 2.0 line.** Everything below is new since 1.1.x and not all
+  of it has been seen on a real raid night. Report anything odd on the
+  CurseForge page or the GitHub issues; the stable 1.1.x file stays the
+  default download until 2.0.0 ships.
 - **Guided setup.** The first-run wizard now reveals Nock one step at a time:
   the screen starts empty, each page puts its own frames on it (HUD, then
   warnings, then trackers, then helpers) and only that page's frames can be
