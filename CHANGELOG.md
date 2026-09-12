@@ -4,10 +4,16 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 ## Unreleased
 
-- **Profiles you can share.** Profiles → Share exports your whole setup
+## 2.0.0-alpha.2
+
+- **Alpha of the 2.0 line.** Everything below is new since 1.1.x and not all
+  of it has been seen on a real raid night. Report anything odd on the
+  CurseForge page or the GitHub issues; the stable 1.1.x file stays the
+  default download until 2.0.0 ships.
+- **Profiles you can share.** Profiles → Sharing exports your whole setup
   (settings, weave macros, every frame position) as one text string; Import
-  pastes one from another player into a new profile, with a way back to your
-  own. Starter profiles bundled with Nock can be applied the same way, and the
+  pastes one from another player into a new profile under a name you pick,
+  with a way back to your own. Starter profiles bundled with Nock can be applied the same way, and the
   setup wizard then opens with "Start from scratch" or "Start from <name>'s
   layout". Your own profile is never overwritten: every apply is a new named
   profile. `/nock share export | import | apply <key>`. Session flags (the
