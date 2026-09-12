@@ -103,11 +103,14 @@ function Nock:OnProfileSwitched()
   -- A profile switch invalidates the setup wizard's context (its previews and
   -- unlock were written into the old profile) — close it before broadcasting,
   -- so its Teardown relocks under the profile that is now active.
+  -- ...unless the wizard itself asked for the switch (its start page applies
+  -- a bundled profile and carries on).
   local ob = self:GetModule("Onboarding", true)
-  if ob and ob.IsOpen and ob:IsOpen() then ob:Close() end
+  if ob and ob.IsOpen and ob:IsOpen() and not ob._profileSwitchByWizard then ob:Close() end
   self:SendMessage("NOCK_POSITION_RESET")   -- HUD:ApplyPosition reads the new profile
   self:SendMessage("NOCK_LOCK_CHANGED", self.IsLocked())
   self:SendMessage("NOCK_VISUALS_CHANGED")
+  self:SendMessage("NOCK_WEAVEBIND_CHANGED")   -- the secure weave button rebuilds from the new macro bodies
   if self.ApplyMinimapIcon then self:ApplyMinimapIcon() end
   -- The options table's dynamic rows (cooldown grid, custom lists, debuff
   -- rows) were baked from the old profile: refill them for the new one.
@@ -853,6 +856,9 @@ function Nock:HandleSlashCommand(input)
     else
       self:Print("ShoppingView not loaded.")
     end
+  elseif input == "share" or input:match("^share%s") then
+    local m = self:GetModule("ProfileShare", true)
+    if m and m.Command then m:Command(input:match("^share%s+(.-)$") or "") else self:Print("ProfileShare not loaded.") end
   elseif input == "profile" or input:match("^profile%s") then
     local m = self:GetModule("Profiler", true)
     if m and m.Command then

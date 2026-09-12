@@ -38,7 +38,7 @@ A.KEYS = {
   "hud.classic.buffRow.reactBuffPositional", "hud.classic.castBar.castBarNonCombatCasts",
   -- React HUD
   "hud.react.tabSize.stagePreview", "hud.react.tabSize.reactManaText", "hud.react.tabSize.reactShowAutoShotCast", "hud.react.tabSize.castBarNonCombatCasts",
-  "hud.react.tabBars.reactShowDelay", "hud.react.tabBars.reactShowBrackets", "hud.react.tabBars.reactShowGcdDivider",
+  "hud.react.tabBars.reactShowClipTicks", "hud.react.tabBars.reactShowDelay", "hud.react.tabBars.reactShowBrackets", "hud.react.tabBars.reactShowGcdDivider",
   "hud.react.tabGrid.reactRangeTint", "hud.react.tabGrid.reactTileDim", "hud.react.tabGrid.reactManaTint", "hud.react.tabGrid.reactActiveFit", "hud.react.tabGrid.activePreview",
   "hud.react.tabBuff.reactBuffPositional",
   -- FluffyHUD

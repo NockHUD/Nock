@@ -581,6 +581,16 @@ onlyKeys(root.general.args,
     "grpLook", "grpVisibility", "grpCastBar", "grpMedia", "grpSetup" },
   "general")
 onlyKeys(root.hud.args, { "intro", "hudMode", "classic", "react", "fluffy" }, "hud family")
+
+-- Profile sharing cards live on the profiles page (AceDBOptions' own rows stay).
+do
+  ok(root.profiles and root.profiles.args.stock and root.profiles.args.stock.args, "profiles page: the stock AceDB rows are a tab of their own")
+  local pr = root.profiles and root.profiles.args.sharing and root.profiles.args.sharing.args
+  ok(pr and pr.grpStarter and pr.grpShare and pr.grpImport, "profiles page: starter / share / import groups on the Sharing tab (outside the AceDBOptions table)")
+  ok(pr and pr.grpShare.args.shareWithPositions and pr.grpShare.args.shareWithMacros and pr.grpShare.args.shareExport, "share group rows")
+  ok(pr and pr.grpImport.args.shareImportPaste and pr.grpImport.args.shareBack, "import group rows")
+  ok(type(Nock.OptionRanges) == "table" and Nock.OptionRanges.aggroSize and Nock.OptionRanges.aggroSize[2] > Nock.OptionRanges.aggroSize[1], "OptionRanges built from the range nodes (keyed by option key; most equal the profile key)")
+end
 onlyKeys(root.experimental.args, { "intro", "grpSapper", "grpZoom", "grpStrip", "grpRelease" }, "experimental")
 ok(ex.grpStrip and ex.grpStrip.args.reactRangeStrip and ex.grpStrip.args.reactRangeStripH, "experimental: React position strip page")
 onlyKeys(wa, { "masterToggle", "intro", "settings" }, "warnings", { "cat_" })
@@ -616,7 +626,7 @@ onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "
   "reactShowCastBar", "reactShowAutoShotCast", "reactShowGrid", "reactShowAspectIcon", "reactShowMarkIcon",
   "orderHeader", "order_reset", "castBarNonCombatCasts" }, "react tabSize",
   { "order_lbl_", "order_up_", "order_dn_" })
-onlyKeys(raBars, { "autoHeader", "reactAutoLegend", "reactShowNotation", "reactShowDelay",
+onlyKeys(raBars, { "autoHeader", "reactAutoLegend", "reactShowNotation", "reactShowClipTicks", "reactShowDelay",
   "reactShowBrackets", "reactShowGcdDivider", "dirHeader", "reactDirAuto", "reactDirMelee",
   "grpEngine" }, "react tabBars")
 onlyKeys(raRange, { "rangeHeader", "rangeFinderFindingStyle" }, "react tabRange")

@@ -58,7 +58,7 @@ end
 
 local REACT = { "tabSize.reactShowAutoBar", "tabSize.reactShowMeleeBar", "tabSize.reactShowRangeBar", "tabSize.reactShowManaBar", "tabSize.reactShowCastBar",
   "tabSize.reactShowGrid", "tabSize.reactShowAspectIcon", "tabSize.reactShowMarkIcon", "tabBuff.reactBuffRows",
-  "tabBars.reactShowNotation", "tabBars.reactShowDelay", "tabBars.reactShowBrackets", "tabBars.reactShowGcdDivider" }
+  "tabBars.reactShowNotation", "tabBars.reactShowClipTicks", "tabBars.reactShowDelay", "tabBars.reactShowBrackets", "tabBars.reactShowGcdDivider" }
 local FLUFFY = { "tabSize.fluffyShowCast", "tabSize.fluffyShowSwing", "tabSize.fluffyShowRanged", "tabSize.fluffyShowMelee", "tabSize.fluffyShowLaneIcons",
   "tabSize.fluffyShowRange", "tabSize.fluffyShowMana", "tabGrid.fluffyShowGrid", "tabBuff.fluffyBuffRows",
   "tabBars.fluffyShowNotation", "tabBars.fluffyShowClipTicks", "tabBars.fluffyShowDelay", "tabBars.fluffyShowBrackets", "tabBars.fluffyShowGcdDivider" }
@@ -115,7 +115,7 @@ P.ByPage = {
   ["hud.react"] = {
     { key = "lean", name = "Lean", icon = spellIcon(C.SpellID.STEADY_SHOT),
       summary = "Auto, melee, cast, range and the grid. No mana, corners or buff row.",
-      set = subset("hud.react.", REACT, { "tabSize.reactShowAutoBar", "tabSize.reactShowMeleeBar", "tabSize.reactShowCastBar", "tabSize.reactShowRangeBar", "tabSize.reactShowGrid", "tabBars.reactShowNotation" }) },
+      set = subset("hud.react.", REACT, { "tabSize.reactShowAutoBar", "tabSize.reactShowMeleeBar", "tabSize.reactShowCastBar", "tabSize.reactShowRangeBar", "tabSize.reactShowGrid", "tabBars.reactShowNotation", "tabBars.reactShowClipTicks" }) },
     { key = "full", name = "Full", icon = spellIcon(C.SpellID.RAPID_FIRE),
       summary = "Every bar, the grid, both corners, the buff row and all readouts; eWS brackets stay off.",
       set = all("hud.react.", REACT, { ["tabBars.reactShowBrackets"] = true }) },

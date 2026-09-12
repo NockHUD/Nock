@@ -14,6 +14,7 @@ Core\Constants.lua
 Core\State.lua
 Core\AuraCache.lua
 Core\WeaveMacro.lua
+Core\ProfileShare.lua
 Core\Minimap.lua
 Core\PracticeModel.lua
 Core\PracticeTimeline.lua
@@ -29,6 +30,7 @@ Config\OptionsAdvanced.lua
 Config\OptionsLayoutData.lua
 Config\OptionsLayout.lua
 Config\Presets.lua
+Config\ProfilesBundled.lua
 Core\OptionsWalk.lua
 
 UI\IconAtlas.lua
@@ -98,6 +100,7 @@ Modules\PetTrainer_ListFilter.lua
 Modules\Profiler.lua
 Modules\AggroWarning.lua
 Modules\PvPMode.lua
+Modules\ProfileShare.lua
 Modules\CCAlert.lua
 
 UI\Frame_CastBar.lua

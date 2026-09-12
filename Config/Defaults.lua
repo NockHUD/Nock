@@ -245,9 +245,12 @@ Nock.Defaults = {
     --   33958 generic "Frenzy" (+100% atk spd, many TBC mobs, Enrage type)
     --   43139 Halazzi "Frenzy" (Zul'Aman, Enrage type)
     --   41254 Essence of Suffering "Frenzy" (Reliquary of Souls, Black Temple)
-    -- All four verified self-cast Enrage-dispel-type buffs on Wowhead TBC. Add
-    -- more per-encounter IDs via /dump on the target's buff, then the Options box.
-    warnTargetFrenzyIds  = "8269, 33958, 43139, 41254",
+    --   40076 Leviathan "Electric Spur" (Black Temple trash; a nearby mob casts
+    --         it ON the Leviathan, so the caster never matters, only the target's buff)
+    -- The first four verified self-cast Enrage-dispel-type buffs on Wowhead TBC,
+    -- the fifth seen live (2026-09-12). Add more per-encounter IDs via /dump on
+    -- the target's buff, then the Options box.
+    warnTargetFrenzyIds  = "8269, 33958, 43139, 41254, 40076",
     -- Sapper-on-packs warning. Hard-gated in code to: in a raid + boss target
     -- + >= sapperMobCountThreshold hostile mobs in ~11 yd (see Warnings.lua).
     warnSapperAoeEnabled = true,
@@ -702,6 +705,7 @@ Nock.Defaults = {
     reactCooldownDisabled = {},         -- ["<key>"] = true → hide that React grid slot
     reactShowDelay       = false,       -- show the +x.xx late-shot readout on the React auto bar
     reactShowBrackets    = false,       -- show the eWS bracket marks on the React auto bar
+    reactShowClipTicks   = true,        -- the Steady/Multi clip tick pairs on the React auto bar
     -- React buff row (UI/Frame_ReactBuffs.lua): the WA pack's Important +
     -- Dynamic-utility icon sections unified into ONE row centered above the
     -- HUD. While React mode is on it REPLACES the BuffTracker + TotemTracker
@@ -1227,6 +1231,12 @@ Nock.Defaults = {
     wizardLockPending = false,
     -- The wizard window's last drag spot; false = docked to the right edge.
     wizardPosition    = false,
+    -- Profile sharing (Modules/ProfileShare.lua): the export switches, and the
+    -- profile that was current before the last import/apply (the way back).
+    shareOpts         = false,
+    lastOwnProfile    = false,
+    -- The wizard's start-page pick for the current run ("scratch" or a bundled key).
+    wizardStart       = false,
   },
 
   -- Account-wide caches. Weapon/ammo tooltip parsing is expensive, so the

@@ -6366,6 +6366,8 @@ local function buildOptionsTable()
     }
     barsArgs.reactShowNotation = reactToggle("reactShowNotation", "Rotation notation",
       "The rotation notation (e.g. \"1:1\", \"6:9:1:1 3w\") right-aligned on the Auto Shot bar.", 31)
+    barsArgs.reactShowClipTicks = reactToggle("reactShowClipTicks", "Clip ticks",
+      "The Steady (red) and Multi (orange) clip-threshold tick pairs on the Auto Shot bar. Off hides them; the wind-up mark and the GCD divider keep their own switches.", 31.5)
     barsArgs.reactShowDelay = {
       type = "toggle",
       name = "Auto Shot delay readout",
@@ -6379,7 +6381,7 @@ local function buildOptionsTable()
     barsArgs.reactShowBrackets = {
       type = "toggle",
       name = "eWS bracket marks",
-      desc = "Mark the eWS rotation-bracket bounds (where the notation changes) on the React Auto Shot bar. Hidden by default — the red/orange clip ticks are always shown.",
+      desc = "Mark the eWS rotation-bracket bounds (where the notation changes) on the React Auto Shot bar. Hidden by default.",
       order = 33,
       width = "full",
       disabled = notReact,
@@ -8240,13 +8242,129 @@ local function buildOptionsTable()
   end
   options.args.hud.args.hudMode = hudModeSelect(0.5, "(same setting as General → HUD look)")
 
+  -- Every range node's min/max, by option key, for the profile importer's
+  -- clamp (Modules/ProfileShare.lua). Function bounds are evaluated once here.
+  -- Most option keys equal their profile key; the dozen that differ (a `cols`
+  -- node writing debuffTrackerCols) simply go unclamped, which is harmless.
+  local ranges = {}
+  local function walkRanges(args)
+    for key, node in pairs(args or {}) do
+      if type(node) == "table" then
+        if node.type == "range" then
+          local lo, hi = node.min, node.max
+          if type(lo) == "function" then lo = lo() end
+          if type(hi) == "function" then hi = hi() end
+          if type(lo) == "number" or type(hi) == "number" then ranges[key] = { lo, hi } end
+        elseif node.args then walkRanges(node.args) end
+      end
+    end
+  end
+  walkRanges(options.args)
+  Nock.OptionRanges = ranges
+
   return options
+end
+
+-- Profile sharing (Modules/ProfileShare.lua) on the AceDB profiles page:
+-- bundled starter profiles, an export with two switches, an import paste box
+-- and the way back to the profile the user was on. The walker's fallback
+-- draws each inline group as a card.
+local function addProfileShareGroups(profilesNode)
+  local function share() return Nock:GetModule("ProfileShare", true) end
+  -- The remembered "way back" only while that profile still exists (AceDB
+  -- lets you delete any profile you are not on, Default included).
+  local function backTarget()
+    local n = Nock.db.char and Nock.db.char.lastOwnProfile
+    if not n or not Nock.db.GetProfiles then return nil end
+    for _, name in ipairs(Nock.db:GetProfiles()) do if name == n then return n end end
+    return nil
+  end
+  local function shareOpts()
+    local ch = Nock.db.char
+    if not ch then return { positions = true, macros = true } end
+    if type(ch.shareOpts) ~= "table" then ch.shareOpts = { positions = true, macros = true } end
+    return ch.shareOpts
+  end
+  local starter = { type = "group", name = "Starter profiles", inline = true, order = 90, args = {} }
+  local bundled = Nock.BundledProfiles or {}
+  if #bundled == 0 then
+    starter.args.none = { type = "description", name = "No bundled profiles in this build.", order = 1 }
+  end
+  for i, b in ipairs(bundled) do
+    starter.args["bundle_" .. b.key .. "_info"] = {
+      type = "description", order = i * 2 - 1,
+      name = ("%s  |cff9a9a9aby %s|r\n%s"):format(b.name, b.author, b.blurb or ""),
+    }
+    starter.args["bundle_" .. b.key .. "_apply"] = {
+      type = "execute", order = i * 2, name = "Apply " .. b.name,
+      desc = "Copies this profile into a new profile named " .. b.name .. " and switches to it. Your own profile is kept.",
+      func = function() local m = share(); if m then m:ApplyBundled(b.key) end end,
+    }
+  end
+  profilesNode.args.grpStarter = starter
+  profilesNode.args.grpShare = {
+    type = "group", name = "Share", inline = true, order = 91,
+    args = {
+      shareWithPositions = { type = "toggle", order = 1, name = "Include frame positions",
+        desc = "Where every frame sits, and the free-layout rows.",
+        get = function() return shareOpts().positions ~= false end,
+        set = function(_, v) shareOpts().positions = v and true or false end },
+      shareWithMacros = { type = "toggle", order = 2, name = "Include weave macros",
+        desc = "The Weave Bind macro bodies and its options. The key itself is a client binding and never travels.",
+        get = function() return shareOpts().macros ~= false end,
+        set = function(_, v) shareOpts().macros = v and true or false end },
+      shareExport = { type = "execute", order = 3, name = "Export as text",
+        desc = "Opens a box with this profile as one string to copy and hand to another player.",
+        func = function()
+          local m = share()
+          if m then m:Export({ positions = shareOpts().positions, macros = shareOpts().macros }) end
+        end },
+    },
+  }
+  profilesNode.args.grpImport = {
+    type = "group", name = "Import", inline = true, order = 92,
+    args = {
+      shareImportPaste = { type = "execute", order = 1, name = "Import from text",
+        desc = "Paste a string another player exported. Give it a name in the box, or leave that blank to keep the sender's. It lands in a new profile; yours is kept.",
+        func = function()
+          Nock.UI.ShowPasteBox("Paste a Nock profile string", function(t, saveAs)
+            local m = share()
+            if not m then return end
+            local name, why = m:ImportString(t, saveAs)
+            if not name then m:Print("Import failed: " .. tostring(why)) end
+          end)
+        end },
+      shareBackInfo = { type = "description", order = 2,
+        name = function()
+          local n = backTarget()
+          return n and ("Before the last import you were on '" .. n .. "'.") or ""
+        end },
+      shareBack = { type = "execute", order = 3, name = "Back to my own profile",
+        desc = "Switches back to the profile that was current before the last import or apply.",
+        hidden = function() return backTarget() == nil end,
+        func = function()
+          local n = backTarget()
+          if n then Nock.db:SetProfile(n) end
+        end },
+    },
+  }
 end
 
 function Nock:RegisterOptions()
   local options = buildOptionsTable()
-  options.args.profiles = LibStub("AceDBOptions-3.0"):GetOptionsTable(self.db)
-  options.args.profiles.order = 99   -- pinned to the very bottom
+  -- The stock AceDB rows are one tab; the sharing cards a sibling tab. They
+  -- must NOT live inside the AceDBOptions table: another addon loading a newer
+  -- AceDBOptions after us (Plater, minor 17) re-points every registered
+  -- profiles table's args at its own fresh table, wiping anything added there
+  -- (2026-09-12: the cards vanished before the window was ever opened).
+  local stock = LibStub("AceDBOptions-3.0"):GetOptionsTable(self.db)
+  stock.order = 1
+  local sharing = { type = "group", name = "Sharing", order = 2, args = {} }
+  addProfileShareGroups(sharing)
+  options.args.profiles = {
+    type = "group", name = "Profiles", order = 99,   -- pinned to the very bottom
+    args = { stock = stock, sharing = sharing },
+  }
   -- Simple/Advanced tags (Config/OptionsAdvanced.lua) go onto the built table;
   -- RebuildOptionsArgs re-applies them after refilling the dynamic blocks.
   self.optionsTable = options

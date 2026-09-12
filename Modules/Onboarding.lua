@@ -98,6 +98,16 @@ end
 
 Onboarding.Pages = {
   {
+    key     = "start",
+    kind    = "cards",
+    eyebrow = "First-time setup",
+    title   = "Where do you want to start?",
+    blurb   = "From scratch walks you through every part. A bundled profile applies someone's whole layout first; the steps then show you where everything sits.",
+    -- Only worth a page when there is something besides "scratch" to pick.
+    visible = function() return #(Nock.BundledProfiles or {}) > 0 end,
+    options = {},   -- filled by RefreshStartCards on every Open
+  },
+  {
     key     = "welcome",
     kind    = "checks",
     eyebrow = "First-time setup",
@@ -853,9 +863,59 @@ end
 -- `guided`: the spotlight run (frames revealed step by step, only the current
 -- step's editable). Off = highlight mode: everything on screen, each page's
 -- frames merely selected.
+-- The start page's cards: scratch + one per bundled profile. Rebuilt on every
+-- open, since the bundle list is static but Modules/ProfileShare.lua may load
+-- after this file.
+function Onboarding:RefreshStartCards()
+  local page = self.Pages[1]
+  if not (page and page.key == "start") then return end
+  local cards = {
+    {
+      value = "scratch", label = "Start from scratch", recommended = true,
+      desc  = "Keep your current profile and set every part up step by step.",
+      icon  = function() return spellIcon(C.SpellID.STEADY_SHOT) end,
+      isSelected = function() local ch = Nock.db.char; return (ch and ch.wizardStart or "scratch") == "scratch" end,
+      apply = function() if Nock.db.char then Nock.db.char.wizardStart = "scratch" end end,
+    },
+  }
+  for _, b in ipairs(Nock.BundledProfiles or {}) do
+    cards[#cards + 1] = {
+      value = b.key, label = "Start from " .. b.name .. "'s layout",
+      desc  = (b.blurb or "") .. " Lands in a new profile named " .. b.name .. "; yours is kept.",
+      icon  = function() return spellIcon(C.SpellID.RAPID_FIRE) end,
+      isSelected = function() local ch = Nock.db.char; return ch ~= nil and ch.wizardStart == b.key end,
+      apply = function()
+        local share = Nock:GetModule("ProfileShare", true)
+        if not (share and share.ApplyBundled) then return end
+        -- The switch must not close us (Core/Core.lua OnProfileSwitched).
+        Onboarding._profileSwitchByWizard = true
+        local name = share:ApplyBundled(b.key)
+        Onboarding._profileSwitchByWizard = false
+        if not name then return end
+        if Nock.db.char then
+          Nock.db.char.wizardStart = b.key
+          Nock.db.char.wizardLockPending = true
+        end
+        -- The switch landed on a fresh profile: unlock it for the run and
+        -- recompute the reveal on it.
+        Nock:SetLocked(false)
+        Nock.state.demo.hudForceShow = true
+        Onboarding:ApplyReveals()
+      end,
+    }
+  end
+  page.options = cards
+end
+
 function Onboarding:Open(index, guided)
   local view = Nock:GetModule("OnboardingView", true)
   if not view then return end
+  self:RefreshStartCards()
+  -- Land on the first page this run shows (the start page hides itself
+  -- when nothing is bundled).
+  local first = index or 1
+  while self.Pages[first] and not self:IsPageVisible(self.Pages[first]) do first = first + 1 end
+  index = self.Pages[first] and first or 1
 
   -- Preview mode: keep the HUD on screen for the whole session even if this
   -- user normally hides it out of combat, or every page would demo an
@@ -870,7 +930,7 @@ function Onboarding:Open(index, guided)
     if Nock.db.char then Nock.db.char.wizardLockPending = true end
     Nock:SetLocked(false)
   end
-  self:EnterPage(index or 1)
+  self:EnterPage(index)
   view:Show()
   self:Commit()
 end
@@ -890,6 +950,7 @@ function Onboarding:Teardown()
   for k in pairs(demo) do demo[k] = false end
   self._page = nil
   self._firstRun = false
+  if Nock.db.char then Nock.db.char.wizardStart = nil end
   -- Auto-lock: Open unlocked everything for dragging; the resting state is
   -- locked, whichever way the wizard was closed. Before Commit so the repaint
   -- (opacity / hideOoc / backgrounds branch on the lock) sees the final state.

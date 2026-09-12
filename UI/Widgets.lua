@@ -600,6 +600,67 @@ function Nock.UI.ShowCopyBox(text)
   copyBox.eb:SetCursorPosition(0)
 end
 
+-- Twin of the copybox for text coming IN: an empty box, Import hands the text
+-- (and the "Save as" name, "" when left blank) to `onAccept` and closes,
+-- Cancel/Escape just close.
+local pasteBox
+function Nock.UI.ShowPasteBox(title, onAccept)
+  if not pasteBox then
+    local f = CreateFrame("Frame", "NockPasteBox", UIParent, "BackdropTemplate")
+    f:SetSize(620, 380)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("DIALOG")
+    f:SetMovable(true); f:EnableMouse(true); f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    Nock.UI.ApplyBackdrop(f)
+    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.title:SetPoint("TOPLEFT", 14, -12)
+    -- "Save as": the profile name the import lands in; blank = the name the
+    -- string carries (usually the sender's, which stacks as "Default (2)").
+    local nameLabel = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    nameLabel:SetPoint("TOPLEFT", 14, -36)
+    nameLabel:SetText("Save as")
+    local nameBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+    nameBox:SetSize(260, 20)
+    nameBox:SetPoint("LEFT", nameLabel, "RIGHT", 10, 0)
+    nameBox:SetAutoFocus(false)
+    nameBox:SetMaxLetters(40)
+    nameBox:SetScript("OnEscapePressed", function() f:Hide() end)
+    f.nameBox = nameBox
+    local sf = CreateFrame("ScrollFrame", "NockPasteBoxScroll", f, "UIPanelScrollFrameTemplate")
+    sf:SetPoint("TOPLEFT", 14, -62)
+    sf:SetPoint("BOTTOMRIGHT", -34, 44)
+    local eb = CreateFrame("EditBox", nil, sf)
+    eb:SetMultiLine(true)
+    eb:SetAutoFocus(false)
+    eb:SetFontObject(_G.ChatFontNormal or _G.GameFontHighlightSmall)
+    eb:SetWidth(560)
+    eb:SetHeight(292)
+    eb:SetScript("OnEscapePressed", function() f:Hide() end)
+    sf:SetScrollChild(eb)
+    f.eb = eb
+    local go = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    go:SetSize(90, 22); go:SetPoint("BOTTOMRIGHT", -14, 12); go:SetText("Import")
+    go:SetScript("OnClick", function()
+      local text = f.eb:GetText()
+      local name = (f.nameBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+      f:Hide()
+      if f.onAccept then f.onAccept(text, name) end
+    end)
+    local cancel = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    cancel:SetSize(90, 22); cancel:SetPoint("RIGHT", go, "LEFT", -8, 0); cancel:SetText("Cancel")
+    cancel:SetScript("OnClick", function() f:Hide() end)
+    pasteBox = f
+  end
+  pasteBox.title:SetText(title or "Paste")
+  pasteBox.onAccept = onAccept
+  pasteBox.eb:SetText("")
+  pasteBox.nameBox:SetText("")
+  pasteBox:Show()
+  pasteBox.eb:SetFocus()
+end
+
 -- Re-applies the current iconBorder profile setting to an existing slot. Used
 -- both at slot creation and from RefreshMedia when settings change. Updates
 -- the slot's backdrop AND the icon's anchor (thicker borders eat more inset).

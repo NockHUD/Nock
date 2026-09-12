@@ -155,14 +155,14 @@ end
 --------------------------------------------------------------------------------
 -- 1. Page script shape
 --------------------------------------------------------------------------------
-ok(#O.Pages == 13, "thirteen pages in the script")
-ok(O.Pages[1].key == "welcome" and O.Pages[#O.Pages].key == "finish", "welcome first, finish last")
+ok(#O.Pages == 14, "fourteen pages in the script")
+ok(O.Pages[1].key == "start" and O.Pages[2].key == "welcome" and O.Pages[#O.Pages].key == "finish", "start, welcome first, finish last")
 for _, page in ipairs(O.Pages) do
   local kind = page.kind
   ok(kind == "checks" or kind == "cards" or kind == "toggles" or kind == "finish",
      "page " .. page.key .. " has a known kind")
   ok(page.title and page.blurb, "page " .. page.key .. " has title + blurb")
-  if kind == "cards" then
+  if kind == "cards" and page.key ~= "start" then   -- start's cards are built per open
     ok(#page.options >= 2, page.key .. ": at least two cards")
     for _, opt in ipairs(page.options) do
       ok(opt.apply and opt.isSelected and opt.label and opt.desc,
@@ -340,7 +340,7 @@ ok(O:AdjacentPage(-1) == select(2, pageByKey("reactcorners")),
 -- gained one when the unconditionally-visible Steam Tonk page landed.
 p = freshProfile()
 O._page = 1
-ok(select(2, O:Progress()) == 10, "classic turret: 10 steps")
+ok(select(2, O:Progress()) == 10, "classic turret: 10 steps (no bundle: no start page)")
 p.weaveNotationEnabled = true
 ok(select(2, O:Progress()) == 12, "classic weaver: 12 steps (macro shapes + extras)")
 p.hudMode = "react"
@@ -882,8 +882,9 @@ do
   O:Open(1, true)
   ok(Nock.state.demo.guided == true, "Open(1, true) turns the spotlight on")
   ok(type(Nock.state.demo.revealed) == "table" and type(Nock.state.demo.live) == "table", "reveal sets computed on open")
+  ok(O._page == 2, "no bundle: Open skips the start page and lands on welcome")
   O:Next()
-  ok(Nock.state.demo.revealed.hud == true and Nock.state.demo.live.hud == true, "page 2 (hudstyle) reveals hud")
+  ok(Nock.state.demo.revealed.hud == true and Nock.state.demo.live.hud == true, "hudstyle reveals hud")
   local seenLock = 0
   for _, m in ipairs(sentMessages) do if m == "NOCK_LOCK_CHANGED" then seenLock = seenLock + 1 end end
   ok(seenLock >= 2, "a guided page move re-broadcasts NOCK_LOCK_CHANGED so frames re-read IsLockedFor")
@@ -896,6 +897,34 @@ do
   O:Command("guided")
   ok(Nock.state.demo.guided == true and O._firstRun == false, "Command('guided') = spotlight, no re-seeding")
   O:Close()
+end
+
+-- Start page: scratch or a bundled profile
+do
+  ok(O.Pages[1].key == "start" and O.Pages[1].kind == "cards", "the first page is the start card pair")
+  ok(O.Pages[2].key == "welcome", "welcome follows it")
+  Nock.BundledProfiles = { { key = "yaxal", name = "Yaxal", author = "Yaxal", blurb = "b", version = "x", data = "NOCK1:" } }
+  local applied
+  local share = { ApplyBundled = function(_, k) applied = k; return "Yaxal" end }
+  local oldGet = Nock.GetModule
+  Nock.GetModule = function(_, n) if n == "ProfileShare" then return share end return oldGet(Nock, n) end
+  p = freshProfile(); Nock.db.char = {}
+  O:Open(1, true)
+  ok(O._page == 1, "with a bundle: Open lands on the start page")
+  local page = O.Pages[1]
+  local cards = {}
+  for _, opt in ipairs(page.options) do cards[opt.value] = opt end
+  ok(cards.scratch and cards.scratch.recommended, "scratch card, recommended")
+  ok(cards.yaxal ~= nil, "one card per bundled profile")
+  ok(cards.scratch.isSelected(p) == true, "scratch selected by default")
+  O:SelectCard(page, cards.yaxal)
+  ok(applied == "yaxal" and Nock.db.char.wizardStart == "yaxal", "picking the bundled card applies it and records the pick")
+  ok(fakeView.shown == true, "the wizard stays open across the profile switch")
+  ok(cards.yaxal.isSelected(p) == true and cards.scratch.isSelected(p) == false, "the pick is the selected card")
+  O:Close()
+  ok(Nock.db.char.wizardStart == nil, "teardown clears the pick")
+  Nock.GetModule = oldGet
+  Nock.BundledProfiles = nil
 end
 
 print(("%d passed, %d failed"):format(pass, fail))

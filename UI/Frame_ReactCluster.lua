@@ -610,8 +610,15 @@ function ReactCluster:PositionAutoMarks(sd, steadyT, multiT, windup)
       tR:Hide()
     end
   end
-  placePair(auto.steadyL, auto.steadyR, steadyT, "reactTickSteadyWidth")
-  placePair(auto.multiL,  auto.multiR,  multiT, "reactTickMultiWidth")
+  -- The vertical marks are individually hideable: reactShowClipTicks owns the
+  -- Steady/Multi pairs, the SHARED showWindupMark owns the commit mark below.
+  if profile().reactShowClipTicks == false then
+    auto.steadyL:Hide(); auto.steadyR:Hide()
+    auto.multiL:Hide();  auto.multiR:Hide()
+  else
+    placePair(auto.steadyL, auto.steadyR, steadyT, "reactTickSteadyWidth")
+    placePair(auto.multiL,  auto.multiR,  multiT, "reactTickMultiWidth")
+  end
   -- Commit point: the next Auto Shot's wind-up starts HERE, not where the
   -- converge halves meet. Explains why the glued cast bar lights up before the
   -- bar is full — it isn't early, the bar runs one wind-up past the commit.
