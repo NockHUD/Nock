@@ -18,6 +18,39 @@ function SwingTimer:OnEnable()
   self:RegisterEvent("START_AUTOREPEAT_SPELL")
   self:RegisterEvent("STOP_AUTOREPEAT_SPELL")
   self:RegisterEvent("PLAYER_ENTERING_WORLD")
+  self:RegisterEvent("PLAYER_TARGET_CHANGED")
+  -- The client's own ranged range check: off until asked for, then it
+  -- signals PLAYER_SWING_RANGE_UPDATE on every edge (plain in combat).
+  local ST, kind = _G.C_SwingTimer, swingType("Ranged")
+  if ST and ST.EnableRangeCheck and kind ~= nil then
+    ST.EnableRangeCheck(kind, true)
+    self:RegisterEvent("PLAYER_SWING_RANGE_UPDATE")
+  end
+  self:RefreshTargetRange()
+end
+
+-- Direct read on target change; the event covers every edge after that.
+function SwingTimer:RefreshTargetRange()
+  local ST, kind = _G.C_SwingTimer, swingType("Ranged")
+  local v = nil
+  if ST and ST.IsTargetWithinSwingRange and kind ~= nil then
+    v = Nock.Flavor.Plain(ST.IsTargetWithinSwingRange(kind))
+    if type(v) ~= "boolean" then v = nil end
+  end
+  Nock.state.ranged.targetInRange = v
+end
+
+function SwingTimer:PLAYER_TARGET_CHANGED()
+  self:RefreshTargetRange()
+end
+
+function SwingTimer:PLAYER_SWING_RANGE_UPDATE(event, kind, isInRange, checksRange)
+  if kind ~= swingType("Ranged") then return end
+  if checksRange and type(isInRange) == "boolean" then
+    Nock.state.ranged.targetInRange = isInRange
+  else
+    Nock.state.ranged.targetInRange = nil
+  end
 end
 
 -- Fires when a swing happens; `duration` is the time until the next one at

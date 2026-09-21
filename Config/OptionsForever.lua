@@ -20,19 +20,21 @@ F.DROP = {
   "hud.react.tabBars.grpEngine",
   "hud.react.tabBars.reactShowBrackets", "hud.react.tabBars.reactShowClipTicks", "hud.react.tabBars.reactShowDelay",
   "hud.react.tabBars.reactShowGcdDivider", "hud.react.tabBars.reactShowNotation",
-  -- Tabs whose module lands in M2/M3 (buff row, cooldown grid, range finder).
-  "hud.react.tabBuff", "hud.react.tabGrid", "hud.react.tabRange",
-  -- Size & Elements: cast bar, corners, grid, range bar, weave stage, mana tick.
-  "hud.react.tabSize.castBarCard", "hud.react.tabSize.castBarNonCombatCasts",
-  "hud.react.tabSize.reactShowCastBar", "hud.react.tabSize.reactShowAutoShotCast",
+  -- Tabs whose module lands in M3 (buff row, range finder). The cooldown
+  -- grid and the cast bar came back with M2 (Forever/Cooldowns.lua,
+  -- Forever/CastBar.lua).
+  "hud.react.tabBuff", "hud.react.tabRange",
+  -- Size & Elements: Auto Shot wind-up (no feed), corners, range bar, weave
+  -- stage, mana tick (M3).
+  "hud.react.tabSize.reactShowAutoShotCast",
   "hud.react.tabSize.cornersCard", "hud.react.tabSize.reactShowAspectIcon", "hud.react.tabSize.reactShowMarkIcon",
-  "hud.react.tabSize.reactShowGrid", "hud.react.tabSize.reactShowRangeBar",
+  "hud.react.tabSize.reactShowRangeBar",
   "hud.react.tabSize.reactMeleeStageCue", "hud.react.tabSize.stagePre*",
   "hud.react.tabSize.reactManaTick*",
   -- Skin: marks, brackets, GCD divider, cast bar, corners, range colours.
   "hud.react.tabSkin.autoMarksHeader", "hud.react.tabSkin.reactBracketWidth", "hud.react.tabSkin.reactColorBracket",
   "hud.react.tabSkin.reactColorGcdDivider", "hud.react.tabSkin.reactGcdDividerWidth",
-  "hud.react.tabSkin.reactColorTick*", "hud.react.tabSkin.reactCastH", "hud.react.tabSkin.reactColorCastFill",
+  "hud.react.tabSkin.reactColorTick*",
   "hud.react.tabSkin.reactCornerIcon*", "hud.react.tabSkin.rangeColoursCard", "hud.react.tabSkin.reactColorRange*",
   -- General: no cast bar, no setup check, no HUD-mode look, no wizard, no profiler.
   "general.grpCastBar", "general.grpSetup", "general.grpLook",

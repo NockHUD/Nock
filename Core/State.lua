@@ -120,6 +120,10 @@ Nock.state = {
     castHasteCorr  = 1.0,
     repeating      = false, -- auto-shot toggle state
     autoDelay      = 0,     -- seconds the last Auto Shot fired LATE vs one weapon-speed cycle (clamped ≥0)
+    -- Forever: the client's own Auto Shot range check (PLAYER_SWING_RANGE_UPDATE,
+    -- plain in combat). true/false while a check is possible, nil otherwise
+    -- (no target, TBC). false blanks the auto bar: a shot cannot fire.
+    targetInRange  = nil,
   },
   melee = {
     swingStart     = 0,
@@ -140,6 +144,14 @@ Nock.state = {
     active    = false,
     probeStart    = 0,   -- raw API reading (Nock:ProbeGcd on SPELL_UPDATE_COOLDOWN)
     probeDuration = 0,
+  },
+  -- Addon restriction states (Forever; Forever/Snapshot.lua). All false on
+  -- TBC. Read through Nock.Restricted(kind); never through C_Secrets in a view.
+  restrict = {
+    combat    = false,
+    encounter = false,
+    map       = false,
+    chat      = false,
   },
   cooldowns = {
     -- keyed by entry.key: { startTime, duration, remaining, ready, procActive, icon }
@@ -626,6 +638,10 @@ function Nock.AutoSwingLive()
   local st = Nock.state
   local r = st.ranged
   if r.swingDuration <= 0 or r.swingStart <= 0 then return false end
+  -- The client says the target is out of Auto Shot range (Forever: the mob
+  -- stepped into the dead zone): no shot can fire, so nothing is drawn --
+  -- not the swing in flight, not a held shot.
+  if r.targetInRange == false then return false end
   if r.swingRemaining > 0 then return true end
   -- A practice fight is combat for this purpose: its held shot (a clipped
   -- auto waiting on a cast) must stay full exactly as a live one does.

@@ -52,7 +52,9 @@ for _, f in ipairs(files(camelot)) do
 end
 for _, f in ipairs(FORBIDDEN) do ok(not listed[f], "camelot does not list " .. f) end
 for _, must in ipairs({ "embeds.xml", "Core/Core.lua", "Core/Constants.lua", "Core/Flavor.lua", "Core/API.lua",
-  "Core/State.lua", "UI/HUD.lua", "UI/Frame_ReactCluster.lua", "Forever/SwingTimer.lua", "Forever/Probe.lua" }) do
+  "Core/State.lua", "UI/HUD.lua", "UI/Frame_ReactCluster.lua", "Forever/SwingTimer.lua", "Forever/Probe.lua",
+  "Forever/LedgerEngine.lua", "Forever/Snapshot.lua", "Forever/CastBar.lua", "Forever/Cooldowns.lua",
+  "UI/Frame_ReactCastBar.lua", "UI/Frame_ReactCooldowns.lua" }) do
   ok(listed[must], "camelot lists " .. must)
 end
 -- Flavor and API load before anything that calls them.
@@ -62,6 +64,10 @@ for i, f in ipairs(order) do pos[f] = i end
 ok(pos["Core/Flavor.lua"] and pos["Core/State.lua"] and pos["Core/Flavor.lua"] < pos["Core/State.lua"], "Flavor before State")
 ok(pos["Core/API.lua"] and pos["Core/API.lua"] < pos["Core/State.lua"], "API before State")
 ok(pos["Forever/Spells.lua"] and pos["Forever/SwingTimer.lua"] and pos["Forever/Spells.lua"] < pos["Forever/SwingTimer.lua"], "Spells before SwingTimer")
+ok(pos["Forever/Spells.lua"] and pos["Config/Options.lua"] and pos["Forever/Spells.lua"] < pos["Config/Options.lua"], "Spells before Options (constants override)")
+ok(pos["Forever/LedgerEngine.lua"] and pos["Forever/Cooldowns.lua"] and pos["Forever/LedgerEngine.lua"] < pos["Forever/Cooldowns.lua"], "LedgerEngine before Cooldowns")
+ok(pos["Forever/Snapshot.lua"] and pos["Forever/Snapshot.lua"] < pos["Forever/Cooldowns.lua"], "Snapshot before Cooldowns (Nock.Restricted)")
+ok(pos["UI/Frame_ReactCluster.lua"] and pos["UI/Frame_ReactCastBar.lua"] and pos["UI/Frame_ReactCluster.lua"] < pos["UI/Frame_ReactCastBar.lua"], "cluster before its glued cast bar")
 
 print(("toc_flavour: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

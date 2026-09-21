@@ -190,6 +190,41 @@ function ReactCooldownsView:Rebuild()
       -- see the visualState block in Refresh.
       slot._whenActive     = (C.REACT_CD_ROWS[row.index]
                               and C.REACT_CD_ROWS[row.index].whenActive) or false
+      -- Pair tile (two spells on one cooldown, Forever's Multi+Aimed): two
+      -- half icons drawn over the base icon, each cropped to its middle.
+      -- Anchored to the icon REGION so the border insets carry over.
+      if entry.ids then
+        if not slot.iconL then
+          slot.iconL = slot:CreateTexture(nil, "ARTWORK", nil, 1)
+          slot.iconL:SetPoint("TOPLEFT", slot.icon, "TOPLEFT", 0, 0)
+          slot.iconL:SetPoint("BOTTOMRIGHT", slot.icon, "BOTTOM", 0, 0)
+          slot.iconR = slot:CreateTexture(nil, "ARTWORK", nil, 1)
+          slot.iconR:SetPoint("TOPLEFT", slot.icon, "TOP", 0, 0)
+          slot.iconR:SetPoint("BOTTOMRIGHT", slot.icon, "BOTTOMRIGHT", 0, 0)
+          -- The divider: Media/PairSeam.tga (Tests/tools/pair_seam.py), a
+          -- 12 px strip with a 2 px line and a symmetric shadow, drawn 1:1
+          -- in device pixels centred on the seam and stretched to the icon's
+          -- height.
+          slot.seam = slot:CreateTexture(nil, "ARTWORK", nil, 2)
+          slot.seam:SetTexture("Interface\\AddOns\\Nock\\Media\\PairSeam")
+          if slot.seam.SetSnapToPixelGrid then slot.seam:SetSnapToPixelGrid(false) end
+          if slot.seam.SetTexelSnappingBias then slot.seam:SetTexelSnappingBias(0) end
+        end
+        local cl, cr = Nock.UI.PairIconCoords(row.w, row.h)
+        slot.iconL:SetTexCoord(cl[1], cl[2], cl[3], cl[4])
+        slot.iconR:SetTexCoord(cr[1], cr[2], cr[3], cr[4])
+        -- Strip geometry in UI units for a 1:1 device-pixel draw: 12 px wide,
+        -- centred on the seam.
+        local ps = (Nock.UI.PixelScale and Nock.UI.PixelScale(slot)) or 1
+        slot.seam:ClearAllPoints()
+        slot.seam:SetPoint("TOP", slot.icon, "TOP", 0, 0)
+        slot.seam:SetPoint("BOTTOM", slot.icon, "BOTTOM", 0, 0)
+        slot.seam:SetWidth(12 / ps)
+        slot.iconL:Show(); slot.iconR:Show(); slot.seam:Show()
+        slot._lastIconL, slot._lastIcon2 = nil, nil
+      elseif slot.iconL then
+        slot.iconL:Hide(); slot.iconR:Hide(); slot.seam:Hide()
+      end
       slot._lastIcon       = nil
       slot._lastText       = ""
       slot._lastVisState   = nil
@@ -208,8 +243,7 @@ function ReactCooldownsView:Rebuild()
 end
 
 local function findExternalCdAddon()
-  local check = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
-  if not check then return nil end
+  local check = Nock.API.IsAddOnLoaded
   for _, name in ipairs(EXTERNAL_CD_ADDONS) do
     if check(name) then return name end
   end
@@ -302,6 +336,11 @@ function ReactCooldownsView:Refresh(state)
           slot.icon:SetTexture(dispIcon)
           slot._lastIcon = dispIcon
         end
+        local pair = entry.ids and slot.iconL
+        if pair then
+          if dispIcon ~= slot._lastIconL then slot.iconL:SetTexture(dispIcon); slot._lastIconL = dispIcon end
+          if cd.icon2 ~= slot._lastIcon2 then slot.iconR:SetTexture(cd.icon2); slot._lastIcon2 = cd.icon2 end
+        end
 
         LOOK.procGlow    = (entry.key == "KC" and p.reactKcProcGlow) and true or false
         -- Move-in cue: the Raptor tile glows while the weave coach says GO.
@@ -324,6 +363,13 @@ function ReactCooldownsView:Refresh(state)
           else slot.icon:SetVertexColor(1, 1, 1, 1) end
           slot.icon:SetAlpha(r.alpha)
           if slot.icon.SetDesaturated then slot.icon:SetDesaturated(r.desat) end
+          if pair then
+            for _, half in ipairs({ slot.iconL, slot.iconR }) do
+              if c then half:SetVertexColor(c[1], c[2], c[3], c[4]) else half:SetVertexColor(1, 1, 1, 1) end
+              half:SetAlpha(r.alpha)
+              if half.SetDesaturated then half:SetDesaturated(r.desat) end
+            end
+          end
           Nock.UI.SetIconHighlight(slot, (r.glow == "border")
             and (p.reactActiveColor or C.COLORS.PROC_GLOW) or nil)
           -- Uncoloured: the same gold overlay as the action bar (user, 2026-08-29:
@@ -338,11 +384,20 @@ function ReactCooldownsView:Refresh(state)
           slot._lastText = txt
         end
 
-        -- Swipe — same (start, duration) pair as the text; only re-fire
-        -- SetCooldown on change so the animation doesn't restart every tick.
+        -- Swipe. TBC: the same (start, duration) pair as the text. Forever:
+        -- the client's own duration object is the truth under the ledger's
+        -- text and glow (a secret-bearing sink the widget accepts; the ledger
+        -- can drift on resets, the swipe cannot). Re-fired only on the
+        -- ledger's start edge so the animation does not restart every tick.
         if dispDur and dispDur > 0 and dispRem and dispRem > 0 then
           if dispStart ~= slot._lastCdStart or dispDur ~= slot._lastCdDuration then
-            slot.cooldown:SetCooldown(dispStart, dispDur)
+            local durObj = (Nock.Flavor and Nock.Flavor.forever and cd.spellId)
+                           and Nock.API.SpellCooldownDuration(cd.spellId) or nil
+            if durObj and slot.cooldown.SetCooldownFromDurationObject then
+              slot.cooldown:SetCooldownFromDurationObject(durObj)
+            else
+              slot.cooldown:SetCooldown(dispStart, dispDur)
+            end
             slot._lastCdStart    = dispStart
             slot._lastCdDuration = dispDur
           end

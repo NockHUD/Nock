@@ -53,8 +53,14 @@ UI\SettingsLauncher.lua
 UI\SettingsLayouts.lua
 UI\HUD.lua
 
+Forever\LedgerEngine.lua
+Forever\Snapshot.lua
 Forever\SwingTimer.lua
+Forever\CastBar.lua
+Forever\Cooldowns.lua
 Forever\Probe.lua
 Modules\ProfileShare.lua
 
 UI\Frame_ReactCluster.lua
+UI\Frame_ReactCastBar.lua
+UI\Frame_ReactCooldowns.lua

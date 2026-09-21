@@ -284,6 +284,26 @@ function ReactCluster:OnInitialize()
   mana.fill:SetPoint("TOPLEFT", mana, "TOPLEFT", 1, -1)
   mana.fill:SetPoint("BOTTOMLEFT", mana, "BOTTOMLEFT", 1, 1)
   mana.text = makeText(mana, REACT.FONT_SMALL, "CENTER")
+  -- Forever sink: a StatusBar over the plain fill, fed the raw (secret) power
+  -- values that StatusBar:SetValue accepts. Hidden on TBC, where the plain
+  -- fill runs off state.player.manaPct. Its own frame so the secret aspect
+  -- never sticks to a region Nock reads back.
+  local sink = CreateFrame("StatusBar", nil, mana)
+  sink:SetPoint("TOPLEFT", mana, "TOPLEFT", 1, -1)
+  sink:SetPoint("BOTTOMRIGHT", mana, "BOTTOMRIGHT", -1, 1)
+  sink:SetStatusBarTexture(WHITE8X8)
+  sink:SetStatusBarColor(unpack(REACT.MANA_FILL))
+  sink:SetMinMaxValues(0, 1)
+  sink:SetValue(0)
+  sink:Hide()
+  mana.sink = sink
+  -- A child frame draws above its parent's regions, so the centre text moves
+  -- to a layer one level above the sink (its anchors to `mana` are kept).
+  local textLayer = CreateFrame("Frame", nil, mana)
+  textLayer:SetAllPoints(mana)
+  textLayer:SetFrameLevel(sink:GetFrameLevel() + 1)
+  mana.text:SetParent(textLayer)
+  mana.textLayer = textLayer
   -- Mana tick spark (reactManaTick, opt-in): placed by RefreshMana from
   -- state.player.manaTick.progress along reactManaTickDirCombat/Ooc.
   local spark = mana:CreateTexture(nil, "OVERLAY")
@@ -309,10 +329,14 @@ end
 function ReactCluster:Geometry()
   local p = profile()
   local w = tonumber(p.reactWidth) or 220
+  -- The range bar needs its module (RangeFinder); on Forever that lands in
+  -- M3, so until it is loaded the row stays out of the stack instead of
+  -- drawing an empty strip. The profile key is left untouched.
+  local rangeFeed = not (Nock.Flavor and Nock.Flavor.forever) or Nock:GetModule("RangeFinder", true) ~= nil
   local show = {
     auto  = p.reactShowAutoBar  ~= false,
     melee = p.reactShowMeleeBar ~= false,
-    range = p.reactShowRangeBar ~= false,
+    range = p.reactShowRangeBar ~= false and rangeFeed,
     mana  = p.reactShowManaBar  ~= false,
   }
   local h = {
@@ -499,6 +523,10 @@ function ReactCluster:ApplyLayout()
   auto.fillR:SetVertexColor(cAuto[1], cAuto[2], cAuto[3], cAuto[4] or 1)
   local cMana = skinColor("reactColorManaFill", REACT.MANA_FILL)
   self.mana.fill:SetVertexColor(cMana[1], cMana[2], cMana[3], cMana[4] or 1)
+  if self.mana.sink then
+    self.mana.sink:SetStatusBarTexture(tex)
+    self.mana.sink:SetStatusBarColor(cMana[1], cMana[2], cMana[3], cMana[4] or 1)
+  end
   local cTick = skinColor("reactColorManaTick", REACT.MANA_TICK)
   self.mana.spark:SetVertexColor(cTick[1], cTick[2], cTick[3], cTick[4] or 1)
   self.mana.spark:SetHeight(math.max(1, g.hMana - 2))
@@ -538,7 +566,8 @@ function ReactCluster:ApplyLayout()
     self.auto.delayText:Hide()
   end
   -- Rotation notation gate (React HUD tab; default on).
-  if p.reactShowNotation == false then
+  -- Forever has no rotation papers yet, so there is no notation to name.
+  if p.reactShowNotation == false or (Nock.Flavor and Nock.Flavor.forever) then
     auto.notationText:Hide()
   else
     auto.notationText:Show()
@@ -915,7 +944,10 @@ function ReactCluster:RefreshMelee(state)
 
   -- Takeover off: the stage outranks READY as the small text, in the stage
   -- colour (a txt diff is also a colour diff — one cache covers both).
-  local txt = look and look.text or (ready and "READY" or "")
+  -- Forever: no weaving yet (the dead zone is too wide to weave through, and
+  -- no paper exists), so READY says nothing useful; the bar alone stays.
+  local readyWord = (Nock.Flavor and Nock.Flavor.forever) and "" or "READY"
+  local txt = look and look.text or (ready and readyWord or "")
   if txt ~= self._lastMeleeText then
     melee.text:SetText(txt)
     if look then
@@ -1043,9 +1075,59 @@ function ReactCluster:RefreshStrip(state)
   self.strip.ranged.fill:SetVertexColor(r[1], r[2], r[3], r[4] or 1)
 end
 
+-- A linear 0..1 -> 0..100 curve the client evaluates for the percent text on
+-- Forever (built once; nil where the curve API is absent, which falls the
+-- caller back to the raw fraction).
+function ReactCluster:PercentCurve()
+  if self._pctCurve ~= nil then return self._pctCurve or nil end
+  local CU, E = _G.C_CurveUtil, _G.Enum and _G.Enum.LuaCurveType
+  if CU and CU.CreateCurve then
+    local c = CU.CreateCurve()
+    if c and c.AddPoint then
+      c:AddPoint(0, 0)
+      c:AddPoint(1, 100)
+      if c.SetType and E and E.Linear then c:SetType(E.Linear) end
+      self._pctCurve = c
+      return c
+    end
+  end
+  self._pctCurve = false
+  return nil
+end
+
 function ReactCluster:RefreshMana(state)
   local mana = self.mana
   local pl = state.player
+  if Nock.Flavor and Nock.Flavor.forever then
+    -- Raw values may be secret: they go into sinks only. The fill texture is
+    -- replaced by the sink bar, and the text is formatted by the client.
+    -- The text is re-set every refresh on purpose: a FontString that has
+    -- seen a secret reads back secret, so the integer diff cannot be used;
+    -- SetFormattedText with a number is cheap and allocates nothing.
+    local sink = mana.sink
+    if mana.fill:IsShown() then mana.fill:Hide() end
+    if not sink:IsShown() then sink:Show() end
+    local maxRaw, curRaw = pl and pl.manaMaxRaw, pl and pl.manaCurRaw
+    if maxRaw ~= nil and curRaw ~= nil then
+      sink:SetMinMaxValues(0, maxRaw)
+      sink:SetValue(curRaw)
+      local mode = profile().reactManaText or "percent"
+      if mode == "none" then
+        mana.text:SetText("")
+      elseif mode == "value" then
+        mana.text:SetFormattedText("%d", curRaw)
+      elseif mode == "both" then
+        mana.text:SetFormattedText("%d / %d", curRaw, maxRaw)
+      else
+        -- UnitPowerPercent answers a 0..1 fraction; a secret cannot be
+        -- multiplied by Nock, so the client evaluates a 0..100 curve instead.
+        local pctRaw = UnitPowerPercent and UnitPowerPercent("player", 0, false, self:PercentCurve())
+        if pctRaw ~= nil then mana.text:SetFormattedText("%d%%", pctRaw) else mana.text:SetText("") end
+      end
+    end
+    if mana.spark:IsShown() then mana.spark:Hide() end   -- tick spark is M3 on Forever
+    return
+  end
   local pct = (pl and pl.manaPct) or 100
   local ratio = pct / 100
   if ratio < 0 then ratio = 0 elseif ratio > 1 then ratio = 1 end

@@ -38,10 +38,10 @@ ok(nodeAt(opts, "hud.react").name == "Nock HUD", "react page renamed to Nock HUD
 ok(nodeAt(opts, "hud.hudMode") == nil and nodeAt(opts, "hud.react.hudMode") == nil and nodeAt(opts, "hud.react.useLook") == nil, "hud mode switches gone")
 
 -- Tabs without a module or a feed in M1.
-for _, p in ipairs({ "hud.react.tabBuff", "hud.react.tabGrid", "hud.react.tabRange", "hud.react.tabBars.grpEngine" }) do
+for _, p in ipairs({ "hud.react.tabBuff", "hud.react.tabRange", "hud.react.tabBars.grpEngine" }) do
   ok(nodeAt(opts, p) == nil, p .. " gone")
 end
-for _, p in ipairs({ "hud.react.tabBars", "hud.react.tabSize", "hud.react.tabSkin" }) do
+for _, p in ipairs({ "hud.react.tabBars", "hud.react.tabSize", "hud.react.tabSkin", "hud.react.tabGrid" }) do
   ok(nodeAt(opts, p) ~= nil, p .. " kept")
 end
 
@@ -49,12 +49,12 @@ end
 for _, p in ipairs({
   "hud.react.tabBars.reactShowBrackets", "hud.react.tabBars.reactShowClipTicks", "hud.react.tabBars.reactShowDelay",
   "hud.react.tabBars.reactShowGcdDivider", "hud.react.tabBars.reactShowNotation",
-  "hud.react.tabSize.reactShowCastBar", "hud.react.tabSize.reactShowAutoShotCast", "hud.react.tabSize.castBarCard",
-  "hud.react.tabSize.reactShowGrid", "hud.react.tabSize.reactShowRangeBar", "hud.react.tabSize.reactShowAspectIcon",
+  "hud.react.tabSize.reactShowAutoShotCast",
+  "hud.react.tabSize.reactShowRangeBar", "hud.react.tabSize.reactShowAspectIcon",
   "hud.react.tabSize.reactShowMarkIcon", "hud.react.tabSize.reactManaTick", "hud.react.tabSize.reactManaTickDirCombat",
   "hud.react.tabSize.reactMeleeStageCue",
   "hud.react.tabSkin.reactColorTickSteady", "hud.react.tabSkin.reactColorBracket", "hud.react.tabSkin.reactGcdDividerWidth",
-  "hud.react.tabSkin.reactColorRangeSweet", "hud.react.tabSkin.reactCornerIconSize", "hud.react.tabSkin.reactColorCastFill",
+  "hud.react.tabSkin.reactColorRangeSweet", "hud.react.tabSkin.reactCornerIconSize",
   "general.grpCastBar", "general.grpSetup", "general.grpLook", "general.runWizard", "general.runWizardGuided", "general.perfPanel",
 }) do
   ok(nodeAt(opts, p) == nil, p .. " gone")
@@ -63,6 +63,8 @@ for _, p in ipairs({
   "hud.react.tabBars.reactDirAuto", "hud.react.tabBars.reactDirMelee",
   "hud.react.tabSize.reactShowAutoBar", "hud.react.tabSize.reactShowMeleeBar", "hud.react.tabSize.reactShowManaBar",
   "hud.react.tabSize.reactScale", "hud.react.tabSize.reactWidth", "hud.react.tabSize.order_up_1",
+  "hud.react.tabSize.reactShowCastBar", "hud.react.tabSize.castBarCard", "hud.react.tabSize.reactShowGrid",
+  "hud.react.tabSkin.reactCastH", "hud.react.tabSkin.reactColorCastFill",
   "hud.react.tabSkin.reactAutoH", "hud.react.tabSkin.reactColorAutoFill", "hud.react.tabSkin.reactFont", "hud.react.tabSkin.reactBarTexture",
   "general.scale", "general.lockAll", "general.minimapIcon", "general.grpMedia", "general.grpVisibility", "general.editGridShow",
   "profiles.stock", "profiles.sharing",

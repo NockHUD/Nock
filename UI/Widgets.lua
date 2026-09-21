@@ -408,6 +408,11 @@ end
 local function kickRelayout(fs)
   if not (fs and fs.GetText) then return end
   local t = fs:GetText()
+  -- Forever: a FontString that has shown a secret reads back a secret string
+  -- (the mana text). It may be handed straight back to SetText, but it must
+  -- never be compared -- that throws.
+  local isSecret = _G.issecretvalue
+  if isSecret and t ~= nil and isSecret(t) then fs:SetText(t); return end
   if t and t ~= "" then fs:SetText(t) end
 end
 
@@ -859,6 +864,21 @@ end
 -- React mana bar (reactManaText). Pure — LuaJIT-tested in
 -- Tests/mana_format_test.lua. Callers diff on the integer inputs + mode so
 -- the format only runs when the displayed value changes (perf rule).
+-- Crop for each half of a glued pair tile (two spells sharing one cooldown,
+-- e.g. Multi+Aimed on Forever): the middle of the icon at the half's own
+-- aspect, the same 0.42 base crop the single tiles use. Pure; both halves
+-- get the same rectangle. LuaJIT-tested in Tests/pair_icon_coords_test.lua.
+function Nock.UI.PairIconCoords(tileW, tileH)
+  local half = (tileW or 0) / 2
+  local h = tileH or 0
+  local xSpan, ySpan = 0.42, 0.42
+  if half > 0 and h > 0 then
+    if half >= h then ySpan = 0.42 * (h / half) else xSpan = 0.42 * (half / h) end
+  end
+  local c = { 0.5 - xSpan, 0.5 + xSpan, 0.5 - ySpan, 0.5 + ySpan }
+  return c, { c[1], c[2], c[3], c[4] }
+end
+
 function Nock.UI.FormatManaText(mode, cur, max, pct)
   if mode == "none"  then return "" end
   if mode == "value" then return string.format("%d", cur) end

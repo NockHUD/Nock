@@ -69,6 +69,24 @@ _G.UnitRangedDamage = function() error("must not be called on Forever") end
 module:RefreshSwingDurations()
 ok(true, "RefreshSwingDurations is a no-op")
 
+-- Range check: enabled at OnEnable, published from the event, nil without a check.
+local enabled = {}
+_G.C_SwingTimer = { EnableRangeCheck = function(kind, on) enabled[kind] = on end,
+                    IsTargetWithinSwingRange = function() return true end }
+module:OnEnable()
+ok(enabled[2] == true, "ranged range check enabled")
+ok(st.ranged.targetInRange == true, "direct read at enable")
+fire("PLAYER_SWING_RANGE_UPDATE", 2, false, true)
+ok(st.ranged.targetInRange == false, "out of range published")
+ok(Nock.AutoSwingLive() == false, "auto bar not live while the target is out of range")
+fire("PLAYER_SWING_RANGE_UPDATE", 0, true, true)
+ok(st.ranged.targetInRange == false, "main-hand range event ignored")
+fire("PLAYER_SWING_RANGE_UPDATE", 2, true, false)
+ok(st.ranged.targetInRange == nil, "no check -> nil")
+_G.C_SwingTimer.IsTargetWithinSwingRange = function() return nil end
+fire("PLAYER_TARGET_CHANGED")
+ok(st.ranged.targetInRange == nil, "no target -> nil")
+
 -- Entering world clears a stranded auto-repeat.
 st.ranged.repeating = true
 fire("PLAYER_ENTERING_WORLD")
