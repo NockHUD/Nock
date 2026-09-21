@@ -6,10 +6,7 @@ local P = {}
 Nock.Presets = P
 
 local function spellIcon(id)
-  return function()
-    local fn = C_Spell and C_Spell.GetSpellTexture or GetSpellTexture
-    return fn and fn(id) or nil
-  end
+  return function() return Nock.API.SpellIcon(id) end
 end
 
 -- Warnings: category per catalog key (Modules/Warnings.lua; entries without a

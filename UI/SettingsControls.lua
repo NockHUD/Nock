@@ -291,9 +291,7 @@ local function spellIcon(id, label)
     id = key and C and C.SpellID and C.SpellID[key] or nil
   end
   if not id then return nil end
-  if C_Spell and C_Spell.GetSpellTexture then return C_Spell.GetSpellTexture(id) end
-  if GetSpellTexture then return GetSpellTexture(id) end
-  return nil
+  return Nock.API.SpellIcon(id)
 end
 
 SC.SpellOfName = spellOfName
@@ -780,7 +778,7 @@ local function openColorPicker(r, g, b, a, hasAlpha, onChange, onConfirm, onCanc
     cpf.hasOpacity = hasAlpha and true or false
     cpf.opacity = hasAlpha and (1 - a) or 0
     cpf.previousValues = { r, g, b, a }
-    cpf.func = function() local nr, ng, nb = cpf:GetColorRGB(); local na = hasAlpha and (1 - (OpacitySliderFrame and OpacitySliderFrame:GetValue() or 0)) or 1; onChange(nr, ng, nb, na) end
+    cpf.func = function() local nr, ng, nb = cpf:GetColorRGB(); local na = hasAlpha and (1 - (_G.OpacitySliderFrame and _G.OpacitySliderFrame:GetValue() or 0)) or 1; onChange(nr, ng, nb, na) end
     cpf.opacityFunc = cpf.func
     cpf.cancelFunc = function(prev) onCancel(); cpf._nockCancelled = true end
     cpf:SetColorRGB(r, g, b)

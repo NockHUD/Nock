@@ -49,6 +49,7 @@ _G.C_UnitAuras = {
   end,
 }
 
+dofile("Core/API.lua")   -- Nock.API.AuraByIndex is AuraCache's only aura read
 dofile("Core/AuraCache.lua")
 local AC = Nock.AuraCache
 ok(AC.IsIncremental() == true, "incremental client detected")

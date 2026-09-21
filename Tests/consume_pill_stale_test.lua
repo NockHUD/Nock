@@ -65,6 +65,7 @@ end })
 dofile("Core/Constants.lua")
 dofile("Config/Defaults.lua")
 dofile("Core/State.lua")
+dofile("Core/API.lua")   -- Nock.API.AuraByIndex is AuraCache's only aura read
 dofile("Core/AuraCache.lua")
 dofile("Modules/Auras.lua")
 local AC    = Nock.AuraCache

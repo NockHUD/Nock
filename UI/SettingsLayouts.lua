@@ -24,12 +24,10 @@ local PILL_H, PILL_GAP = 36, 6
 -- {glyph=name}, a path, or an AceConfig icon function.
 --------------------------------------------------------------------------------
 local function spellTexture(id)
-  if C_Spell and C_Spell.GetSpellTexture then return C_Spell.GetSpellTexture(id) end
-  if GetSpellTexture then return GetSpellTexture(id) end
+  return Nock.API.SpellIcon(id)
 end
 local function itemTexture(id)
-  if C_Item and C_Item.GetItemIconByID then return C_Item.GetItemIconByID(id) end
-  if GetItemIcon then return GetItemIcon(id) end
+  return Nock.API.ItemIcon(id)
 end
 -- Returns "glyph", name  |  "tex", texture  |  nil
 function Settings.ResolveIcon(icon, info)
@@ -379,13 +377,10 @@ local function entryName(row)
   local base, id, kind = SC.SpellOfName(plain)
   if row.type == "description" then base = base:gsub("^%d+%.%s*", "") end
   if id and kind == "spell" then
-    local nm = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(id)
-    if type(nm) == "table" then nm = nm.name end
-    if not nm and GetSpellInfo then nm = GetSpellInfo(id) end
+    local nm = Nock.API.SpellName(id)
     if nm and nm ~= "" then base = nm end
   elseif id and kind == "item" then
-    local nm = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
-    if not nm and GetItemInfo then nm = GetItemInfo(id) end
+    local nm = Nock.API.ItemName(id)
     if nm and nm ~= "" and not base:find(nm, 1, true) then base = base end
   end
   return base, id, kind

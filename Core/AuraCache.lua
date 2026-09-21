@@ -64,50 +64,22 @@ local function reindex(st)
   st.rev = st.rev + 1
 end
 
--- Fallback record from the value-returning API (same field names as AuraData).
-local function record(inst, helpful, name, icon, count, _, duration, expirationTime, source, _, _, spellId)
-  return {
-    auraInstanceID = inst, name = name, icon = icon, applications = count or 0,
-    duration = duration or 0, expirationTime = expirationTime or 0, sourceUnit = source,
-    spellId = spellId, isHelpful = helpful, isHarmful = not helpful,
-  }
-end
-
 local function rebuild(st)
   local unit = st.unit
   wipe(st.byInstance)
   st.dirty = false
   -- The player always exists; the pet and the target only sometimes.
   if unit ~= "player" and not (UnitExists and UnitExists(unit)) then reindex(st); return end
-  local CU = C_UnitAuras
-  if CU and CU.GetAuraDataByIndex then
-    for _, filter in ipairs(FILTERS) do
-      local i = 1
-      while true do
-        local a = CU.GetAuraDataByIndex(unit, i, filter)
-        if not a then break end
-        st.byInstance[a.auraInstanceID or (filter .. i)] = a
-        i = i + 1
-      end
-    end
-  else
-    if UnitBuff then
-      local i = 1
-      while true do
-        local name = UnitBuff(unit, i)
-        if not name then break end
-        st.byInstance[i] = record(i, true, UnitBuff(unit, i))
-        i = i + 1
-      end
-    end
-    if UnitDebuff then
-      local i = 1
-      while true do
-        local name = UnitDebuff(unit, i)
-        if not name then break end
-        st.byInstance[100000 + i] = record(100000 + i, false, UnitDebuff(unit, i))
-        i = i + 1
-      end
+  -- Nock.API.AuraByIndex is C_UnitAuras' table shape on every client (built
+  -- from UnitAura's returns where only that exists). On Forever it throws in
+  -- combat; the walk stays out-of-combat or behind the aura secrecy predicate.
+  for _, filter in ipairs(FILTERS) do
+    local i = 1
+    while true do
+      local a = Nock.API.AuraByIndex(unit, i, filter)
+      if not a then break end
+      st.byInstance[a.auraInstanceID or (filter .. i)] = a
+      i = i + 1
     end
   end
   reindex(st)

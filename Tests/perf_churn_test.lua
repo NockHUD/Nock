@@ -89,6 +89,7 @@ _G.UnitAura = _G.UnitBuff
 dofile("Core/Constants.lua")
 dofile("Config/Defaults.lua")
 dofile("Core/State.lua")
+dofile("Core/API.lua")   -- Nock.API.AuraByIndex is AuraCache's only aura read
 dofile("Core/AuraCache.lua")
 local AC = Nock.AuraCache
 local C = Nock.Constants

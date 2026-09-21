@@ -68,7 +68,7 @@ end
 -- reads it to keep the Survival-only 5:4:1:1 off a Beast Master's label; nil
 -- (not read yet) resolves as BM there.
 function Nock:UpdateSpec()
-  self.state.player.spec = Nock.SpecFromTabs(GetTalentTabInfo)
+  self.state.player.spec = Nock.SpecFromTabs(Nock.API.TalentTabInfo())
 end
 
 -- Global cooldown probe. Steady Shot has no real cooldown, so whatever
@@ -76,15 +76,14 @@ end
 -- 1.5s base + slop isn't a GCD (e.g. the spell is genuinely on CD) and is
 -- ignored. Raw (start, duration) only; Tick derives remaining/active. Prefers
 -- the bare GetSpellCooldown (values) over C_Spell's table.
+-- On Forever the probe spell is Forever/Spells.lua's GCD_PROBE (Blizzard's
+-- whitelisted GCD spell) and a secret reading (in combat) clears the probe
+-- instead of comparing.
 function Nock:ProbeGcd()
   local C = self.Constants
-  local gs, gd
-  if GetSpellCooldown then
-    gs, gd = GetSpellCooldown(C.SpellID.STEADY_SHOT)
-  elseif C_Spell and C_Spell.GetSpellCooldown then
-    local info = C_Spell.GetSpellCooldown(C.SpellID.STEADY_SHOT)
-    if info then gs, gd = info.startTime, info.duration end
-  end
+  local id = (Nock.Spells and Nock.Spells.GCD_PROBE) or C.SpellID.STEADY_SHOT
+  local gs, gd = Nock.API.SpellCooldown(id)
+  gs = Nock.Flavor.Plain(gs); gd = Nock.Flavor.Plain(gd)
   local g = self.state.gcd
   if gs and gs > 0 and gd and gd > 0 and gd <= (C.GCD_BASE or 1.5) + 0.05 then
     g.probeStart, g.probeDuration = gs, gd
@@ -314,7 +313,9 @@ function Nock:Tick()
   -- the event arriving only at the next release (or 0.2s late), leaving the
   -- swing grid a whole cycle stale. One cheap API call per tick catches the
   -- edge within a frame; RefreshSwingDurations no-ops when nothing moved.
-  if not state.sim.active and self._swingTimer then
+  -- Forever: PLAYER_SWING carries the duration and UnitRangedDamage is secret
+  -- in combat (comparing it would throw), so the poll is TBC-only.
+  if not state.sim.active and self._swingTimer and not Nock.Flavor.forever then
     local sd = UnitRangedDamage("player")
     if sd and sd > 0 and sd ~= state.ranged.swingDuration then
       self._swingTimer:RefreshSwingDurations()
@@ -378,21 +379,37 @@ function Nock:Tick()
   end
 
   -- Continuous-derived context (cheap reads each frame)
-  state.context.moving      = (GetUnitSpeed and (GetUnitSpeed("player") or 0) > 0) or false
+  -- Continuous-derived context (cheap reads each frame). On Forever these are
+  -- secret in combat: Plain() turns a secret into nil and the derived value
+  -- keeps its last plain reading instead of throwing.
+  local Plain = Nock.Flavor.Plain
+  local speed = Plain(GetUnitSpeed and GetUnitSpeed("player"))
+  if speed ~= nil then state.context.moving = speed > 0 end
   state.context.controlLost = HasFullControl and (not HasFullControl()) or false
 
-  local maxMana = UnitPowerMax("player", 0) or 0
-  local mana = UnitPower("player", 0) or 0
-  state.player.manaCur = mana
-  state.player.manaMax = maxMana
-  state.player.manaPct = (maxMana > 0) and (mana / maxMana * 100) or 100
+  -- Raw fields may be secret and exist for display sinks (StatusBar:SetValue
+  -- accepts a secret). The plain fields are for logic and stay at their last
+  -- readable value while restricted.
+  local maxManaRaw = UnitPowerMax("player", 0)
+  local manaRaw = UnitPower("player", 0)
+  state.player.manaMaxRaw = maxManaRaw
+  state.player.manaCurRaw = manaRaw
+  local maxMana = Plain(maxManaRaw)
+  local mana = Plain(manaRaw)
+  if maxMana ~= nil and mana ~= nil then
+    state.player.manaCur = mana
+    state.player.manaMax = maxMana
+    state.player.manaPct = (maxMana > 0) and (mana / maxMana * 100) or 100
+  elseif state.player.manaPct == nil then
+    state.player.manaCur, state.player.manaMax, state.player.manaPct = 0, 0, 100
+  end
   state.context.conserveMana = state.player.manaPct < 50
 
   -- Mana tick / five-second-rule bar (raw fields from Modules/ManaTick.lua):
   -- live only below full and before expiry. The direction is each HUD's own
   -- setting, applied by the views through ManaTickEngine.SparkX.
   local mt, MTE = state.player.manaTick, Nock.ManaTickEngine
-  if mt and MTE then
+  if mt and MTE and mana ~= nil and maxMana ~= nil then
     if MTE.Live(mt.mode, mt.start, mt.expire, now, mana, maxMana) then
       mt.active   = true
       mt.progress = MTE.Progress(mt.start, mt.expire, now)
@@ -401,16 +418,27 @@ function Nock:Tick()
     end
   end
 
-  local maxHp = UnitHealthMax("player") or 0
-  local hp = UnitHealth("player") or 0
-  state.player.healthPct = (maxHp > 0) and (hp / maxHp * 100) or 100
+  local maxHpRaw = UnitHealthMax("player")
+  local hpRaw = UnitHealth("player")
+  state.player.healthMaxRaw = maxHpRaw
+  state.player.healthCurRaw = hpRaw
+  local maxHp = Plain(maxHpRaw)
+  local hp = Plain(hpRaw)
+  if maxHp ~= nil and hp ~= nil then
+    state.player.healthPct = (maxHp > 0) and (hp / maxHp * 100) or 100
+  elseif state.player.healthPct == nil then
+    state.player.healthPct = 100
+  end
 
   local mark = state.target.huntersMark
   if mark then
     mark.remaining = math.max(0, mark.expirationTime - now)
   end
 
-  if self.Profiles then
+  -- TBC rotation papers only. On Forever the file is loaded for the options
+  -- tree, but there is no rotation model yet and GetMeleeHaste is secret in
+  -- combat (comparing it throws), so the resolver never runs there.
+  if self.Profiles and not Nock.Flavor.forever then
     local ews = state.ranged.swingDuration
     local meleeHaste = state.sim.active and state.sim.meleeHaste
       or ((GetMeleeHaste and GetMeleeHaste()) or 0)
@@ -511,6 +539,9 @@ function Nock:HandleSlashCommand(input)
   elseif input == "swinglog" then
     local stm = self:GetModule("SwingTimer", true)
     if stm and stm.SwingLogToggle then stm:SwingLogToggle() end
+  elseif input == "probe" or input == "probe spells" then
+    local pr = self:GetModule("ForeverProbe", true)
+    if pr and pr.Show then pr:Show(input:match("probe%s+(%w+)")) else self:Print("Probe is only available on WoW Forever.") end
   elseif input == "lock" then
     self:SetLocked(true)
     self:Print("All Nock frames locked.")
@@ -627,8 +658,8 @@ function Nock:HandleSlashCommand(input)
       tostring(s.context.moving),
       tostring(s.context.controlLost)))
     local nextActionName = "none"
-    if s.rotation.nextAction and GetSpellInfo then
-      nextActionName = GetSpellInfo(s.rotation.nextAction) or tostring(s.rotation.nextAction)
+    if s.rotation.nextAction then
+      nextActionName = Nock.API.SpellName(s.rotation.nextAction) or tostring(s.rotation.nextAction)
     end
     self:Print(("eWS=%.2fs  profile=%s  NEXT=%s  mana=%.0f%%"):format(
       s.ranged.swingDuration,
@@ -736,19 +767,9 @@ function Nock:HandleSlashCommand(input)
     for _, entry in ipairs(self.Constants.TRACKED_COOLDOWNS) do
       if entry.type == "spell" then
         local id = entry.id
-        local _, _, i1
-        if GetSpellInfo then _, _, i1 = GetSpellInfo(id) end
-        local i2
-        if C_Spell and C_Spell.GetSpellInfo then
-          local info = C_Spell.GetSpellInfo(id)
-          i2 = info and info.iconID
-        end
-        local i3
-        if C_Spell and C_Spell.GetSpellTexture then i3 = C_Spell.GetSpellTexture(id) end
-        local i4
-        if GetSpellTexture then i4 = GetSpellTexture(id) end
-        self:Print(("%s[%d] GSI=%s C.GSI=%s C.GST=%s GST=%s"):format(
-          entry.label, id, tostring(i1), tostring(i2), tostring(i3), tostring(i4)))
+        local _, i1 = Nock.API.SpellInfo(id)
+        local i3 = Nock.API.SpellIcon(id)
+        self:Print(("%s[%d] info.icon=%s texture=%s"):format(entry.label, id, tostring(i1), tostring(i3)))
       elseif entry.type == "specSpell" then
         self:Print(("%s (specSpell): see state.cooldowns[%s].icon=%s"):format(
           entry.label, entry.key, tostring(self.state.cooldowns[entry.key] and self.state.cooldowns[entry.key].icon)))
@@ -756,8 +777,8 @@ function Nock:HandleSlashCommand(input)
         local tex = GetInventoryItemTexture("player", entry.slot)
         self:Print(("%s (inv slot %d) tex=%s"):format(entry.label, entry.slot, tostring(tex)))
       elseif entry.type == "item" then
-        local _, _, _, _, _, _, _, _, _, icon = GetItemInfo(entry.id)
-        self:Print(("%s (item %d) icon=%s count=%d"):format(entry.label, entry.id, tostring(icon), GetItemCount(entry.id) or 0))
+        local icon = Nock.API.ItemIcon(entry.id)
+        self:Print(("%s (item %d) icon=%s count=%d"):format(entry.label, entry.id, tostring(icon), Nock.API.ItemCount(entry.id) or 0))
       elseif entry.type == "altItem" then
         local resolved = self.state.cooldowns[entry.key] and self.state.cooldowns[entry.key].icon
         self:Print(("%s (altItem) resolved icon=%s"):format(entry.label, tostring(resolved)))

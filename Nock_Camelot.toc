@@ -1,0 +1,59 @@
+## Interface: 16001
+## AllowLoadGameType: camelot
+## Title: Nock
+## Notes: Hunter combat HUD for WoW Forever — swing timer, cast bar, cooldowns, warnings.
+## Author: Yaxal @ Spineshatter
+## X-License: WTFPL
+## X-Website: https://github.com/NockHUD/Nock
+## Version: 2.0.0-alpha.2
+## SavedVariables: NockDB
+
+embeds.xml
+
+Core\Core.lua
+Core\Constants.lua
+Core\Flavor.lua
+Core\API.lua
+Core\State.lua
+Core\AuraCache.lua
+Core\WeaveMacro.lua
+Core\ProfileShare.lua
+Core\Minimap.lua
+Core\ConsumeData.lua
+
+# Rotations/Profiles.lua is TBC data; loaded here only because Config/Options.lua
+# reads Nock.Profiles at build time. Dropped when the options tree is split (M2+).
+Rotations\Profiles.lua
+
+Forever\Spells.lua
+
+Config\Defaults.lua
+Config\Options.lua
+Config\OptionsAdvanced.lua
+Config\OptionsLayoutData.lua
+Config\OptionsLayout.lua
+Config\Presets.lua
+Config\ProfilesBundled.lua
+Core\OptionsWalk.lua
+
+UI\IconAtlas.lua
+UI\Skin.lua
+UI\Widgets.lua
+UI\KeyCapture.lua
+UI\ScrollColumn.lua
+UI\EditMode.lua
+UI\Frame_EditGrid.lua
+UI\Frame_EditList.lua
+UI\AceGUI_LSMDropdown.lua
+UI\AceGUI_BarLegends.lua
+UI\SettingsControls.lua
+UI\Frame_Settings.lua
+UI\SettingsLauncher.lua
+UI\SettingsLayouts.lua
+UI\HUD.lua
+
+Forever\SwingTimer.lua
+Forever\Probe.lua
+Modules\ProfileShare.lua
+
+UI\Frame_ReactCluster.lua

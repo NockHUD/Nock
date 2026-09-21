@@ -755,28 +755,34 @@ function ReactCluster:RefreshAuto(state)
     self._lastAutoP = p01
   end
 
-  -- Marks reposition only when their inputs change. Thresholds come from the
-  -- shared Nock.ClipThreshold, same as the classic bar and the rotation engine.
-  local sd = r.swingDuration
-  local windup = r.windup or C.AUTO_SHOT_CAST
-  local steadyT = Nock.ClipThreshold(1.5)
-  local multiT  = Nock.ClipThreshold(0.5)
-  -- The bar's left edge is part of the mark inputs now: positions are snapped
-  -- in absolute screen space, so moving the HUD changes the answer even when
-  -- no threshold did. Cheap C call; only ever re-places while actually moving.
-  local barLeft = auto:GetLeft()
-  if sd ~= self._markSd or steadyT ~= self._markSteadyT
-     or multiT ~= self._markMultiT or windup ~= self._markWindup
-     or barLeft ~= self._markBarLeft then
-    self:PositionAutoMarks(sd, steadyT, multiT, windup)
-    self._markSd      = sd
-    self._markSteadyT = steadyT
-    self._markMultiT  = multiT
-    self._markWindup  = windup
-    self._markBarLeft = barLeft
-  end
+  -- Forever: no clip model yet (no wind-up feed, and the cast time behind
+  -- Nock.ClipThreshold reads GetRangedHaste, which is secret in combat). The
+  -- marks stay hidden (makeMark hides them at creation); the delay and
+  -- notation texts below still work off state.
+  if not (Nock.Flavor and Nock.Flavor.forever) then
+    -- Marks reposition only when their inputs change. Thresholds come from the
+    -- shared Nock.ClipThreshold, same as the classic bar and the rotation engine.
+    local sd = r.swingDuration
+    local windup = r.windup or C.AUTO_SHOT_CAST
+    local steadyT = Nock.ClipThreshold(1.5)
+    local multiT  = Nock.ClipThreshold(0.5)
+    -- The bar's left edge is part of the mark inputs now: positions are snapped
+    -- in absolute screen space, so moving the HUD changes the answer even when
+    -- no threshold did. Cheap C call; only ever re-places while actually moving.
+    local barLeft = auto:GetLeft()
+    if sd ~= self._markSd or steadyT ~= self._markSteadyT
+       or multiT ~= self._markMultiT or windup ~= self._markWindup
+       or barLeft ~= self._markBarLeft then
+      self:PositionAutoMarks(sd, steadyT, multiT, windup)
+      self._markSd      = sd
+      self._markSteadyT = steadyT
+      self._markMultiT  = multiT
+      self._markWindup  = windup
+      self._markBarLeft = barLeft
+    end
 
-  self:RefreshGcdDivider(state)
+    self:RefreshGcdDivider(state)
+  end
 
   -- Delay readout (seconds late vs one weapon-speed cycle), severity-colored.
   -- Feature-gated (reactShowDelay, default off — ApplyLayout hides the string).

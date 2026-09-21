@@ -36,6 +36,10 @@ return function(opts)
     db = { profile = {}, global = {}, char = {} },
     Constants = setmetatable({}, { __index = function(t, k) local v = {}; rawset(t, k, v); return v end }),
     UI = {},
+    -- Core/Flavor.lua needs GetBuildInfo; the harness pins the TBC answer.
+    Flavor = { forever = false, toc = 20506, Plain = function(v) return v end,
+               PlainNumber = function(v, d) return type(v) == "number" and v or d end,
+               HudLabel = function() return "React Cluster" end },
   }
   local STUB_CATALOGS = opts.catalogs or {
     Warnings = { Catalog = {
@@ -56,6 +60,8 @@ return function(opts)
   _G.NockStub = Nock
   -- the real constants (a plain table literal): min/max/step read numbers, as in the client
   dofile("Core/Constants.lua")
+  -- the real API layer: Options.lua's name/icon lookups go through Nock.API
+  dofile("Core/API.lua")
   dofile("Config/Options.lua")
   local fa = io.open("Config/OptionsAdvanced.lua"); if fa then fa:close(); dofile("Config/OptionsAdvanced.lua") end
   local fl = io.open("Config/OptionsLayout.lua"); if fl then fl:close(); dofile("Config/OptionsLayoutData.lua"); dofile("Config/OptionsLayout.lua") end

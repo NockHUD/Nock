@@ -85,6 +85,7 @@ Nock.parentFrame = Stub.CreateFrame("Frame")
 -- The aura store (Core/AuraCache.lua) is what the modules read; headlessly
 -- no UNIT_AURA fires, so every read invalidates first -- the mocks are the
 -- truth on every call, as UnitBuff/UnitDebuff were before the store.
+dofile("Core/API.lua")   -- Nock.API.AuraByIndex is AuraCache's only aura read
 dofile("Core/AuraCache.lua")
 do
   local AC = Nock.AuraCache

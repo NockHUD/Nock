@@ -53,6 +53,12 @@ Nock.state = {
     manaPct  = 100,
     manaCur  = 0,
     manaMax  = 0,
+    -- Raw readings, possibly secret on Forever: for display sinks only
+    -- (StatusBar:SetValue accepts a secret; never compare or do math on them).
+    manaCurRaw   = nil,
+    manaMaxRaw   = nil,
+    healthCurRaw = nil,
+    healthMaxRaw = nil,
     -- Mana regen tick / five-second rule. The raw fields (mode "tick"|"fsr",
     -- start, expire, plus the engine's own anchors) are written by
     -- Modules/ManaTick.lua on power updates; the tick derives `active` and
@@ -844,6 +850,9 @@ end
 -- cluster's own frames. A mode that is neither is a cluster look without
 -- React's frames.
 function Nock.HudMode()
+  -- Forever has one HUD: the React cluster, labelled "Nock HUD". The profile
+  -- value is kept untouched so a shared profile still round-trips to TBC.
+  if Nock.Flavor and Nock.Flavor.forever then return "react" end
   local p = Nock.db and Nock.db.profile
   return (p and p.hudMode) or "classic"
 end

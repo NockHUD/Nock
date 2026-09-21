@@ -529,7 +529,7 @@ end
 function Nock.UI._DumpHeaderFonts()
   local stamp = (date and date("%H:%M:%S")) or tostring(GetTime())
   local fcLoaded = "?"
-  local chk = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
+  local chk = Nock.API.IsAddOnLoaded
   if chk then fcLoaded = chk("FojjiCore") and "yes" or "no" end
   local lsmNumen = LSM and (LSM:Fetch("font", "Numen", true)) or nil  -- noDefault=true → real nil if missing
   local lines = {
@@ -1742,12 +1742,7 @@ function Nock.UI.PracticeNameFor(sym)
   if n then return n end
   local id = PRACTICE_SYM_SPELL[sym]
   if not id then return nil end
-  if C_Spell and C_Spell.GetSpellInfo then
-    local info = C_Spell.GetSpellInfo(id)
-    if type(info) == "table" then n = info.name
-    elseif type(info) == "string" then n = info end
-  end
-  if not n and GetSpellInfo then n = GetSpellInfo(id) end
+  n = Nock.API.SpellName(id)
   if n and n ~= "" then
     PRACTICE_NAME[sym] = n
     return n
@@ -1756,15 +1751,13 @@ function Nock.UI.PracticeNameFor(sym)
 end
 
 local function practiceSpellIcon(id)
-  if C_Spell and C_Spell.GetSpellTexture then return C_Spell.GetSpellTexture(id) end
-  if GetSpellTexture then return GetSpellTexture(id) end
-  return nil
+  return Nock.API.SpellIcon(id)
 end
 
 local function practiceItemIcon(id)
   if not id then return nil end
-  if GetItemIcon then
-    local i = GetItemIcon(id)
+  do
+    local i = Nock.API.ItemIcon(id)
     if i then return i end
   end
   if C_Item and C_Item.GetItemIconByID then

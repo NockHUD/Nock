@@ -52,14 +52,8 @@ end
 local function ccSpellIcon(spell)
   return function()
     local id = tonumber(spell)
-    if C_Spell and C_Spell.GetSpellTexture then
-      local okt, tex = pcall(C_Spell.GetSpellTexture, id or spell)
-      if okt and tex then return tex end
-    end
-    if GetSpellInfo then
-      local okt, _, _, tex = pcall(GetSpellInfo, id or spell)
-      if okt and tex then return tex end
-    end
+    local okt, tex = pcall(Nock.API.SpellIcon, id or spell)
+    if okt and tex then return tex end
     return "Interface\\Icons\\INV_Misc_QuestionMark"
   end
 end
@@ -74,10 +68,7 @@ local function shopCustomSave(list)
   Nock:RebuildOptionsArgs()
 end
 local function shopItemName(id)
-  local n
-  if C_Item and C_Item.GetItemNameByID then n = C_Item.GetItemNameByID(id) end
-  if not n and GetItemInfo then n = GetItemInfo(id) end
-  return n
+  return Nock.API.ItemName(id)
 end
 
 -- Reusable "global on/off" toggle bound to a profile show* flag. The same key
@@ -623,8 +614,8 @@ end
 -- Dual-form spell-name lookup (bare GetSpellInfo may be a shim on this
 -- client; C_Spell is authoritative).
 local function optSpellName(id)
-  if GetSpellInfo then
-    local n = GetSpellInfo(id)
+  do
+    local n = Nock.API.SpellName(id)
     if n then return n end
   end
   if C_Spell and C_Spell.GetSpellInfo then
@@ -635,8 +626,8 @@ local function optSpellName(id)
 end
 
 local function spellOrItemName(t, id)
-  if t == "item" and GetItemInfo then
-    local nm = GetItemInfo(id); if nm then return nm end
+  if t == "item" then
+    local nm = Nock.API.ItemName(id); if nm then return nm end
   else
     local nm = optSpellName(id); if nm then return nm end
   end
@@ -3891,7 +3882,7 @@ local function buildOptionsTable()
               -- A reload right away (user, 2026-08-27): the disable only
               -- takes effect on one, and the page would keep showing an
               -- addon that is on its way out.
-              if wb and wb.DisableGrounded and wb:DisableGrounded() and ReloadUI then ReloadUI() end
+              if wb and wb.DisableGrounded and wb:DisableGrounded() and _G.ReloadUI then _G.ReloadUI() end
             end,
           },
           howHeader = {
@@ -5806,8 +5797,7 @@ local function buildOptionsTable()
         name   = e.label or key,
         order  = order,
         icon   = iconId and function()
-          if C_Item and C_Item.GetItemIconByID then return C_Item.GetItemIconByID(iconId) end
-          if GetItemIcon then return GetItemIcon(iconId) end
+          return Nock.API.ItemIcon(iconId)
         end or nil,
         args = {
           on = {

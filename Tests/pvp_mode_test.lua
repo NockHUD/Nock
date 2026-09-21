@@ -56,6 +56,7 @@ addon.db = { profile = {} }
 for k, v in pairs(addon.Defaults.profile) do addon.db.profile[k] = v end
 local p = addon.db.profile
 p.debuffTrackerDisabled = {}; p.debuffTrackerOrder = {}; p.debuffTrackerCustom = ""; p.pvpDebuffDisabled = {}
+dofile("Core/API.lua")   -- Nock.API.AuraByIndex is AuraCache's only aura read
 dofile("Core/AuraCache.lua")
 dofile("Modules/DebuffTracker.lua")
 local DT = module

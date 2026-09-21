@@ -1004,9 +1004,7 @@ end
 -- a settings page is not the strip.
 --------------------------------------------------------------------------------
 local function itemName(id)
-  local n
-  if C_Item and C_Item.GetItemNameByID then n = C_Item.GetItemNameByID(id) end
-  if not n and GetItemInfo then n = GetItemInfo(id) end
+  local n = Nock.API.ItemName(id)
   if not n and C_Item and C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(id) end
   return n
 end

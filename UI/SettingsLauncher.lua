@@ -26,7 +26,7 @@ function Nock.UI.RegisterSettingsLauncher()
   open:SetScript("OnClick", function()
     -- the fullscreen Blizzard panel would otherwise sit over the window
     if SettingsPanel and SettingsPanel:IsShown() and HideUIPanel then HideUIPanel(SettingsPanel)
-    elseif InterfaceOptionsFrame and InterfaceOptionsFrame:IsShown() and HideUIPanel then HideUIPanel(InterfaceOptionsFrame) end
+    elseif _G.InterfaceOptionsFrame and _G.InterfaceOptionsFrame:IsShown() and HideUIPanel then HideUIPanel(_G.InterfaceOptionsFrame) end
     if Nock.Settings and Nock.Settings.Open then Nock.Settings:Open() end
   end)
   local legacy = Skin.Button(panel, "Legacy dialog", "ghost", nil, 32)
@@ -38,8 +38,8 @@ function Nock.UI.RegisterSettingsLauncher()
   if Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory then
     local cat = Settings.RegisterCanvasLayoutCategory(panel, "Nock")
     Settings.RegisterAddOnCategory(cat)
-  elseif InterfaceOptions_AddCategory then
-    InterfaceOptions_AddCategory(panel)
+  elseif _G.InterfaceOptions_AddCategory then
+    _G.InterfaceOptions_AddCategory(panel)
   end
   return panel
 end
