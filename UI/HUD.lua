@@ -18,6 +18,48 @@ function HUD:OnInitialize()
   self:RegisterMessage("NOCK_COMBAT_CHANGED", "ApplyCombat")
   self:RegisterMessage("NOCK_PRACTICE_CHANGED", "ApplyVisuals")   -- hideOoc yields to practice
   self:RegisterMessage("NOCK_HUD_RELAYOUT", "ApplyRowVisibility")  -- a row grew/shrank: re-stack only
+  -- The device-pixel grid moves under the frames when the UI scale or the
+  -- resolution changes: re-snap the box and re-stack the rows (see
+  -- Nock.UI.SetPointSnapped).
+  self:RegisterEvent("UI_SCALE_CHANGED", "OnPixelGridChanged")
+  self:RegisterEvent("DISPLAY_SIZE_CHANGED", "OnPixelGridChanged")
+end
+
+function HUD:OnPixelGridChanged()
+  self._ps = Nock.UI.PixelScale(self.frame)
+  Nock.UI.RefreshPixelBackdrops()
+  self:ApplyPosition()
+  self:LayoutChildren()
+end
+
+-- Pixel-grid guard on the central tick (twice a second). The UI scale is
+-- applied by the client AFTER addons build their frames, so the snap taken in
+-- OnInitialize measured a grid that was about to move: once the scale has
+-- settled, re-fit the backdrops and re-snap the box and its rows. Afterwards
+-- it only watches for a box that drifted off the grid (a few tries, then it
+-- gives up rather than fight a clamp).
+HUD.refreshInterval = 0.5
+function HUD:Refresh()
+  local f = self.frame
+  if not (f and f:IsShown()) then return end
+  local ps = Nock.UI.PixelScale(f)
+  if ps ~= self._ps then
+    self:OnPixelGridChanged()
+    self._snapTries = 0
+    return
+  end
+  local p = Nock.db.profile.position
+  local dx, dy = Nock.UI.PixelAlignOffsets(f, p and p.point)
+  if dx == 0 and dy == 0 then
+    self._snapTries = 0
+    return
+  end
+  local tries = (self._snapTries or 0) + 1
+  self._snapTries = tries
+  if tries <= 3 then
+    self:ApplyPosition()
+    self:LayoutChildren()
+  end
 end
 
 -- The combat edge only moves two things: whether the box is hidden out of
@@ -156,6 +198,7 @@ end
 function HUD:ApplyVisuals()
   local p = Nock.db.profile
   self.frame:SetScale(p.scale or 1.0)
+  self:ApplyPosition()   -- the snap depends on the scale
   if Nock.UI and Nock.UI.RefreshMedia then Nock.UI.RefreshMedia() end
   self:ApplyRowVisibility()
   if not self:ApplyShown() then return end
@@ -375,7 +418,7 @@ function HUD:LayoutGridPass()
       m.frame:EnableMouse(false)
       if m.frame._editBG then m.frame._editBG:Hide() end
       m.frame:ClearAllPoints()
-      m.frame:SetPoint(point, self.frame, point, baseX / s, y / s)
+      Nock.UI.SetPointSnapped(m.frame, point, self.frame, point, baseX / s, y / s)
       local h = (entry.height and entry.height()) or m.frame:GetHeight() or 0
       -- entry.gap overrides the spacing ABOVE this row (bottom-up walk) — the
       -- React grid overlaps the React cluster's border at -1 (one shared 1px
@@ -473,7 +516,7 @@ function HUD:RegisterRowNudgeables()
           p.elementPositions = p.elementPositions or {}
           p.elementPositions[name] = pos
           m.frame:ClearAllPoints()
-          m.frame:SetPoint(pos.point, UIParent, pos.relPoint, pos.x, pos.y)
+          Nock.UI.SetPointSnapped(m.frame, pos.point, UIParent, pos.relPoint, pos.x, pos.y)
         end,
         default = function()
           local p = Nock.db.profile
@@ -533,7 +576,7 @@ function HUD:LayoutChildrenFree()
         local pos = p.elementPositions[entry.module]
         if pos then
           m.frame:ClearAllPoints()
-          m.frame:SetPoint(pos.point, UIParent, pos.relPoint, pos.x, pos.y)
+          Nock.UI.SetPointSnapped(m.frame, pos.point, UIParent, pos.relPoint, pos.x, pos.y)
         end
       elseif m.frame._editBG then
         m.frame._editBG:Hide()
@@ -583,6 +626,7 @@ function HUD:BuildFrame()
     self:StopMovingOrSizing()
     local point, _, relPoint, x, y = self:GetPoint()
     Nock.db.profile.position = { point = point, relPoint = relPoint, x = x, y = y }
+    HUD:ApplyPosition()   -- snap where the hand let go
   end)
   self.frame = f
   Nock.UI.RegisterNudgeable(f, {
@@ -604,10 +648,14 @@ function HUD:BuildFrame()
   self:ApplyLock()
 end
 
+-- The anchor is snapped so the box's edges sit on whole device pixels: a 1 px
+-- backdrop edge on a half-pixel top draws as two rows (Forever gate,
+-- 2026-09-22). The saved position keeps the raw offsets; only the frame moves,
+-- by under a device pixel.
 function HUD:ApplyPosition()
   local p = Nock.db.profile.position
   self.frame:ClearAllPoints()
-  self.frame:SetPoint(p.point, UIParent, p.relPoint, p.x, p.y)
+  Nock.UI.SetPointSnapped(self.frame, p.point, UIParent, p.relPoint, p.x, p.y)
 end
 
 function HUD:ApplyLock()

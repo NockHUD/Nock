@@ -67,5 +67,18 @@ ok(l.ranged == "ranged", "resync + can shoot -> ranged still lit")
 l = look(t(true, "TOO_CLOSE", true, true))
 ok(l.melee == "melee", "resync + in melee -> melee still lit")
 
+-- Forever: the strip is the range row, keyed on the four stepped zones
+-- (rangeState), design pick A2 (2026-09-22).
+Nock.Flavor = { forever = true }
+local function ft(rangeState)
+  return { exists = true, alive = true, friendly = false, rangeState = rangeState, rangeZone = "x", inMelee = rangeState == "MELEE" }
+end
+l = look(ft("MELEE"));  ok(l.melee == "melee" and l.ranged == "off", "forever MELEE: melee block lit")
+l = look(ft("SWEET"));  ok(l.ranged == "ranged" and l.melee == "off", "forever SWEET: ranged block lit")
+l = look(ft("CLOSE"));  ok(l.melee == "dead" and l.ranged == "dead", "forever dead zone: both dark red")
+l = look(ft("LONG"));   ok(l.melee == "off" and l.ranged == "off", "forever too far: both off")
+l = look({ exists = false }); ok(l.melee == "off" and l.ranged == "off", "forever no target: both off")
+Nock.Flavor = nil
+
 print(("react_range_strip_test: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

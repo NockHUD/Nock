@@ -46,6 +46,9 @@ end
 
 function SwingTimer:PLAYER_SWING_RANGE_UPDATE(event, kind, isInRange, checksRange)
   if kind ~= swingType("Ranged") then return end
+  -- Seen once: the client's signal owns targetInRange from here on and the
+  -- range finder's shoot probe stops writing it.
+  Nock.state.ranged.swingRangeSignal = true
   if checksRange and type(isInRange) == "boolean" then
     Nock.state.ranged.targetInRange = isInRange
   else

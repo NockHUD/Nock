@@ -27,14 +27,7 @@ local SLOT_BG = { 0.08, 0.08, 0.08, 0.90 }
 
 local function applyFixedSlotSkin(slot)
   slot._fixedBorder = true
-  slot:SetBackdrop({
-    bgFile   = WHITE8X8,
-    edgeFile = WHITE8X8,
-    edgeSize = 1,
-    insets   = { left = 1, right = 1, top = 1, bottom = 1 },
-  })
-  slot:SetBackdropColor(unpack(SLOT_BG))
-  slot:SetBackdropBorderColor(0, 0, 0, 1)
+  Nock.UI.ApplyBackdrop(slot, SLOT_BG, { 0, 0, 0, 1 })   -- 1 device-pixel edge
   slot.icon:ClearAllPoints()
   slot.icon:SetPoint("TOPLEFT",     slot, "TOPLEFT",     1, -1)
   slot.icon:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -1, 1)
@@ -149,7 +142,11 @@ function ReactCooldownsView:Rebuild()
   local rows, w, totalH = self:RowsGeometry()
   local p = profile()
   local gap = GAP
-  self.frame:SetSize(w, totalH)
+  -- Slot sizes and offsets rounded to whole device pixels so the 1 px slot
+  -- borders land on single rows/columns at any UI scale.
+  local dev = Nock.UI.PixelScale(self.frame)
+  local round = Nock.UI.DeviceRound
+  self.frame:SetSize(round(w, dev), round(totalH, dev))
 
   for _, s in ipairs(self._pool) do
     s._entry = nil
@@ -172,10 +169,10 @@ function ReactCooldownsView:Rebuild()
         self._pool[i] = slot
         self:ApplyExternalCdAddonToSlot(slot)
       end
-      slot:SetSize(row.w, row.h)
+      slot:SetSize(round(row.w, dev), round(row.h, dev))
       slot:ClearAllPoints()
       slot:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
-                    x0 + (col - 1) * (row.w + gap), -row.y)
+                    round(x0 + (col - 1) * (row.w + gap), dev), -round(row.y, dev))
       -- Wider-than-tall tiles crop the texture vertically instead of
       -- stretching it — the reference's "zoomed" icon look. Base crop is the
       -- standard 0.08–0.92; the y-span shrinks by the aspect ratio.

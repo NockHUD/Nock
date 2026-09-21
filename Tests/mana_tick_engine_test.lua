@@ -214,5 +214,19 @@ ok(E.Live("tick", 100, 102, 101, 8000, 8000) == false, "not live at full")
 ok(E.Live("tick", 100, 102, 101, 4000, 0)    == false, "not live with no mana pool")
 ok(E.Live(nil,    100, 102, 101, 4000, 8000) == false, "not live without a mode")
 
+-- 14. The two halves Forever drives by timing (no pool values), and the
+--     timed liveness gate it uses instead of Live.
+local f = E.New()
+E.OnSpend(f, 500, true)
+ok(f.mode == "tick" and f.start == 500 and f.expire == 502, "OnSpend in combat with no bar: tick bar to the next tick (2 s, phase unknown)")
+E.OnGain(f, 503, true)
+ok(f.lastTick == 503 and f.mode == "tick" and f.expire == 505, "OnGain anchors the phase and shows a 2 s tick bar")
+E.OnSpend(f, 504, false)
+-- phase anchor 503, spend at 504: next tick in 1 s, +2 ticks -> window ends 509
+ok(f.mode == "fsr" and f.fsrEnd == 509, "OnSpend out of combat opens the five-second window on a tick boundary")
+ok(E.LiveTimed("tick", 100, 102, 101) == true,  "LiveTimed mid-bar")
+ok(E.LiveTimed("tick", 100, 102, 102) == false, "LiveTimed at expire")
+ok(E.LiveTimed(nil,    100, 102, 101) == false, "LiveTimed without a mode")
+
 print(("mana_tick_engine_test: %d passed, %d failed"):format(pass, fail))
 if fail > 0 then os.exit(1) end

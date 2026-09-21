@@ -41,19 +41,13 @@ local FRENZY_GRACE = 2.0
 -- Dual-form spell lookups (TotemTracker convention; Anniversary may expose
 -- bare globals or C_Spell.*).
 local function spellName(id)
-  if GetSpellInfo then local n = GetSpellInfo(id); if n then return n end end
-  if C_Spell and C_Spell.GetSpellInfo then
-    local i = C_Spell.GetSpellInfo(id); if i then return i.name end
-  end
-  return nil
+  return Nock.API.SpellName(id)
 end
 local function spellIcon(id)
-  if C_Spell and C_Spell.GetSpellTexture then
-    local t = C_Spell.GetSpellTexture(id); if t then return t end
-  end
-  if GetSpellTexture then local t = GetSpellTexture(id); if t then return t end end
-  if GetSpellInfo then local _, _, ic = GetSpellInfo(id); if ic then return ic end end
-  return nil
+  local t = Nock.API.SpellIcon(id)
+  if t then return t end
+  local _, icon = Nock.API.SpellInfo(id)
+  return icon
 end
 
 -- Reused item pool — entry tables are created once and overwritten in place
@@ -342,11 +336,14 @@ end
 -- the talent's localized name (rank 1 = C.REACT_BUFFS.FRENZY_TALENT), the
 -- Improved-HM pattern in Frame_Rotation. No talent API -> assume taken.
 function ReactBuffs:RefreshTalents()
-  if not (GetNumTalents and GetTalentInfo) then self._frenzyTalented = true; return end
+  -- Bare talent globals exist on Anniversary only (Forever runs on C_Traits
+  -- and has no Frenzy); spelled _G so the absence is explicit.
+  local numTalents, talentInfo = _G.GetNumTalents, _G.GetTalentInfo
+  if not (numTalents and talentInfo) then self._frenzyTalented = true; return end
   local want = spellName(C.REACT_BUFFS.FRENZY_TALENT)
   if not want then self._frenzyTalented = true; return end
-  for i = 1, GetNumTalents(1) or 0 do
-    local name, _, _, _, rank = GetTalentInfo(1, i)
+  for i = 1, numTalents(1) or 0 do
+    local name, _, _, _, rank = talentInfo(1, i)
     if name == want then self._frenzyTalented = (rank or 0) > 0; return end
   end
   self._frenzyTalented = false
@@ -500,7 +497,8 @@ function ReactBuffs:ScanGroupUnit(u)
   end
   if self._lotpInGroup and self._goaInGroup then return end
   for i = 1, 40 do
-    local name = UnitBuff(u, i)
+    local a = Nock.API.AuraByIndex(u, i, "HELPFUL")
+    local name = a and a.name
     if not name then break end
     if self._lotpNames[name] then self._lotpInGroup = true end
     if self._graceNames[name] then self._goaInGroup = true end
@@ -514,7 +512,7 @@ function ReactBuffs:ScanGroup(now)
   self._lotpInGroup, self._goaInGroup, self._shamanInSub = false, false, false
   -- IsInRaid() is unreliable on this client; GetNumRaidMembers is the
   -- dependable raid signal (same fallback the other group scans use).
-  local numRaid = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+  local numRaid = (_G.GetNumRaidMembers and _G.GetNumRaidMembers()) or 0
   if numRaid > 0 and GetRaidRosterInfo then
     local mySub
     for i = 1, numRaid do
@@ -594,100 +592,108 @@ function ReactBuffs:Refresh(state)
     local dis = p.reactBuffDisabled or EMPTY
     self._dis = dis
 
-    -- ORDER MATTERS: the row drops everything past MAX_ICONS silently, and a
-    -- boss pull (Lust, Drums, RF, QS, two trinkets, a potion, a racial, MD)
-    -- fills it with player procs alone. So the things you can only learn
-    -- HERE come first — the positional alerts, Windfury, the pet's buffs —
-    -- and the player's own procs (visible on any buff frame) take what is
-    -- left. Before this, WF and the Grace alert were the ones dropped.
-
-    -- WEAVE: the weave coach's stage as a slot — Raptor Strike's icon with
-    -- the stage word (GO IN / HOLD / BACK OUT / RELEASE), the row's part of
-    -- the React move-in cue. Nock.UI.CoachStage is THE stage reading (the
-    -- coach's committed stage, or the settings preview cycle out of combat),
-    -- the same one the melee bar and the Raptor tile draw from. The cue is
-    -- ONE switch: reactMeleeStageCue (the melee-bar takeover, off by
-    -- default) gates this slot too; the Buff Row entry is the per-slot hide
-    -- under it. (1.1.8 shipped the slot outside the switch -- user, 2026-09-03.)
-    local stage = (p.reactMeleeStageCue == true) and not dis.weave and Nock.UI.CoachStage(state)
-    local stageLook = stage and Nock.UI.ReactStageLook(stage)
-    if stageLook then
-      -- Icon = what the weave is, the melee bar's own green/blue rule: Raptor
-      -- Strike while Raptor is off cooldown (GO IN always is — the coach only
-      -- says GO for a Raptor), the plain Attack icon on an auto-only weave
-      -- (HOLD / BACK OUT / RELEASE with Raptor on cooldown). No cooldown
-      -- entry (preview, cold login) reads as Raptor.
-      local cd = state.cooldowns and state.cooldowns.Raptor
-      local raptor = (stage == "GO") or not cd or cd.ready
-      local icon
-      if raptor then
-        self._raptorIcon = self._raptorIcon or spellIcon(C.SpellID.RAPTOR_STRIKE)
-        icon = self._raptorIcon
-      else
-        self._attackIcon = self._attackIcon or spellIcon(C.SpellID.ATTACK)
-        icon = self._attackIcon
-      end
-      addItem(items, icon or 134400, 0, 0, stageLook.text, false)
-    end
-
-    -- MOVE IN: a live, attackable target outside Auto Shot range (the shoot
-    -- probe false and not near melee: rangeZone "OUT", Modules/RangeFinder).
-    -- No combat gate — a dummy from too far away is the everyday case.
-    if not dis.movein and self:TargetOutOfRange(state) then
-      self._autoIcon = self._autoIcon or spellIcon(C.SpellID.AUTO_SHOT)
-      addItem(items, self._autoIcon or 134400, 0, 0, "MOVE IN", true)
-    end
-
-    -- Frenzy in alert mode (boss target by default): a fixed slot, up or down.
-    local frenzyAlert = self:FrenzyAlertMode(p, state)
-    self._frenzyAlert = frenzyAlert
-    if frenzyAlert then
-      local icon, exp, dur = self:ScanPetFrenzy()
-      if icon then
-        self._frenzyDownAt = nil
-        addItem(items, icon, exp, dur)
-      else
-        local now = GetTime()
-        self._frenzyDownAt = self._frenzyDownAt or now
-        self._frenzyIcon = self._frenzyIcon or spellIcon(C.REACT_BUFFS.FRENZY)
-        local label = (now - self._frenzyDownAt >= FRENZY_GRACE) and "MISSING" or nil
-        addItem(items, self._frenzyIcon or 134400, 0, 0, label, true)
-      end
+    if Nock.Flavor and Nock.Flavor.forever then
+      -- Forever: own-cast buffs from the ledger (Forever/Buffs.lua). The TBC
+      -- scans below read auras, which are secret in combat there.
+      local lb = state.ledgerBuffs
+      for i = 1, (lb and lb.n or 0) do addItem(items, lb[i].icon, lb[i].exp, lb[i].dur) end
     else
-      self._frenzyDownAt = nil
-    end
 
-    -- LotP / Grace-of-Air positional states, combat-only like the reference:
-    --   RANGE   — aura on a subgroup member but not on you (step back in)
-    --   MISSING — no Grace anywhere in the subgroup, but a shaman is present
-    -- Gated by reactBuffPositional (React HUD tab); off skips the whole group
-    -- sweep too. ScanPlayer sets the on-me flags these read, so a flags-only
-    -- pass runs first; the procs pass is the last thing into the row.
-    self:ScanPlayer(true)
-    if p.reactBuffPositional ~= false and state.player.inCombat then
-      self:ScanGroup(GetTime())
-      if not self._lotpOnMe and self._lotpInGroup and not dis.lotp then
-        addItem(items, self._lotpIcon, 0, 0, "RANGE", true)
+      -- ORDER MATTERS: the row drops everything past MAX_ICONS silently, and a
+      -- boss pull (Lust, Drums, RF, QS, two trinkets, a potion, a racial, MD)
+      -- fills it with player procs alone. So the things you can only learn
+      -- HERE come first — the positional alerts, Windfury, the pet's buffs —
+      -- and the player's own procs (visible on any buff frame) take what is
+      -- left. Before this, WF and the Grace alert were the ones dropped.
+
+      -- WEAVE: the weave coach's stage as a slot — Raptor Strike's icon with
+      -- the stage word (GO IN / HOLD / BACK OUT / RELEASE), the row's part of
+      -- the React move-in cue. Nock.UI.CoachStage is THE stage reading (the
+      -- coach's committed stage, or the settings preview cycle out of combat),
+      -- the same one the melee bar and the Raptor tile draw from. The cue is
+      -- ONE switch: reactMeleeStageCue (the melee-bar takeover, off by
+      -- default) gates this slot too; the Buff Row entry is the per-slot hide
+      -- under it. (1.1.8 shipped the slot outside the switch -- user, 2026-09-03.)
+      local stage = (p.reactMeleeStageCue == true) and not dis.weave and Nock.UI.CoachStage(state)
+      local stageLook = stage and Nock.UI.ReactStageLook(stage)
+      if stageLook then
+        -- Icon = what the weave is, the melee bar's own green/blue rule: Raptor
+        -- Strike while Raptor is off cooldown (GO IN always is — the coach only
+        -- says GO for a Raptor), the plain Attack icon on an auto-only weave
+        -- (HOLD / BACK OUT / RELEASE with Raptor on cooldown). No cooldown
+        -- entry (preview, cold login) reads as Raptor.
+        local cd = state.cooldowns and state.cooldowns.Raptor
+        local raptor = (stage == "GO") or not cd or cd.ready
+        local icon
+        if raptor then
+          self._raptorIcon = self._raptorIcon or spellIcon(C.SpellID.RAPTOR_STRIKE)
+          icon = self._raptorIcon
+        else
+          self._attackIcon = self._attackIcon or spellIcon(C.SpellID.ATTACK)
+          icon = self._attackIcon
+        end
+        addItem(items, icon or 134400, 0, 0, stageLook.text, false)
       end
-      if not self._goaOnMe and not dis.grace then
-        if self._goaInGroup then
-          addItem(items, self._graceIcon, 0, 0, "RANGE", true)
-        elseif self._shamanInSub then
-          addItem(items, self._graceIcon, 0, 0, "MISSING", true)
+
+      -- MOVE IN: a live, attackable target outside Auto Shot range (the shoot
+      -- probe false and not near melee: rangeZone "OUT", Modules/RangeFinder).
+      -- No combat gate — a dummy from too far away is the everyday case.
+      if not dis.movein and self:TargetOutOfRange(state) then
+        self._autoIcon = self._autoIcon or spellIcon(C.SpellID.AUTO_SHOT)
+        addItem(items, self._autoIcon or 134400, 0, 0, "MOVE IN", true)
+      end
+
+      -- Frenzy in alert mode (boss target by default): a fixed slot, up or down.
+      local frenzyAlert = self:FrenzyAlertMode(p, state)
+      self._frenzyAlert = frenzyAlert
+      if frenzyAlert then
+        local icon, exp, dur = self:ScanPetFrenzy()
+        if icon then
+          self._frenzyDownAt = nil
+          addItem(items, icon, exp, dur)
+        else
+          local now = GetTime()
+          self._frenzyDownAt = self._frenzyDownAt or now
+          self._frenzyIcon = self._frenzyIcon or spellIcon(C.REACT_BUFFS.FRENZY)
+          local label = (now - self._frenzyDownAt >= FRENZY_GRACE) and "MISSING" or nil
+          addItem(items, self._frenzyIcon or 134400, 0, 0, label, true)
+        end
+      else
+        self._frenzyDownAt = nil
+      end
+
+      -- LotP / Grace-of-Air positional states, combat-only like the reference:
+      --   RANGE   — aura on a subgroup member but not on you (step back in)
+      --   MISSING — no Grace anywhere in the subgroup, but a shaman is present
+      -- Gated by reactBuffPositional (React HUD tab); off skips the whole group
+      -- sweep too. ScanPlayer sets the on-me flags these read, so a flags-only
+      -- pass runs first; the procs pass is the last thing into the row.
+      self:ScanPlayer(true)
+      if p.reactBuffPositional ~= false and state.player.inCombat then
+        self:ScanGroup(GetTime())
+        if not self._lotpOnMe and self._lotpInGroup and not dis.lotp then
+          addItem(items, self._lotpIcon, 0, 0, "RANGE", true)
+        end
+        if not self._goaOnMe and not dis.grace then
+          if self._goaInGroup then
+            addItem(items, self._graceIcon, 0, 0, "RANGE", true)
+          elseif self._shamanInSub then
+            addItem(items, self._graceIcon, 0, 0, "MISSING", true)
+          end
         end
       end
-    end
 
-    -- Windfury: Nock's weapon-enchant detection, read straight off the
-    -- TotemTracker engine's state (its view is hidden in React mode but the
-    -- engine keeps publishing).
-    local wf = state.totems and state.totems.windfury
-    if wf and wf.present and not dis.windfury then
-      addItem(items, wf.icon, wf.expirationTime, wf.duration)
-    end
+      -- Windfury: Nock's weapon-enchant detection, read straight off the
+      -- TotemTracker engine's state (its view is hidden in React mode but the
+      -- engine keeps publishing).
+      local wf = state.totems and state.totems.windfury
+      if wf and wf.present and not dis.windfury then
+        addItem(items, wf.icon, wf.expirationTime, wf.duration)
+      end
 
-    self:ScanPet()
-    self:ScanPlayer(false)
+      self:ScanPet()
+      self:ScanPlayer(false)
+    end
   end
 
   -- Lay out and repaint: icons centered, growing outward from the middle as

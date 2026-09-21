@@ -17,8 +17,8 @@ end
 local function inGroup()
   if IsInRaid and IsInRaid() then return true end
   if IsInGroup and IsInGroup() then return true end
-  if GetNumRaidMembers and GetNumRaidMembers() > 0 then return true end
-  if GetNumPartyMembers and GetNumPartyMembers() > 0 then return true end
+  if _G.GetNumRaidMembers and _G.GetNumRaidMembers() > 0 then return true end
+  if _G.GetNumPartyMembers and _G.GetNumPartyMembers() > 0 then return true end
   return false
 end
 

@@ -689,12 +689,54 @@ function Nock.UI.ApplyIconBorder(slot)
   end
 end
 
-local backdrop = {
-  bgFile   = SOLID_TEX,
-  edgeFile = SOLID_TEX,
-  edgeSize = 1,
-  insets   = { left = 1, right = 1, top = 1, bottom = 1 },
-}
+-- The 1 px backdrop, sized in DEVICE pixels. A 1-unit edge is 1.2 px at UI
+-- scale 0.64 on 1440p and rasterises as one or two rows depending on where the
+-- frame sits (the Forever "double border", 2026-09-22); an edge of
+-- DeviceWidth(1) units is always one row. One table per edge size, shared.
+-- Frames that took one are remembered (weak) so a UI-scale change can re-fit
+-- them: Nock.UI.RefreshPixelBackdrops.
+local pixelBackdrops = {}
+local pixelBackdropFrames = setmetatable({}, { __mode = "k" })
+
+function Nock.UI.PixelEdge(frame)
+  return Nock.UI.DeviceWidth(1, Nock.UI.PixelScale(frame))
+end
+
+function Nock.UI.PixelBackdrop(frame)
+  local e = Nock.UI.PixelEdge(frame)
+  local key = ("%.4f"):format(e)
+  local t = pixelBackdrops[key]
+  if not t then
+    t = {
+      bgFile   = SOLID_TEX,
+      edgeFile = SOLID_TEX,
+      edgeSize = e,
+      insets   = { left = e, right = e, top = e, bottom = e },
+    }
+    pixelBackdrops[key] = t
+  end
+  if frame then
+    frame._pixelEdge = e
+    pixelBackdropFrames[frame] = true
+  end
+  return t
+end
+
+-- Re-fit every remembered backdrop whose device edge changed (UI scale or
+-- resolution change). SetBackdrop resets the colours, so the current ones are
+-- read back first and restored.
+function Nock.UI.RefreshPixelBackdrops()
+  for f in pairs(pixelBackdropFrames) do
+    local e = Nock.UI.PixelEdge(f)
+    if e ~= f._pixelEdge then
+      local r, g, b, a = f:GetBackdropColor()
+      local br, bg, bb, ba = f:GetBackdropBorderColor()
+      f:SetBackdrop(Nock.UI.PixelBackdrop(f))
+      if r then f:SetBackdropColor(r, g, b, a) end
+      if br then f:SetBackdropBorderColor(br, bg, bb, ba) end
+    end
+  end
+end
 
 -- A panel's close control, as a TEXTURE rather than a glyph. Every text drawn
 -- in a Nock panel goes through the user's LibSharedMedia font, and most of the
@@ -713,7 +755,7 @@ function Nock.UI.CloseButton(parent, size, onClick)
 end
 
 function Nock.UI.ApplyBackdrop(frame, bgColor, borderColor)
-  frame:SetBackdrop(backdrop)
+  frame:SetBackdrop(Nock.UI.PixelBackdrop(frame))
   frame:SetBackdropColor(unpack(bgColor or C.COLORS.BG))
   frame:SetBackdropBorderColor(unpack(borderColor or C.COLORS.BORDER))
 end
@@ -1412,6 +1454,130 @@ function Nock.UI.PixelSnapCenter(x, scale, nDevice, originPx)
   return (d - o) / s
 end
 
+-- A length or offset in units rounded to whole device pixels, the counterpart
+-- of DeviceWidth for heights and row offsets: a 10.3-unit row at 1 px per
+-- unit is 10 px, so the row below it starts on a pixel row too. Zero stays
+-- zero (offsets); clamp heights with DeviceWidth(1, scale) at the call site.
+function Nock.UI.DeviceRound(units, scale)
+  local v = tonumber(units) or 0
+  local s = tonumber(scale)
+  if not s or s <= 0 then return v end
+  return math.floor(v * s + 0.5) / s
+end
+
+-- Offset correction (dx, dy in the frame's OWN units) that moves the edges
+-- named by `point` onto whole device pixels, measured in absolute screen space
+-- (GetLeft/GetTop x PixelScale, the eWS-mark approach). A CENTER anchor snaps
+-- through the LEFT/TOP edge. Zero when the frame has no geometry yet.
+function Nock.UI.PixelAlignOffsets(frame, point)
+  local ps = Nock.UI.PixelScale(frame)
+  if not ps or not frame.GetLeft then return 0, 0 end
+  point = tostring(point or "")
+  local ex, ey
+  if point:find("RIGHT") then ex = frame:GetRight() else ex = frame:GetLeft() end
+  if point:find("BOTTOM") then ey = frame:GetBottom() else ey = frame:GetTop() end
+  local function delta(e)
+    if type(e) ~= "number" then return 0 end
+    local d = e * ps
+    d = (math.floor(d + 0.5) - d) / ps
+    if math.abs(d) < 1e-4 then return 0 end
+    return d
+  end
+  return delta(ex), delta(ey)
+end
+
+-- SetPoint whose anchored edges land on whole device pixels: a 1 px backdrop
+-- edge on a frame whose top sits at 500.5 rasterises as two half-bright rows
+-- (the Forever "double border", 2026-09-22); anchoring at 500 or 501 draws one.
+-- Sets the point, measures where it landed, re-sets it once with the
+-- correction. For single-anchor frames only (it clears the points).
+function Nock.UI.SetPointSnapped(frame, point, rel, relPoint, x, y)
+  x = tonumber(x) or 0
+  y = tonumber(y) or 0
+  frame:SetPoint(point, rel, relPoint, x, y)
+  local dx, dy = Nock.UI.PixelAlignOffsets(frame, point)
+  if dx ~= 0 or dy ~= 0 then
+    frame:ClearAllPoints()
+    frame:SetPoint(point, rel, relPoint, x + dx, y + dy)
+  end
+end
+
+-- Swing-bar fill progress (0..1) with a VISIBLE, EASED close and a jump-free
+-- restart. Two facts from the Forever cycle log (2026-09-22): the tick lands
+-- up to one interval short of the predicted release, and the server fires
+-- within +-70 ms of it, so on an on-time or early shot the full bar is drawn
+-- for one frame or not at all -- the eye reads "never reaches the centre";
+-- snapping it shut read as a jump, and holding it shut then showing the new
+-- cycle's true position read as "starts at 10%". `h` is the bar's own state
+-- table (kept by the caller). Rules:
+--   * while the cycle runs, the fill is the plain progress;
+--   * when a new cycle starts (swingStart moved) with the bar not yet closed,
+--     the fill glides from where it was to closed over `ease` seconds
+--     (ease-out) and stays closed `hold` seconds; a bar that had already
+--     closed keeps its `hold` from the moment it closed;
+--   * the new cycle then starts from EMPTY and catches up to its true
+--     position over `catch` seconds (smoothstep: continuous speed at both
+--     ends), so there is no jump at the restart either.
+-- The first cycle ever gets no glide and no catch-up.
+local function easeOut(x)
+  if x <= 0 then return 0 elseif x >= 1 then return 1 end
+  local y = 1 - x
+  return 1 - y * y * y
+end
+local function smooth(x)
+  if x <= 0 then return 0 elseif x >= 1 then return 1 end
+  return x * x * (3 - 2 * x)
+end
+
+function Nock.UI.SwingFillProgress(h, swingStart, remaining, duration, now, hold, ease, catch)
+  local p01 = 0
+  if duration and duration > 0 then
+    p01 = 1 - (remaining or 0) / duration
+    if p01 < 0 then p01 = 0 elseif p01 > 1 then p01 = 1 end
+  end
+  hold, ease, catch = hold or 0, ease or 0, catch or 0
+  if swingStart ~= h.start then
+    if h.start and h.start > 0 then
+      if h.fullAt then
+        h.glideFrom, h.glideAt = nil, nil
+        h.holdUntil = h.fullAt + hold
+      else
+        h.glideFrom, h.glideAt = h.lastP or 0, now
+        h.holdUntil = now + ease + hold
+      end
+      h.catchAt, h.lag = nil, nil
+    end
+    h.start = swingStart
+    h.fullAt = nil
+  end
+  if h.holdUntil then
+    if now < h.holdUntil then
+      local out = 1
+      if h.glideAt and ease > 0 then
+        out = h.glideFrom + (1 - h.glideFrom) * easeOut((now - h.glideAt) / ease)
+      end
+      h.lastP = out
+      return out
+    end
+    h.holdUntil, h.glideFrom, h.glideAt = nil, nil, nil
+    -- the restart: remember how far the true position already is, and work
+    -- that lag off over `catch`
+    if catch > 0 and p01 > 0 then h.catchAt, h.lag = now, p01 end
+  end
+  if h.catchAt then
+    local t = (now - h.catchAt) / catch
+    if t < 1 then
+      p01 = p01 - h.lag * (1 - smooth(t))
+      if p01 < 0 then p01 = 0 end
+    else
+      h.catchAt, h.lag = nil, nil
+    end
+  end
+  if p01 >= 1 and not h.fullAt then h.fullAt = now end
+  h.lastP = p01
+  return p01
+end
+
 -- `scale` and `nDevice` are optional: pass both to have the result snapped to
 -- the device-pixel grid (see Nock.UI.PixelSnapCenter). Omitted, the projection
 -- is returned raw, which is what the pure-geometry tests assert. `leftPx` /
@@ -1421,8 +1587,11 @@ end
 -- RIGHT-half offset of a mirrored (converge) pair -- the two edges carry
 -- different sub-pixel phases, so the halves can no longer share one number;
 -- apply it as SetPoint("CENTER", bar, "RIGHT", -xR, 0).
-function Nock.UI.ReactAxisPoint(frac, dir, halfW, innerW, scale, nDevice, leftPx, rightPx)
+-- `inset` (optional, default 1) is the bar's edge in units -- one device pixel
+-- (Nock.UI.PixelEdge), so the marks start where the fill starts.
+function Nock.UI.ReactAxisPoint(frac, dir, halfW, innerW, scale, nDevice, leftPx, rightPx, inset)
   frac = tonumber(frac) or 0
+  inset = tonumber(inset) or 1
   if frac < 0 then frac = 0 elseif frac > 1 then frac = 1 end
   local snap = Nock.UI.PixelSnapCenter
   -- A distance measured leftward from the RIGHT edge: its centre sits at
@@ -1435,12 +1604,12 @@ function Nock.UI.ReactAxisPoint(frac, dir, halfW, innerW, scale, nDevice, leftPx
     return snap(d, scale, nDevice)
   end
   if dir == "ltr" then
-    return "LEFT", snap(1 + frac * (innerW or 0), scale, nDevice, leftPx), false
+    return "LEFT", snap(inset + frac * (innerW or 0), scale, nDevice, leftPx), false
   elseif dir == "rtl" then
-    return "RIGHT", -snapR(1 + frac * (innerW or 0)), false
+    return "RIGHT", -snapR(inset + frac * (innerW or 0)), false
   end
   -- converge (the reference look) and any unrecognised value.
-  local d = 1 + frac * (halfW or 0)
+  local d = inset + frac * (halfW or 0)
   return "LEFT", snap(d, scale, nDevice, leftPx), true, snapR(d)
 end
 
@@ -1655,6 +1824,16 @@ local REACT_STAGE_LOOK = {
 function Nock.UI.ReactRangeStripLook(t)
   local out = { melee = "off", ranged = "off" }
   if not t or not t.exists or not t.alive or t.friendly or not t.rangeState then return out end
+  if Nock.Flavor and Nock.Flavor.forever then
+    -- Forever's four stepped zones (Forever/RangeFinder.lua): MELEE lights
+    -- the melee block, SWEET the ranged block, the dead zone (CLOSE) turns
+    -- both dark red, too far (LONG) leaves both off.
+    local zone = t.rangeState
+    if zone == "MELEE" then out.melee = "melee"
+    elseif zone == "SWEET" then out.ranged = "ranged"
+    elseif zone == "CLOSE" then out.melee, out.ranged = "dead", "dead" end
+    return out
+  end
   local zone = t.rangeZone
   if t.inMelee then out.melee = "melee"
   elseif zone == "TOO_CLOSE" then out.melee = "dead" end

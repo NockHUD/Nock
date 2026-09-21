@@ -61,6 +61,38 @@ function Engine.OnEnergize(s, now) s.skipGainAt = now end
 function Engine.OnDrain(s, now)    s.skipDrainAt = now end
 
 -- One UNIT_POWER_UPDATE for the player's mana.
+-- A mana LOSS that is a spend (not a drain). Split out of OnPower so Forever,
+-- which cannot read the pool, can classify a power event by timing and call
+-- this directly (Forever/ManaTick.lua).
+function Engine.OnSpend(s, now, inCombat)
+  if inCombat then
+    if not s.mode or now >= s.expire then
+      setBar(s, "tick", now, toNextTick(s, now))
+    end
+  else
+    local dur = Engine.FSR
+    if s.lastTick then
+      -- The window ends on the FIRST regen tick at or after now + FSR.
+      -- Ticks land at now + n + 2k (n = time to the next one, in (0, 2]);
+      -- the smallest k with n + 2k >= 5 is 2 when n >= 1, else 3. This is
+      -- the WA's "6 - phase, +2 when that lands short of the rule".
+      local n = toNextTick(s, now)
+      dur = n + ((n >= 1) and 2 or 3) * Engine.TICK
+    end
+    s.fsrEnd = now + dur
+    setBar(s, "fsr", now, dur)
+  end
+end
+
+-- A mana GAIN that is a regen tick (not an energize): anchors the phase.
+function Engine.OnGain(s, now, inCombat)
+  s.lastTick = now
+  local inFsr = (not inCombat) and s.fsrEnd and now < s.fsrEnd - 0.1
+  if not inFsr then
+    setBar(s, "tick", now, Engine.TICK)
+  end
+end
+
 function Engine.OnPower(s, now, cur, max, inCombat)
   local last = s.lastMana
   s.lastMana = cur
@@ -72,35 +104,22 @@ function Engine.OnPower(s, now, cur, max, inCombat)
       return
     end
     s.skipDrainAt = nil
-    if inCombat then
-      if not s.mode or now >= s.expire then
-        setBar(s, "tick", now, toNextTick(s, now))
-      end
-    else
-      local dur = Engine.FSR
-      if s.lastTick then
-        -- The window ends on the FIRST regen tick at or after now + FSR.
-        -- Ticks land at now + n + 2k (n = time to the next one, in (0, 2]);
-        -- the smallest k with n + 2k >= 5 is 2 when n >= 1, else 3. This is
-        -- the WA's "6 - phase, +2 when that lands short of the rule".
-        local n = toNextTick(s, now)
-        dur = n + ((n >= 1) and 2 or 3) * Engine.TICK
-      end
-      s.fsrEnd = now + dur
-      setBar(s, "fsr", now, dur)
-    end
+    Engine.OnSpend(s, now, inCombat)
   elseif cur > last then
     if flagLive(s.skipGainAt, now) then
       s.skipGainAt = nil
       return
     end
     s.skipGainAt = nil
-    s.lastTick = now
-    local inFsr = (not inCombat) and s.fsrEnd and now < s.fsrEnd - 0.1
-    if not inFsr then
-      setBar(s, "tick", now, Engine.TICK)
-    end
+    Engine.OnGain(s, now, inCombat)
   end
+end
+
+-- Liveness without the pool (Forever: mana is secret, so "full" cannot be
+-- known): a bar is live while its mode is set and it has not expired.
+function Engine.LiveTimed(mode, start, expire, now)
+  if not mode then return false end
+  return now < expire
 end
 
 -- Is a published bar live right now? Not at full mana (nothing to tick

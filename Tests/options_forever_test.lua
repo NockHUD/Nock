@@ -29,7 +29,9 @@ F.Apply(opts)
 local top = {}
 for k, v in pairs(opts.args) do if type(v) == "table" and v.type == "group" then top[#top + 1] = k end end
 table.sort(top)
-ok(table.concat(top, ",") == "general,hud,profiles", "only general/hud/profiles remain, got " .. table.concat(top, ","))
+ok(table.concat(top, ",") == "alerts,general,hud,profiles", "alerts/general/hud/profiles remain, got " .. table.concat(top, ","))
+ok(nodeAt(opts, "alerts.aggro") ~= nil, "aggro page kept")
+for _, p in ipairs({ "alerts.helpers", "alerts.sounds", "alerts.warnings" }) do ok(nodeAt(opts, p) == nil, p .. " gone") end
 
 -- HUD: React only, renamed.
 ok(nodeAt(opts, "hud.react") ~= nil, "react page kept")
@@ -50,11 +52,8 @@ for _, p in ipairs({
   "hud.react.tabBars.reactShowBrackets", "hud.react.tabBars.reactShowClipTicks", "hud.react.tabBars.reactShowDelay",
   "hud.react.tabBars.reactShowGcdDivider", "hud.react.tabBars.reactShowNotation",
   "hud.react.tabSize.reactShowAutoShotCast",
-  "hud.react.tabSize.reactShowRangeBar", "hud.react.tabSize.reactShowAspectIcon",
-  "hud.react.tabSize.reactShowMarkIcon", "hud.react.tabSize.reactManaTick", "hud.react.tabSize.reactManaTickDirCombat",
   "hud.react.tabSize.reactMeleeStageCue",
   "hud.react.tabSkin.reactColorTickSteady", "hud.react.tabSkin.reactColorBracket", "hud.react.tabSkin.reactGcdDividerWidth",
-  "hud.react.tabSkin.reactColorRangeSweet", "hud.react.tabSkin.reactCornerIconSize",
   "general.grpCastBar", "general.grpSetup", "general.grpLook", "general.runWizard", "general.runWizardGuided", "general.perfPanel",
 }) do
   ok(nodeAt(opts, p) == nil, p .. " gone")
@@ -65,6 +64,9 @@ for _, p in ipairs({
   "hud.react.tabSize.reactScale", "hud.react.tabSize.reactWidth", "hud.react.tabSize.order_up_1",
   "hud.react.tabSize.reactShowCastBar", "hud.react.tabSize.castBarCard", "hud.react.tabSize.reactShowGrid",
   "hud.react.tabSkin.reactCastH", "hud.react.tabSkin.reactColorCastFill",
+  "hud.react.tabSize.reactShowRangeBar", "hud.react.tabSize.reactShowAspectIcon", "hud.react.tabSize.reactShowMarkIcon",
+  "hud.react.tabSize.cornersCard", "hud.react.tabSkin.reactCornerIconSize", "hud.react.tabSkin.reactColorRangeSweet",
+  "hud.react.tabSize.reactManaTick", "hud.react.tabSize.reactManaTickDirCombat",
   "hud.react.tabSkin.reactAutoH", "hud.react.tabSkin.reactColorAutoFill", "hud.react.tabSkin.reactFont", "hud.react.tabSkin.reactBarTexture",
   "general.scale", "general.lockAll", "general.minimapIcon", "general.grpMedia", "general.grpVisibility", "general.editGridShow",
   "profiles.stock", "profiles.sharing",

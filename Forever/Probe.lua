@@ -34,6 +34,13 @@ function Probe.Format(d)
     prev = s.t
   end
   L[#L + 1] = ""
+  L[#L + 1] = "auto bar cycles (bar px, fill px each half, peak fill, seconds held at final width):"
+  for _, c in ipairs(d.cycles or {}) do
+    local full = c.halves and (2 * c.fillPx + 2 == c.barPx) or (c.fillPx + 2 == c.barPx)
+    L[#L + 1] = ("  bar=%d  fill=%d  peak=%.3f  held=%.3f  %s"):format(c.barPx, c.fillPx, c.peakP, c.held,
+      full and "met" or "SHORT")
+  end
+  L[#L + 1] = ""
   L[#L + 1] = "own casts (t, event, spellID, castBarID):"
   for _, c in ipairs(d.casts or {}) do
     L[#L + 1] = ("  %8.3f  %s  %s  %s"):format(c.t, c.ev, tostring(c.spellID), tostring(c.castBarID or ""))
@@ -121,6 +128,17 @@ local function readRows()
   if _G.C_SwingTimer and C_SwingTimer.IsTargetWithinSwingRange and _G.Enum and Enum.PlayerSwingType then
     try("IsTargetWithinSwingRange(Ranged)", C_SwingTimer.IsTargetWithinSwingRange, Enum.PlayerSwingType.Ranged)
   end
+  -- Range probes: which of these stay plain in combat decides whether CLOSE
+  -- can split into dead zone and far (M3b).
+  if _G.C_Spell and C_Spell.IsSpellInRange and Nock.Spells then
+    try("IsSpellInRange(Raptor)", C_Spell.IsSpellInRange, Nock.Spells.RAPTOR_STRIKE, "target")
+    try("IsSpellInRange(AutoShot)", C_Spell.IsSpellInRange, Nock.Spells.AUTO_SHOT, "target")
+  end
+  if _G.CheckInteractDistance then try("CheckInteractDistance(3)", CheckInteractDistance, "target", 3) end
+  if _G.C_Item and C_Item.IsItemInRange then try("IsItemInRange(8149)", C_Item.IsItemInRange, 8149, "target") end
+  -- What the swing timer and the range finder currently believe.
+  try("state.targetInRange", function() return Nock.state.ranged.targetInRange end)
+  try("state.rangeState", function() return Nock.state.target.rangeState end)
   return rows
 end
 
@@ -143,6 +161,10 @@ function Probe:Report()
     reads = readRows(),
     castingInfo = castingInfo,
     swings = (st and st.Samples) and st:Samples() or {},
+    cycles = (function()
+      local rc = Nock:GetModule("ReactCluster", true)
+      return (rc and rc._cycleLog) or {}
+    end)(),
     casts = self:Casts(),
   })
 end
@@ -171,7 +193,55 @@ function Probe:SpellbookReport()
   return table.concat(L, "\n")
 end
 
+-- Frame stack around the React cluster: every child and the glued panels
+-- with shown state, height and top edge, for layering/seam questions.
+function Probe:FramesReport()
+  local L = {}
+  local function num(v) return type(v) == "number" and ("%.3f"):format(v) or tostring(v) end
+  local pw, ph
+  if _G.GetPhysicalScreenSize then pw, ph = _G.GetPhysicalScreenSize() end
+  local uip = _G.UIParent
+  L[#L + 1] = ("screen: physical=%sx%s  UIParent scale=%s eff=%s  UIParent h=%s"):format(
+    tostring(pw), tostring(ph), uip and num(uip:GetScale()) or "?",
+    uip and num(uip:GetEffectiveScale()) or "?", uip and num(uip:GetHeight()) or "?")
+  L[#L + 1] = "frames (name, shown, height, top | px per unit, top in px, bottom in px, anchor):"
+  local function row(f, label)
+    if not f then L[#L + 1] = ("  %s: missing"):format(label); return end
+    local okh, h = pcall(f.GetHeight, f)
+    local okt, top = pcall(f.GetTop, f)
+    local okb, bot = pcall(f.GetBottom, f)
+    local ps = Nock.UI and Nock.UI.PixelScale and Nock.UI.PixelScale(f)
+    local okp, point, _, relPoint, x, y = pcall(f.GetPoint, f, 1)
+    local anchor = okp and point and ("%s/%s %s,%s"):format(tostring(point), tostring(relPoint), num(x), num(y)) or "?"
+    L[#L + 1] = ("  %-22s shown=%s h=%s top=%s | ps=%s topPx=%s botPx=%s  %s"):format(label,
+      tostring(f:IsShown()), okh and num(h) or "?", okt and num(top) or "?",
+      num(ps), (okt and top and ps) and num(top * ps) or "?",
+      (okb and bot and ps) and num(bot * ps) or "?", anchor)
+  end
+  row(_G.NockHUD, "NockHUD")
+  local cluster = _G.NockReactCluster
+  row(cluster, "NockReactCluster")
+  if cluster then
+    for i, c in ipairs({ cluster:GetChildren() }) do
+      row(c, c:GetName() or ("child" .. i))
+    end
+  end
+  local strip = _G.NockReactRangeStrip
+  if strip then
+    for i, c in ipairs({ strip:GetChildren() }) do
+      row(c, c:GetName() or ("strip" .. i))
+    end
+  end
+  row(_G.NockReactCastBar, "NockReactCastBar")
+  row(_G.NockReactBuffs, "NockReactBuffs")
+  row(_G.NockReactCDSlot1, "NockReactCDSlot1")
+  return table.concat(L, "\n")
+end
+
 function Probe:Show(which)
-  local text = (which == "spells") and self:SpellbookReport() or self:Report()
+  local text
+  if which == "spells" then text = self:SpellbookReport()
+  elseif which == "frames" then text = self:FramesReport()
+  else text = self:Report() end
   if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
 end

@@ -27,15 +27,12 @@ local ASPECT_FALLBACK = 136116
 local HM_RANKS = { 27322, 14325, 14324, 14323, 1130 }
 local HM_FALLBACK = 132212
 
--- Dual-form spell lookup (Frame_ReactBuffs.lua convention; Anniversary may
--- expose bare globals or C_Spell.*).
+-- One resolver for both clients (Core/API.lua).
 local function spellIcon(id)
-  if C_Spell and C_Spell.GetSpellTexture then
-    local t = C_Spell.GetSpellTexture(id); if t then return t end
-  end
-  if GetSpellTexture then local t = GetSpellTexture(id); if t then return t end end
-  if GetSpellInfo then local _, _, ic = GetSpellInfo(id); if ic then return ic end end
-  return nil
+  local t = Nock.API.SpellIcon(id)
+  if t then return t end
+  local _, icon = Nock.API.SpellInfo(id)
+  return icon
 end
 
 -- Caption cap for the mark icon's caster name. The slot is 42px by default and

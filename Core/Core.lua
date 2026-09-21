@@ -409,11 +409,18 @@ function Nock:Tick()
   -- live only below full and before expiry. The direction is each HUD's own
   -- setting, applied by the views through ManaTickEngine.SparkX.
   local mt, MTE = state.player.manaTick, Nock.ManaTickEngine
-  if mt and MTE and mana ~= nil and maxMana ~= nil then
-    if MTE.Live(mt.mode, mt.start, mt.expire, now, mana, maxMana) then
+  if mt and MTE then
+    local live
+    if Nock.Flavor.forever then
+      -- The pool is secret here: liveness is timed only (Forever/ManaTick.lua).
+      live = MTE.LiveTimed(mt.mode, mt.start, mt.expire, now)
+    elseif mana ~= nil and maxMana ~= nil then
+      live = MTE.Live(mt.mode, mt.start, mt.expire, now, mana, maxMana)
+    end
+    if live then
       mt.active   = true
       mt.progress = MTE.Progress(mt.start, mt.expire, now)
-    else
+    elseif live == false then
       mt.active, mt.progress = false, 0
     end
   end
@@ -562,7 +569,7 @@ function Nock:HandleSlashCommand(input)
     if #out == 0 then out[1] = "(no output)" end
     if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox("> " .. code .. "\n" .. table.concat(out, "\n"))
     else self:Print(table.concat(out, "\n")) end
-  elseif input == "probe" or input == "probe spells" then
+  elseif input == "probe" or input == "probe spells" or input == "probe frames" then
     local pr = self:GetModule("ForeverProbe", true)
     if pr and pr.Show then pr:Show(input:match("probe%s+(%w+)")) else self:Print("Probe is only available on WoW Forever.") end
   elseif input == "lock" then

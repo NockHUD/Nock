@@ -8,34 +8,33 @@ local F = {}
 Nock.OptionsForever = F
 
 -- Top-level families that survive. Everything else at the root goes.
-F.FAMILIES = { general = true, hud = true, profiles = true }
+F.FAMILIES = { general = true, hud = true, profiles = true, alerts = true }
 
 -- Dotted args paths removed inside the surviving families. A trailing `*`
 -- matches every key with that prefix (same convention as OptionsLayout rows).
 -- Each entry names the module or feed that is missing on Forever in M1.
 F.DROP = {
+  -- Alerts: the aggro flash runs on own threat state (plain in combat);
+  -- helpers, sounds and warnings return with M3b.
+  "alerts.helpers", "alerts.sounds", "alerts.warnings",
   -- HUD family: one HUD only, no mode switching.
   "hud.classic", "hud.fluffy", "hud.hudMode", "hud.react.hudMode", "hud.react.useLook",
   -- React bars: no clip model (no wind-up feed, haste secret in combat), no papers.
   "hud.react.tabBars.grpEngine",
   "hud.react.tabBars.reactShowBrackets", "hud.react.tabBars.reactShowClipTicks", "hud.react.tabBars.reactShowDelay",
   "hud.react.tabBars.reactShowGcdDivider", "hud.react.tabBars.reactShowNotation",
-  -- Tabs whose module lands in M3 (buff row, range finder). The cooldown
-  -- grid and the cast bar came back with M2 (Forever/Cooldowns.lua,
-  -- Forever/CastBar.lua).
+  -- The buff row tab lists TBC buffs (M3b). The range tab holds only the
+  -- finding-ladder style, which has no feed on Forever (the three-zone
+  -- finder needs no setting); the range bar's own rows live in Size & Skin.
   "hud.react.tabBuff", "hud.react.tabRange",
-  -- Size & Elements: Auto Shot wind-up (no feed), corners, range bar, weave
-  -- stage, mana tick (M3).
+  -- Size & Elements: Auto Shot wind-up (no feed), weave stage, mana tick
+  -- (M3a Task 5). The corners and the range bar came back with M3a.
   "hud.react.tabSize.reactShowAutoShotCast",
-  "hud.react.tabSize.cornersCard", "hud.react.tabSize.reactShowAspectIcon", "hud.react.tabSize.reactShowMarkIcon",
-  "hud.react.tabSize.reactShowRangeBar",
   "hud.react.tabSize.reactMeleeStageCue", "hud.react.tabSize.stagePre*",
-  "hud.react.tabSize.reactManaTick*",
   -- Skin: marks, brackets, GCD divider, cast bar, corners, range colours.
   "hud.react.tabSkin.autoMarksHeader", "hud.react.tabSkin.reactBracketWidth", "hud.react.tabSkin.reactColorBracket",
   "hud.react.tabSkin.reactColorGcdDivider", "hud.react.tabSkin.reactGcdDividerWidth",
   "hud.react.tabSkin.reactColorTick*",
-  "hud.react.tabSkin.reactCornerIcon*", "hud.react.tabSkin.rangeColoursCard", "hud.react.tabSkin.reactColorRange*",
   -- General: no cast bar, no setup check, no HUD-mode look, no wizard, no profiler.
   "general.grpCastBar", "general.grpSetup", "general.grpLook",
   "general.runWizard", "general.runWizardGuided", "general.perfPanel",

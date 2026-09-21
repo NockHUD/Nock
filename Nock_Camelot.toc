@@ -56,11 +56,20 @@ UI\HUD.lua
 Forever\LedgerEngine.lua
 Forever\Snapshot.lua
 Forever\SwingTimer.lua
+Forever\RangeFinder.lua
 Forever\CastBar.lua
+Forever\Auras.lua
+Forever\Buffs.lua
+Modules\ManaTickEngine.lua
+Forever\ManaTick.lua
 Forever\Cooldowns.lua
 Forever\Probe.lua
 Modules\ProfileShare.lua
+Modules\AggroWarning.lua
 
 UI\Frame_ReactCluster.lua
 UI\Frame_ReactCastBar.lua
 UI\Frame_ReactCooldowns.lua
+UI\Frame_ReactCorners.lua
+UI\Frame_ReactBuffs.lua
+UI\Frame_AggroWarning.lua

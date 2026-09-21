@@ -124,6 +124,7 @@ Nock.state = {
     -- plain in combat). true/false while a check is possible, nil otherwise
     -- (no target, TBC). false blanks the auto bar: a shot cannot fire.
     targetInRange  = nil,
+    swingRangeSignal = false, -- true once PLAYER_SWING_RANGE_UPDATE has ever fired (then it owns targetInRange)
   },
   melee = {
     swingStart     = 0,
@@ -153,6 +154,9 @@ Nock.state = {
     map       = false,
     chat      = false,
   },
+  -- Forever: own-cast buffs from the ledger (Forever/Buffs.lua), the React
+  -- buff row's item shape: { icon, exp, dur }, n entries, soonest first.
+  ledgerBuffs = { n = 0 },
   cooldowns = {
     -- keyed by entry.key: { startTime, duration, remaining, ready, procActive, icon }
   },

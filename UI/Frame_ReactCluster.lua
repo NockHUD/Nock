@@ -119,6 +119,14 @@ end
 -- Marks (makeMark) stay solid WHITE8X8: they are 1-2px ticks, not fills.
 local mediaFills, mediaTexts = {}, {}
 
+-- Swing fills close visibly (Nock.UI.SwingFillProgress): at the shot a bar
+-- that has not reached the end glides shut over EASE_SEC, stays shut HOLD_SEC,
+-- then the new cycle starts from empty and catches up to its true position
+-- over CATCH_SEC.
+local EASE_SEC  = 0.06
+local HOLD_SEC  = 0.04
+local CATCH_SEC = 0.30
+
 local function makeFill(bar, color)
   local t = bar:CreateTexture(nil, "ARTWORK")
   t:SetTexture(WHITE8X8)
@@ -304,6 +312,8 @@ function ReactCluster:OnInitialize()
   textLayer:SetFrameLevel(sink:GetFrameLevel() + 1)
   mana.text:SetParent(textLayer)
   mana.textLayer = textLayer
+  -- The tick spark is created below; it is re-parented onto this layer right
+  -- after, for the same reason (the sink would paint over it).
   -- Mana tick spark (reactManaTick, opt-in): placed by RefreshMana from
   -- state.player.manaTick.progress along reactManaTickDirCombat/Ooc.
   local spark = mana:CreateTexture(nil, "OVERLAY")
@@ -311,6 +321,7 @@ function ReactCluster:OnInitialize()
   spark:SetSize(2, REACT.MANA_H - 2)
   spark:SetVertexColor(unpack(REACT.MANA_TICK))
   spark:Hide()
+  spark:SetParent(mana.textLayer)
   mana.spark = spark
   self.mana = mana
 
@@ -346,9 +357,20 @@ function ReactCluster:Geometry()
     mana  = skinNum("reactManaH",  REACT.MANA_H),
   }
 
-  -- the position strip rides under the range bar, sharing its border seam
-  local showStrip = show.range and p.reactRangeStrip == true
-  local hStrip = showStrip and math.max(2, math.min(14, tonumber(p.reactRangeStripH) or REACT.STRIP_H)) or 0
+  -- TBC: the position strip rides under the range bar, sharing its border
+  -- seam (experimental, reactRangeStrip). Forever: the strip IS the range
+  -- row (design pick A2, 2026-09-22) -- four stepped zones, no distance
+  -- estimate to glide -- at the range row's own height, and the fill bar
+  -- is not drawn.
+  local forever = Nock.Flavor and Nock.Flavor.forever
+  local showStrip = show.range and (forever or p.reactRangeStrip == true)
+  local hStrip
+  if forever then
+    hStrip = showStrip and h.range or 0
+  else
+    hStrip = showStrip and math.max(2, math.min(14, tonumber(p.reactRangeStripH) or REACT.STRIP_H)) or 0
+  end
+  local showRangeBar = show.range and not forever
 
   local order = Nock.UI.ResolveReactBarOrder(p.reactBarOrder)
   local ys = {}
@@ -357,12 +379,17 @@ function ReactCluster:Geometry()
     local k = order[i]
     if show[k] then
       if y > 0 then y = y + REACT.GAP end
-      ys[k] = y
-      y = y + h[k]
-      if k == "range" and showStrip then
-        y = y + REACT.GAP
+      if k == "range" and forever then
         ys.strip = y
         y = y + hStrip
+      else
+        ys[k] = y
+        y = y + h[k]
+        if k == "range" and showStrip then
+          y = y + REACT.GAP
+          ys.strip = y
+          y = y + hStrip
+        end
       end
     end
   end
@@ -370,7 +397,7 @@ function ReactCluster:Geometry()
   return {
     w = w,
     showAuto = show.auto, showMelee = show.melee,
-    showRange = show.range, showMana = show.mana, showStrip = showStrip,
+    showRange = showRangeBar, showMana = show.mana, showStrip = showStrip,
     yAuto = ys.auto, yMelee = ys.melee, yRange = ys.range, yMana = ys.mana, yStrip = ys.strip,
     hAuto = h.auto, hMelee = h.melee, hRange = h.range, hMana = h.mana, hStrip = hStrip,
     total = math.max(y, 1),
@@ -379,7 +406,7 @@ end
 
 -- Logical (unscaled) height of the row, for HUD's LAYOUT height fn.
 function ReactCluster:ContentHeight()
-  return self:Geometry().total
+  return Nock.UI.DeviceRound(self:Geometry().total, Nock.UI.PixelScale(self.frame))
 end
 
 -- (Re)size and (re)anchor everything from Geometry, then invalidate every diff
@@ -388,13 +415,55 @@ function ReactCluster:ApplyLayout()
   local g = self:Geometry()
   local p = profile()
   local f = self.frame
-  f:SetSize(g.w, g.total)
-  local innerW = g.w - 2
-
+  -- Row offsets, heights and the width rounded to whole device pixels (the
+  -- cluster's own top is snapped by the HUD layout), so every bar's 1 px edge
+  -- lands on one pixel row at any UI scale.
+  local dev = Nock.UI.PixelScale(f)
+  local w = Nock.UI.DeviceRound(g.w, dev)
+  -- An EVEN inner width in device pixels: the converge halves are each half
+  -- of it, and with an odd count they meet on a half pixel, which the
+  -- rasteriser resolves as a one-pixel seam at the centre of a full bar
+  -- ("never quite reaches the centre", Forever gate 2026-09-22).
+  if dev and dev > 0 then
+    local wpx = math.floor(w * dev + 0.5)
+    if wpx % 2 == 1 then w = (wpx + 1) / dev end
+  end
+  -- The cluster hangs from its BOTTOM in the HUD stack: a fractional height
+  -- in device pixels would lift its top, and every bar with it, off the grid.
+  f:SetSize(w, Nock.UI.DeviceRound(g.total, dev))
+  -- The bars' edge is one DEVICE pixel (the backdrop's, see
+  -- Nock.UI.PixelBackdrop): fills, marks and the spark inset by the same
+  -- amount, so the first fill row is a full fill row rather than a blend.
+  local e = Nock.UI.DeviceWidth(1, dev)
+  self._edge = e
+  local innerW = w - 2 * e
+  local function innerH(h) return math.max(1, Nock.UI.DeviceRound(h, dev) - 2 * e) end
+  local hAutoIn, hMeleeIn, hRangeIn, hManaIn = innerH(g.hAuto), innerH(g.hMelee), innerH(g.hRange), innerH(g.hMana)
+  -- Re-anchor a fill/sink inside its bar by the device edge.
+  local function insetFill(t, bar, side)
+    t:ClearAllPoints()
+    if side == "right" then
+      t:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -e, -e)
+      t:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -e, e)
+    elseif side == "both" then
+      t:SetPoint("TOPLEFT", bar, "TOPLEFT", e, -e)
+      t:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -e, e)
+    else
+      t:SetPoint("TOPLEFT", bar, "TOPLEFT", e, -e)
+      t:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", e, e)
+    end
+  end
+  insetFill(self.auto.fillR, self.auto, "right")
+  insetFill(self.range.fill, self.range, "left")
+  insetFill(self.mana.fill, self.mana, "left")
+  if self.mana.sink then insetFill(self.mana.sink, self.mana, "both") end
+  insetFill(self.strip.ranged.fill, self.strip.ranged, "both")
+  insetFill(self.strip.melee.fill, self.strip.melee, "both")
   local function placeBar(bar, y, h, shown)
-    bar:SetHeight(h)
+    bar:SetHeight(math.max(Nock.UI.DeviceRound(h, dev), Nock.UI.DeviceWidth(1, dev)))
     if shown then
       bar:ClearAllPoints()
+      y = Nock.UI.DeviceRound(y, dev)
       bar:SetPoint("TOPLEFT",  f, "TOPLEFT",  0, -y)
       bar:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, -y)
       bar:Show()
@@ -404,16 +473,27 @@ function ReactCluster:ApplyLayout()
   end
   placeBar(self.auto,  g.yAuto,  g.hAuto,  g.showAuto)
   placeBar(self.melee, g.yMelee, g.hMelee, g.showMelee)
-  placeBar(self.range, g.yRange, g.hRange, g.showRange)
+  placeBar(self.range, g.yRange or 0, g.hRange, g.showRange)
   placeBar(self.mana,  g.yMana,  g.hMana,  g.showMana)
   placeBar(self.strip, g.yStrip or 0, math.max(1, g.hStrip), g.showStrip)
   self.strip.ranged:SetHeight(math.max(1, g.hStrip)); self.strip.melee:SetHeight(math.max(1, g.hStrip))
+  -- The two halves meet on a whole device column and share that 1 px seam.
+  local edge = Nock.UI.DeviceWidth(1, dev)
+  local wL = Nock.UI.DeviceRound(w / 2, dev)
+  self.strip.ranged:ClearAllPoints()
+  self.strip.ranged:SetPoint("TOPLEFT", self.strip, "TOPLEFT", 0, 0)
+  self.strip.ranged:SetPoint("BOTTOMLEFT", self.strip, "BOTTOMLEFT", 0, 0)
+  self.strip.ranged:SetWidth(wL)
+  self.strip.melee:ClearAllPoints()
+  self.strip.melee:SetPoint("TOPRIGHT", self.strip, "TOPRIGHT", 0, 0)
+  self.strip.melee:SetPoint("BOTTOMRIGHT", self.strip, "BOTTOMRIGHT", 0, 0)
+  self.strip.melee:SetWidth(w - wL + edge)
   -- labels only when they fit (the small font needs about 9 px)
   local labels = p.reactRangeStripLabels == true and g.hStrip >= REACT.STRIP_LABEL_MIN
   self.strip.ranged.label:SetShown(labels); self.strip.melee.label:SetShown(labels)
   self._lastStripLook = nil
 
-  self._halfW  = (g.w - 2) / 2
+  self._halfW  = innerW / 2
   self._innerW = innerW
 
   -- React media (React HUD tab → Skin): reactBarTexture on the fills,
@@ -437,7 +517,7 @@ function ReactCluster:ApplyLayout()
   -- Pool grows and never shrinks; extras hide. Direction (tex-coord flip) is
   -- set per stage by RefreshMelee. Not the tick: once per layout.
   local cue = self.melee.cue
-  local size = math.max(2, g.hMelee - 2 - 2 * REACT.MARCH_INSET)
+  local size = math.max(2, hMeleeIn - 2 * REACT.MARCH_INSET)
   local pitch = size * (1 + REACT.MARCH_GAP)
   local count = math.ceil(self._halfW / pitch) + 2
   local function buildMarch(mf)
@@ -481,8 +561,8 @@ function ReactCluster:ApplyLayout()
     devW[wKey] = n
     local w = Nock.UI.DeviceWidth(n, ps)
     local c = skinColor(cKey, cRef)
-    tL:SetSize(w, g.hAuto - 2)
-    tR:SetSize(w, g.hAuto - 2)
+    tL:SetSize(w, hAutoIn)
+    tR:SetSize(w, hAutoIn)
     tL:SetVertexColor(c[1], c[2], c[3], c[4] or 1)
     tR:SetVertexColor(c[1], c[2], c[3], c[4] or 1)
   end
@@ -494,15 +574,15 @@ function ReactCluster:ApplyLayout()
   local bw = Nock.UI.DeviceWidth(bn, ps)
   local bc = skinColor("reactColorBracket", REACT.BRACKET)
   for i = 1, MAX_BRACKETS do
-    auto.brackets[i]:SetSize(bw, g.hAuto - 2)
+    auto.brackets[i]:SetSize(bw, hAutoIn)
     auto.brackets[i]:SetVertexColor(bc[1], bc[2], bc[3], bc[4] or 1)
   end
   local gn = skinNum("reactGcdDividerWidth", REACT.GCD_DIVIDER_W)
   devW.reactGcdDividerWidth = gn
   local gw = Nock.UI.DeviceWidth(gn, ps)
   local gc = skinColor("reactColorGcdDivider", REACT.GCD_DIVIDER)
-  auto.gcdL:SetSize(gw, g.hAuto - 2)
-  auto.gcdR:SetSize(gw, g.hAuto - 2)
+  auto.gcdL:SetSize(gw, hAutoIn)
+  auto.gcdR:SetSize(gw, hAutoIn)
   auto.gcdL:SetVertexColor(gc[1], gc[2], gc[3], gc[4] or 1)
   auto.gcdR:SetVertexColor(gc[1], gc[2], gc[3], gc[4] or 1)
   -- Gate here as well as in RefreshAuto: turning the option off mid-session
@@ -513,7 +593,7 @@ function ReactCluster:ApplyLayout()
   local dw = Nock.UI.DeviceWidth(skinNum("reactRangeDividerWidth", REACT.RANGE_DIVIDER_W),
                                 Nock.UI.PixelScale(self.range))
   local dc = skinColor("reactColorRangeDivider", REACT.RANGE_DIVIDER)
-  self.range.tick:SetSize(dw, g.hRange - 2)
+  self.range.tick:SetSize(dw, hRangeIn)
   self.range.tick:SetVertexColor(dc[1], dc[2], dc[3], dc[4] or 1)
 
   -- Construction-time fill colors re-applied from the skin resolver (melee
@@ -529,35 +609,21 @@ function ReactCluster:ApplyLayout()
   end
   local cTick = skinColor("reactColorManaTick", REACT.MANA_TICK)
   self.mana.spark:SetVertexColor(cTick[1], cTick[2], cTick[3], cTick[4] or 1)
-  self.mana.spark:SetHeight(math.max(1, g.hMana - 2))
+  self.mana.spark:SetHeight(hManaIn)
   self._lastManaSparkX = nil
 
   -- Fill directions (React HUD tab). Auto: converge (reference) | ltr | rtl —
   -- fillL doubles as the single directional fill, fillR only participates in
   -- converge mode. Melee: ltr | rtl.
   self._dirAuto = p.reactDirAuto or "converge"
-  auto.fillL:ClearAllPoints()
-  if self._dirAuto == "rtl" then
-    auto.fillL:SetPoint("TOPRIGHT", auto, "TOPRIGHT", -1, -1)
-    auto.fillL:SetPoint("BOTTOMRIGHT", auto, "BOTTOMRIGHT", -1, 1)
-  else
-    auto.fillL:SetPoint("TOPLEFT", auto, "TOPLEFT", 1, -1)
-    auto.fillL:SetPoint("BOTTOMLEFT", auto, "BOTTOMLEFT", 1, 1)
-  end
+  insetFill(auto.fillL, auto, self._dirAuto == "rtl" and "right" or "left")
   if self._dirAuto == "converge" then
     auto.fillR:Show()
   else
     auto.fillR:Hide()
   end
   local melee = self.melee
-  melee.fill:ClearAllPoints()
-  if (p.reactDirMelee or "ltr") == "rtl" then
-    melee.fill:SetPoint("TOPRIGHT", melee, "TOPRIGHT", -1, -1)
-    melee.fill:SetPoint("BOTTOMRIGHT", melee, "BOTTOMRIGHT", -1, 1)
-  else
-    melee.fill:SetPoint("TOPLEFT", melee, "TOPLEFT", 1, -1)
-    melee.fill:SetPoint("BOTTOMLEFT", melee, "BOTTOMLEFT", 1, 1)
-  end
+  insetFill(melee.fill, melee, (p.reactDirMelee or "ltr") == "rtl" and "right" or "left")
 
   -- Feature-gated delay readout (React HUD tab; default off).
   if p.reactShowDelay == true then
@@ -575,6 +641,7 @@ function ReactCluster:ApplyLayout()
 
   -- Invalidate diff/signature caches (width or bar set may have changed).
   self._lastAutoP     = nil
+  self._lastAutoW     = nil
   self._gcdX          = nil   -- forces the GCD divider to re-place next tick
   self._markSd        = nil   -- forces PositionAutoMarks next tick
   self._markWindup    = nil
@@ -631,7 +698,7 @@ function ReactCluster:PositionAutoMarks(sd, steadyT, multiT, windup)
     -- Shared projection (Nock.UI.ReactAxisPoint) — same one the GCD divider
     -- places through, so the two can't drift apart.
     local edge, x, mirrored, xR =
-      Nock.UI.ReactAxisPoint((sd - T) / sd, dir, halfW, innerW, ps, devW[wKey], leftPx, rightPx)
+      Nock.UI.ReactAxisPoint((sd - T) / sd, dir, halfW, innerW, ps, devW[wKey], leftPx, rightPx, self._edge)
     tL:ClearAllPoints(); tL:SetPoint("CENTER", auto, edge, x, 0); tL:Show()
     if mirrored then
       tR:ClearAllPoints(); tR:SetPoint("CENTER", auto, "RIGHT", -xR, 0); tR:Show()
@@ -669,7 +736,7 @@ function ReactCluster:PositionAutoMarks(sd, steadyT, multiT, windup)
       local lo = list[i].lo
       if lo and lo > 0 and lo < sd then
         local edge, x, mirrored, xR =
-          Nock.UI.ReactAxisPoint(lo / sd, dir, halfW, innerW, ps, devW.reactBracketWidth, leftPx, rightPx)
+          Nock.UI.ReactAxisPoint(lo / sd, dir, halfW, innerW, ps, devW.reactBracketWidth, leftPx, rightPx, self._edge)
         if mirrored then
           if n + 2 > MAX_BRACKETS then break end
           local bL = auto.brackets[n + 1]
@@ -730,7 +797,7 @@ function ReactCluster:RefreshGcdDivider(state)
     Nock.UI.ReactAxisPoint(frac, self._dirAuto or "converge", self._halfW or 0, self._innerW or 0,
                            ps, (self._markDevW or {}).reactGcdDividerWidth,
                            (ps and barL) and barL * ps or nil,
-                           (ps and barR) and barR * ps or nil)
+                           (ps and barR) and barR * ps or nil, self._edge)
   -- Snapping already quantises x to the device grid, so it is safe to diff on
   -- directly: identical inputs give a bit-identical float. That is also what
   -- makes this cheap -- the divider only re-anchors once per device pixel
@@ -768,20 +835,46 @@ function ReactCluster:RefreshAuto(state)
   -- armed (held shot). Disarmed (melee cancels auto-repeat) or out of combat,
   -- a stale swing doesn't sit fully filled (solid gold).
   local p01 = 0
+  local h = self._autoFill
+  if not h then h = {}; self._autoFill = h end
   if Nock.AutoSwingLive() then
-    p01 = 1 - (r.swingRemaining / r.swingDuration)
-    if p01 < 0 then p01 = 0 elseif p01 > 1 then p01 = 1 end
+    p01 = Nock.UI.SwingFillProgress(h, r.swingStart, r.swingRemaining, r.swingDuration,
+                                    GetTime(), HOLD_SEC, EASE_SEC, CATCH_SEC)
+  else
+    -- Blank bar (auto-repeat off, target out of range): the next live cycle
+    -- is a fresh start, not a shot to close.
+    h.start, h.fullAt, h.holdUntil, h.glideAt, h.glideFrom, h.catchAt, h.lag = nil, nil, nil, nil, nil, nil, nil
   end
-  if not self._lastAutoP or math.abs(p01 - self._lastAutoP) > 0.002 then
-    if self._dirAuto == "converge" then
-      local w = math.max(0.01, p01 * (self._halfW or 0))
-      auto.fillL:SetWidth(w)
-      auto.fillR:SetWidth(w)
-    else
-      -- Directional single fill across the full inner width (fillR hidden).
-      auto.fillL:SetWidth(math.max(0.01, p01 * (self._innerW or 0)))
+  -- Fill widths in whole device pixels (Nock.UI.DeviceRound): the moving edge
+  -- never sits between two columns, and a full bar's halves meet exactly.
+  -- Diffed on the rounded width, so SetWidth runs once per pixel crossed.
+  local span = (self._dirAuto == "converge") and (self._halfW or 0) or (self._innerW or 0)
+  local fw = Nock.UI.DeviceRound(p01 * span, ps)
+  if fw ~= self._lastAutoW then
+    -- Forever diagnostic (/nock probe "auto bar cycles"): at each reset note
+    -- what the previous cycle ended on -- bar and fill widths in device
+    -- pixels, the peak fill and how long the fill sat at its final width.
+    if Nock.Flavor and Nock.Flavor.forever and self._lastAutoW and self._lastAutoW > 0 and fw < self._lastAutoW then
+      local log = self._cycleLog
+      if not log then log = {}; self._cycleLog = log end
+      local now = GetTime()
+      log[#log + 1] = {
+        barPx  = ps and math.floor(auto:GetWidth() * ps + 0.5) or -1,
+        fillPx = ps and math.floor(self._lastAutoW * ps + 0.5) or -1,
+        peakP  = self._lastAutoP or 0,
+        held   = self._lastAutoAt and (now - self._lastAutoAt) or 0,
+        halves = self._dirAuto == "converge",
+      }
+      if #log > 12 then table.remove(log, 1) end
     end
+    -- Remember the ROUNDED width (0 when empty); the 0.01 floor is only for
+    -- SetWidth, where 0 would let the texture take its own size.
+    self._lastAutoW = fw
     self._lastAutoP = p01
+    self._lastAutoAt = GetTime()
+    fw = math.max(0.01, fw)
+    auto.fillL:SetWidth(fw)
+    if self._dirAuto == "converge" then auto.fillR:SetWidth(fw) end
   end
 
   -- Forever: no clip model yet (no wind-up feed, and the cast time behind
@@ -906,7 +999,7 @@ function ReactCluster:RefreshMelee(state)
     -- Full fill in the stage colour; RELEASE enters white and settles to the
     -- colour over FLASH_SEC (painted every tick only while it lasts).
     if self._lastMeleeP ~= 1 then
-      melee.fill:SetWidth(math.max(0.01, self._innerW or 0))
+      melee.fill:SetWidth(math.max(0.01, Nock.UI.DeviceRound(self._innerW or 0, self._pixelScale)))
       self._lastMeleeP = 1
     end
     local mix = self._flashAt and Nock.UI.FlashMix(now - self._flashAt, FLASH_SEC) or 0
@@ -933,12 +1026,19 @@ function ReactCluster:RefreshMelee(state)
   end
 
   local p01 = 1
+  local h = self._meleeFill
+  if not h then h = {}; self._meleeFill = h end
   if not ready and m.swingDuration > 0 then
-    p01 = 1 - (m.swingRemaining / m.swingDuration)
-    if p01 < 0 then p01 = 0 elseif p01 > 1 then p01 = 1 end
+    p01 = Nock.UI.SwingFillProgress(h, m.swingStart, m.swingRemaining, m.swingDuration,
+                                    now, HOLD_SEC, EASE_SEC, CATCH_SEC)
+  else
+    -- Ready = the bar is full: tell the helper it closed, so the next swing
+    -- starts at once instead of replaying a glide on an already-full bar.
+    h.fullAt = h.fullAt or now
+    h.holdUntil, h.glideAt, h.glideFrom, h.catchAt, h.lag = nil, nil, nil, nil, nil
   end
   if not self._lastMeleeP or math.abs(p01 - self._lastMeleeP) > 0.002 then
-    melee.fill:SetWidth(math.max(0.01, p01 * (self._innerW or 0)))
+    melee.fill:SetWidth(math.max(0.01, Nock.UI.DeviceRound(p01 * (self._innerW or 0), self._pixelScale)))
     self._lastMeleeP = p01
   end
 
@@ -1048,7 +1148,7 @@ function ReactCluster:RefreshRange(state)
     self._lastRangeMode = mode
   end
   if not self._lastRatio or math.abs(self._lastRatio - ratio) > 0.005 then
-    range.fill:SetWidth(math.max(0.01, ratio * (self._innerW or 0)))
+    range.fill:SetWidth(math.max(0.01, Nock.UI.DeviceRound(ratio * (self._innerW or 0), self._pixelScale)))
     self._lastRatio = ratio
   end
   if text ~= self._lastRangeText then
@@ -1067,12 +1167,23 @@ function ReactCluster:RefreshStrip(state)
   local key = look.melee .. "|" .. look.ranged
   if key == self._lastStripLook then return end
   self._lastStripLook = key
+  local forever = Nock.Flavor and Nock.Flavor.forever
   local off = skinColor("reactStripColorOff", REACT.STRIP_OFF)
+  local dead = skinColor("reactStripColorDead", REACT.STRIP_DEAD)
   local m = look.melee == "melee" and skinColor("reactStripColorMelee", REACT.RANGE_MELEE)
-         or look.melee == "dead" and skinColor("reactStripColorDead", REACT.STRIP_DEAD) or off
-  local r = look.ranged == "ranged" and skinColor("reactStripColorRanged", REACT.RANGE_CLOSE) or off
+         or look.melee == "dead" and dead or off
+  -- Forever's lit ranged block is the gold "can shoot" (design pick A2);
+  -- TBC keeps the teal it shipped with.
+  local r = look.ranged == "ranged" and skinColor("reactStripColorRanged", forever and REACT.RANGE_SWEET or REACT.RANGE_CLOSE)
+         or look.ranged == "dead" and dead or off
   self.strip.melee.fill:SetVertexColor(m[1], m[2], m[3], m[4] or 1)
   self.strip.ranged.fill:SetVertexColor(r[1], r[2], r[3], r[4] or 1)
+  -- Fixed words, dimmed on an off block (A2).
+  local tl = REACT.TEXT
+  local dim = 0.45
+  local mOn, rOn = look.melee ~= "off", look.ranged ~= "off"
+  self.strip.melee.label:SetTextColor(tl[1], tl[2], tl[3], mOn and 1 or dim)
+  self.strip.ranged.label:SetTextColor(tl[1], tl[2], tl[3], rOn and 1 or dim)
 end
 
 -- A linear 0..1 -> 0..100 curve the client evaluates for the percent text on
@@ -1125,14 +1236,30 @@ function ReactCluster:RefreshMana(state)
         if pctRaw ~= nil then mana.text:SetFormattedText("%d%%", pctRaw) else mana.text:SetText("") end
       end
     end
-    if mana.spark:IsShown() then mana.spark:Hide() end   -- tick spark is M3 on Forever
+    -- Tick spark (reactManaTick): the engine's timed bar, driven by
+    -- Forever/ManaTick.lua from power-event timing.
+    local mt = pl and pl.manaTick
+    local spark = mana.spark
+    local p = profile()
+    if p.reactManaTick == true and mt and mt.active then
+      local dir = pl.inCombat and p.reactManaTickDirCombat or p.reactManaTickDirOoc
+      local x = (self._edge or 1) + Nock.ManaTickEngine.SparkX(mt.progress, dir, self._innerW or 0)
+      if self._lastManaSparkX ~= x then
+        spark:ClearAllPoints()
+        spark:SetPoint("CENTER", mana, "LEFT", x, 0)
+        self._lastManaSparkX = x
+      end
+      if not spark:IsShown() then spark:Show() end
+    elseif spark:IsShown() then
+      spark:Hide()
+    end
     return
   end
   local pct = (pl and pl.manaPct) or 100
   local ratio = pct / 100
   if ratio < 0 then ratio = 0 elseif ratio > 1 then ratio = 1 end
   if not self._lastManaRatio or math.abs(self._lastManaRatio - ratio) > 0.005 then
-    mana.fill:SetWidth(math.max(0.01, ratio * (self._innerW or 0)))
+    mana.fill:SetWidth(math.max(0.01, Nock.UI.DeviceRound(ratio * (self._innerW or 0), self._pixelScale)))
     self._lastManaRatio = ratio
   end
   -- Center text via the shared formatter (reactManaText: none/percent/value/
@@ -1154,7 +1281,7 @@ function ReactCluster:RefreshMana(state)
   local p = profile()
   if p.reactManaTick == true and mt and mt.active then
     local dir = pl.inCombat and p.reactManaTickDirCombat or p.reactManaTickDirOoc
-    local x = 1 + Nock.ManaTickEngine.SparkX(mt.progress, dir, self._innerW or 0)
+    local x = (self._edge or 1) + Nock.ManaTickEngine.SparkX(mt.progress, dir, self._innerW or 0)
     if self._lastManaSparkX ~= x then
       spark:ClearAllPoints()
       spark:SetPoint("CENTER", mana, "LEFT", x, 0)

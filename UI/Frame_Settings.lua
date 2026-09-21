@@ -676,6 +676,12 @@ function Settings:PaintMode()
     b.active = on
     Skin.Paint(b.fill, on and "accent" or "ground", on and 1 or 0)
     Skin.Text(b.text, on and "accentInk" or "ink2")
+    -- A face used for the first time in a client session can rasterise
+    -- blank until the next SetFont/SetText (the "Simple" label after a
+    -- restart, 2026-09-21). Re-applying here, on every open and mode flip,
+    -- is cheap and idempotent.
+    Skin.Font(b.text, "uiMedium", 12)
+    b.text:SetText(b == self.modeSimple and "Simple" or "Advanced")
   end
 end
 

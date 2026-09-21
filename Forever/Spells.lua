@@ -8,6 +8,15 @@ local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 
 local Spells = {
   AUTO_SHOT = 75,      -- same ID on every client
+  RAPTOR_STRIKE = 2973, -- rank 1; the melee range probe (IsSpellInRange)
+  HUNTERS_MARK = 1130,  -- rank 1 (ranks map to it through C_Spell.GetBaseSpell)
+  HUNTERS_MARK_DURATION = 120,
+  -- Aspects by base id (vanilla ids; Forever/Auras.lua). A cast of any rank
+  -- resolves to the base id before the lookup.
+  ASPECTS = {
+    [13163] = "monkey", [13165] = "hawk", [5118] = "cheetah",
+    [13159] = "pack",   [13161] = "beast", [20043] = "wild",
+  },
   -- GCD probe: an instant on the GCD with no cooldown of its own (Serpent
   -- Sting rank 1). Blizzard's whitelisted GCD spell 61304 returns no cooldown
   -- data on this client, so it is not usable here.
@@ -34,6 +43,16 @@ Spells.TRACKED = {
   { key = "FD",       id = 5384,  label = "FD",     cd = 30 },                                 -- Feign Death
   { key = "Elune",    id = 1259799, label = "Elune" },                                         -- Elune's Light (Forever racial; cooldown unmeasured)
   { key = "Meld",     id = 20580, label = "Meld",   cd = 120 },                                -- Shadowmeld
+}
+
+-- Own-cast buffs for the React buff row (Forever/Buffs.lua): base id, key
+-- and a seed duration; the aura's real duration is learned out of combat and
+-- remembered per character. Procs and other people's buffs are not here:
+-- they have no cast to stamp.
+Spells.BUFFS = {
+  { id = 3045,    key = "RF",    dur = 15 },   -- Rapid Fire
+  { id = 1259799, key = "Elune", dur = nil },  -- Elune's Light (duration unmeasured)
+  { id = 20580,   key = "Meld",  dur = nil },  -- Shadowmeld (until moved/cancelled)
 }
 
 -- Cooldown-row layout (same shape as Constants.REACT_CD_ROWS).
