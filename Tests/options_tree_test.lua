@@ -70,6 +70,9 @@ local STUB_CATALOGS = {
   } },
 }
 function Nock:GetModule(name) return STUB_CATALOGS[name] end
+function Nock.HudMode() return Nock.db.profile.hudMode or "classic" end
+function Nock.HudIsClassic() return Nock.HudMode() == "classic" end
+function Nock.HudIsReact() return Nock.HudMode() == "react" end
 function Nock:SendMessage() end
 _G.NockStub = Nock
 

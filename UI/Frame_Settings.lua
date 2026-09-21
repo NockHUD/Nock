@@ -317,7 +317,7 @@ function Settings:RenderNav(nav, counts, arrowOn)
   local y, ri, hi, activeY = 0, 0, 0, nil
   for _, r in ipairs(self.navRows) do r:Hide() end
   for _, h in ipairs(self.navHeads) do h:Hide() end
-  local live = Nock.db.profile.hudMode or "classic"
+  local live = Nock.HudMode()
   -- Fit: the list must never run past the sidebar. Measure the natural height
   -- and, when it overflows, tighten the head gap, then the head height, then
   -- the row height (down to 20 px), so every page stays reachable however
@@ -505,7 +505,7 @@ function Settings:IsOpen() return self.frame:IsShown() end
 
 function Settings:Open()
   self.nav_model = nil
-  if not self.state.page then self.state.page = Nock.db.profile.hudMode or "classic" end
+  if not self.state.page then self.state.page = Nock.HudMode() end
   self:ApplyScale()
   self:ApplyPosition()
   self.frame:Show()
@@ -1291,7 +1291,8 @@ function Settings:RenderFooter()
   Skin.Icon(self.lockIcon, locked and "lock" or "lockopen", locked and "ink2" or "accent"); Skin.IconSize(self.lockIcon, 14)
   self.lockText:SetText(locked and "Frames locked" or "Frames unlocked")
   Skin.SetButtonText(self.lockBtn, locked and "Unlock" or "Lock")
-  local look = ({ classic = "Classic", react = "React", fluffy = "FluffyHUD" })[Nock.db.profile.hudMode or "classic"]
+  local look = ({ classic = "Classic", react = "React", fluffy = "FluffyHUD" })[Nock.HudMode()]
+  if Nock.Flavor and Nock.Flavor.forever then look = Nock.Flavor.HudLabel() end
   local st = Nock.state and Nock.state.ranged
   local ews = st and st.swingDuration and ("%.2f"):format(st.swingDuration) or "-"
   self.status:SetText(("HUD look  %s   ·   eWS  %s"):format(look, ews))

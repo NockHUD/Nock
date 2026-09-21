@@ -1976,7 +1976,7 @@ local function buildOptionsTable()
             name = "|cffffd200React look is active:|r the row toggles below govern the CLASSIC look only. React element visibility lives under React HUD → Size & Elements (Hide all / Show all still covers both).",
             order = 10.015,
             fontSize = "medium",
-            hidden = function() return (Nock.db.profile.hudMode or "classic") ~= "react" end,
+            hidden = function() return not Nock.HudIsReact() end,
           },
           hideAllElements = {
             type = "execute",
@@ -6116,8 +6116,11 @@ local function buildOptionsTable()
       if reg then reg:NotifyChange("Nock") end
     end
 
+    -- THE mode reading (Core/State.lua): on Forever HudMode() is "react" while
+    -- the stored profile key may still say "classic", and a raw read here left
+    -- every React control disabled there (2026-09-21).
     local notReact = function()
-      return (Nock.db.profile.hudMode or "classic") ~= "react"
+      return not Nock.HudIsReact()
     end
 
     -- Default-ON toggle gated on React mode.
@@ -7064,7 +7067,7 @@ local function buildOptionsTable()
     options.args.react = {
       type  = "group",
       name  = function()
-        local active = (Nock.db.profile.hudMode or "classic") == "react"
+        local active = Nock.HudIsReact()
         return active and "React HUD |cff9dc46e(active)|r" or "React HUD"
       end,
       order = 1.7,
@@ -7637,7 +7640,7 @@ local function buildOptionsTable()
     options.args.fluffy = {
       type  = "group",
       name  = function()
-        local active = (Nock.db.profile.hudMode or "classic") == "fluffy"
+        local active = Nock.HudMode() == "fluffy"
         return active and "FluffyHUD |cff9dc46e(active)|r" or "FluffyHUD"
       end,
       order = 1.8,
@@ -7830,7 +7833,7 @@ local function buildOptionsTable()
     local classic = {
       type = "group",
       name = function()
-        local active = (Nock.db.profile.hudMode or "classic") == "classic"
+        local active = Nock.HudIsClassic()
         return active and "Classic HUD |cff9dc46e(active)|r" or "Classic HUD"
       end,
       order = 1,
@@ -8360,6 +8363,9 @@ function Nock:RegisterOptions()
   self.optionsTable = options
   if self.OptionsAdvanced then self.OptionsAdvanced.Apply(options) end
   if self.OptionsLayout then self.OptionsLayout.Apply(options) end
+  -- Forever allowlist (Config/OptionsForever.lua, Camelot toc only): after the
+  -- cards, so a pruned tab takes its card headers with it.
+  if self.OptionsForever then self.OptionsForever.Apply(options) end
 
   LibStub("AceConfig-3.0"):RegisterOptionsTable("Nock", options)
   -- Interface -> AddOns -> Nock: one button into the settings window (the
@@ -8382,6 +8388,7 @@ function Nock:RebuildOptionsArgs()
   end
   if self.OptionsAdvanced and self.optionsTable then self.OptionsAdvanced.Apply(self.optionsTable) end
   if self.OptionsLayout and self.optionsTable then self.OptionsLayout.Apply(self.optionsTable) end
+  if self.OptionsForever and self.optionsTable then self.OptionsForever.Apply(self.optionsTable) end
   local reg = LibStub("AceConfigRegistry-3.0", true)
   if reg then reg:NotifyChange("Nock") end
 end

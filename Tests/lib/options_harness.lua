@@ -51,6 +51,10 @@ return function(opts)
   }
   Nock.db.profile = opts.profile or {}
   function Nock:GetModule(name) return STUB_CATALOGS[name] end
+  -- THE mode reading (Core/State.lua), stubbed off the profile as on TBC.
+  function Nock.HudMode() return Nock.db.profile.hudMode or "classic" end
+  function Nock.HudIsClassic() return Nock.HudMode() == "classic" end
+  function Nock.HudIsReact() return Nock.HudMode() == "react" end
   function Nock:SendMessage() end
   function Nock.IsLocked() return true end
   -- What Options.lua's name/get functions reach for at build time.

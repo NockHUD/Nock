@@ -85,10 +85,20 @@ local function rebuild(st)
   reindex(st)
 end
 
+-- Forever: while auras are restricted (combat, encounters, PvP) the UNIT_AURA
+-- payload arrives secret (isFullUpdate is a secret boolean; a truth test on it
+-- throws) and every getter throws. The store goes dirty and stays stale until
+-- the restriction lifts; readers get the last pre-combat truth meanwhile.
+local function aurasSecret()
+  local S = _G.C_Secrets
+  return S and S.ShouldAurasBeSecret and S.ShouldAurasBeSecret() or false
+end
+AC.AurasSecret = aurasSecret
+
 local function ensure(unit)
   local st = stores[unit]
   if not st then return nil end
-  if st.dirty then rebuild(st) end
+  if st.dirty and not aurasSecret() then rebuild(st) end
   return st
 end
 
@@ -99,6 +109,7 @@ function AC.OnUnitAura(unit, info)
   local st = stores[unit]
   if not st then return end
   local CU = C_UnitAuras
+  if aurasSecret() then st.dirty = true; return end
   if type(info) ~= "table" or info.isFullUpdate or not (CU and CU.GetAuraDataByAuraInstanceID) then
     st.dirty = true
     return

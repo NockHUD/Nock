@@ -30,6 +30,7 @@ Forever\Spells.lua
 Config\Defaults.lua
 Config\Options.lua
 Config\OptionsAdvanced.lua
+Config\OptionsForever.lua
 Config\OptionsLayoutData.lua
 Config\OptionsLayout.lua
 Config\Presets.lua

@@ -528,7 +528,8 @@ function Nock:NotifyOptions()
 end
 
 function Nock:HandleSlashCommand(input)
-  input = (input or ""):lower():match("^%s*(.-)%s*$")
+  local raw = (input or ""):match("^%s*(.-)%s*$")   -- case kept for /nock eval
+  input = raw:lower()
   if input == "" or input == "config" then
     self:OpenConfig()
   elseif input == "version" then
@@ -539,6 +540,28 @@ function Nock:HandleSlashCommand(input)
   elseif input == "swinglog" then
     local stm = self:GetModule("SwingTimer", true)
     if stm and stm.SwingLogToggle then stm:SwingLogToggle() end
+  elseif input:match("^eval%s") then
+    -- /nock eval <lua>: run a snippet and show what it prints in the copybox
+    -- (chat cannot be copied; project rule for anything pasted back). `print`
+    -- inside the snippet is captured; a runtime error is reported the same way.
+    local code = raw:match("^[Ee][Vv][Aa][Ll]%s+(.+)$") or ""
+    local out = {}
+    local function capture(...)
+      local n = select("#", ...)
+      local parts = {}
+      for i = 1, n do parts[i] = tostring((select(i, ...))) end
+      out[#out + 1] = table.concat(parts, "  ")
+    end
+    local fn, err = loadstring("local print = ...; " .. code)
+    if not fn then
+      out[#out + 1] = "compile error: " .. tostring(err)
+    else
+      local okr, rerr = pcall(fn, capture)
+      if not okr then out[#out + 1] = "runtime error: " .. tostring(rerr) end
+    end
+    if #out == 0 then out[1] = "(no output)" end
+    if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox("> " .. code .. "\n" .. table.concat(out, "\n"))
+    else self:Print(table.concat(out, "\n")) end
   elseif input == "probe" or input == "probe spells" then
     local pr = self:GetModule("ForeverProbe", true)
     if pr and pr.Show then pr:Show(input:match("probe%s+(%w+)")) else self:Print("Probe is only available on WoW Forever.") end
