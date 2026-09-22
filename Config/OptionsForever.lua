@@ -14,9 +14,10 @@ F.FAMILIES = { general = true, hud = true, profiles = true, alerts = true }
 -- matches every key with that prefix (same convention as OptionsLayout rows).
 -- Each entry names the module or feed that is missing on Forever in M1.
 F.DROP = {
-  -- Alerts: the aggro flash runs on own threat state (plain in combat);
-  -- helpers, sounds and warnings return with M3b.
-  "alerts.helpers", "alerts.sounds", "alerts.warnings",
+  -- Alerts: the aggro flash runs on own threat state (plain in combat) and
+  -- the warnings page builds from Forever/Warnings.lua's own catalog;
+  -- helpers and sounds return later. No DO NOT RELEASE banner on Forever.
+  "alerts.helpers", "alerts.sounds", "alerts.warnings.settings.noReleasePreview",
   -- HUD family: one HUD only, no mode switching.
   "hud.classic", "hud.fluffy", "hud.hudMode", "hud.react.hudMode", "hud.react.useLook",
   -- React bars: no clip model (no wind-up feed, haste secret in combat), no papers.

@@ -259,6 +259,11 @@ Nock.Defaults = {
     -- worth a square to hunters actually carrying the tooth.
     warnDevilsaurEnabled = false,
     warnQuiverEnabled    = true,      -- quiver/ammo pouch almost empty (state.ammo.quiver < quiverArrowThreshold)
+    -- Forever warnings (Forever/Warnings.lua; unused on TBC)
+    warnPetDeadEnabled    = true,     -- pet dead: Revive Pet
+    warnPetMissingEnabled = true,     -- in combat with no pet out
+    warnPetUnhappyEnabled = true,     -- pet happiness at Unhappy
+    warnPetLowHpEnabled   = true,     -- pet HP below mendPetThreshold (client-decided square)
     warnFDResistEnabled  = true,
     warnFDResistTimeout  = 5,         -- seconds the resist warning stays visible
     warnFDResistSound    = "None",    -- LSM "sound" name; "None" = silent
@@ -1255,6 +1260,14 @@ Nock.Defaults = {
     onboarding = false,
   },
 }
+
+-- WoW Forever: the few defaults that differ there (the Camelot toc loads
+-- Core/Flavor.lua before this file). Anniversary never enters this block.
+if Nock.Flavor and Nock.Flavor.forever then
+  local p = Nock.Defaults.profile
+  p.warningLabelFont  = "Nock Plex Sans SemiBold"  -- the HUD's own face (UI/Skin.lua registers it with LSM)
+  p.warningLabelStyle = "THICKOUTLINE"
+end
 
 function Nock:GetDefaultPosition()
   return { point = "CENTER", relPoint = "CENTER", x = 0, y = -150 }

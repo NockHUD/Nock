@@ -56,6 +56,21 @@ function WarningsView:OnInitialize()
 
   self.frame = container
 
+  -- Forever: one extra square the CLIENT switches on (pet HP is a secret
+  -- there). Built like the others, parked after the list, its alpha fed
+  -- straight from the module's curve evaluation; nothing on it is read back.
+  if Nock.Flavor and Nock.Flavor.forever then
+    local sq = Nock.UI.CreateIconSlot(container, "NockWarnPetHp", size)
+    sq.cdText:SetFont(Nock.UI.GetFont(), 14, "THICKOUTLINE")
+    local label = sq:CreateFontString(nil, "OVERLAY")
+    label:SetFont(Nock.UI.GetFont(), 12, "THICKOUTLINE")
+    label:SetPoint("TOP", sq, "BOTTOM", 0, -6)
+    label:SetTextColor(1, 1, 1, 1)
+    sq.label = label
+    sq:SetAlpha(0)
+    self.petHp = sq
+  end
+
   -- Edit overlay: the row is empty most of the time, so while unlocked a
   -- bordered box the size of the full slot row stands in for it (the
   -- transient-frame preview every hidden-when-idle panel needs) and catches
@@ -249,5 +264,42 @@ function WarningsView:Refresh(state)
       end
       if sq:IsShown() then sq:Hide() end
     end
+  end
+
+  -- Forever's client-decided pet HP square, after the list.
+  local ph = self.petHp
+  if ph then
+    local mod = Nock:GetModule("Warnings", true)
+    local alpha = (mod and mod.PetHpAlpha) and mod:PetHpAlpha() or 0
+    if n ~= ph._lastN or size ~= ph._lastSize then
+      ph:SetSize(size, size)
+      ph:ClearAllPoints()
+      ph:SetPoint("CENTER", self.frame, "TOP", startX + n * (size + gap), -size / 2)
+      ph._lastN, ph._lastSize = n, size
+    end
+    if borderSize ~= ph._lastBorderSize then
+      Nock.UI.SetGlowBorderSize(ph, borderSize)
+      ph._lastBorderSize = borderSize
+      Nock.UI.SetIconHighlight(ph, SEVERITY_BORDER.red)
+    end
+    if not ph._lastIcon then
+      local icon = Nock.API and Nock.API.SpellIcon and Nock.API.SpellIcon(Nock.Spells.PET.MEND_PET)
+      ph.icon:SetTexture(icon or 132179)
+      ph._lastIcon = true
+    end
+    if labelFontPath ~= ph._lastLabelFont or labelSize ~= ph._lastLabelSize or labelStyle ~= ph._lastLabelStyle then
+      ph.label:SetFont(labelFontPath, labelSize, labelStyle)
+      ph._lastLabelFont, ph._lastLabelSize, ph._lastLabelStyle = labelFontPath, labelSize, labelStyle
+    end
+    if labelOffset ~= ph._lastLabelOffset then
+      ph.label:ClearAllPoints()
+      ph.label:SetPoint("TOP", ph, "BOTTOM", 0, -labelOffset)
+      ph._lastLabelOffset = labelOffset
+    end
+    local txt = labelUpper and "PET HP" or "Pet HP"
+    if txt ~= ph._lastText then ph.label:SetText(txt); ph._lastText = txt end
+    -- the one write that carries the secret; a plain 0 is the off state
+    ph:SetAlpha(alpha)
+    if not ph:IsShown() then ph:Show() end
   end
 end

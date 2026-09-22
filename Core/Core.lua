@@ -556,7 +556,11 @@ function Nock:HandleSlashCommand(input)
     local function capture(...)
       local n = select("#", ...)
       local parts = {}
-      for i = 1, n do parts[i] = tostring((select(i, ...))) end
+      for i = 1, n do
+        local v = (select(i, ...))
+        -- a secret's tostring is a secret string, which concat refuses
+        if _G.issecretvalue and issecretvalue(v) then parts[i] = "secret" else parts[i] = tostring(v) end
+      end
       out[#out + 1] = table.concat(parts, "  ")
     end
     local fn, err = loadstring("local print = ...; " .. code)

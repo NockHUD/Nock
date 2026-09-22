@@ -65,6 +65,7 @@ Modules\ManaTickEngine.lua
 Forever\ManaTick.lua
 Forever\Cooldowns.lua
 Forever\Probe.lua
+Forever\Warnings.lua
 Modules\ProfileShare.lua
 Modules\AggroWarning.lua
 
@@ -74,3 +75,4 @@ UI\Frame_ReactCooldowns.lua
 UI\Frame_ReactCorners.lua
 UI\Frame_ReactBuffs.lua
 UI\Frame_AggroWarning.lua
+UI\Frame_Warnings.lua
