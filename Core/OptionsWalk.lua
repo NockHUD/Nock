@@ -30,6 +30,26 @@ function W.Simple() return W.MODE == "simple" end
 -- literally; both spellings count.
 W.META = setmetatable({}, { __mode = "k" })
 function W.Meta(node) return W.META[node] end
+
+-- The label column of a table card: 120 px (the width every TBC table was
+-- laid out on) unless a line's label needs more -- then the widest label plus
+-- padding, capped at a third of the row so the cells keep their room.
+-- `measure(s)` is the window's probe (uiMedium 12), the labels draw at 13.
+-- Never narrower than 120, so a table that fitted before is unchanged.
+function W.TableLabelWidth(rows, measure, inner)
+  local w = 120
+  if not measure then return w end
+  local widest = 0
+  for _, line in ipairs(rows or {}) do
+    local lw = (measure(line.label or "") or 0) * 13 / 12 + (line.icon and 30 or 0)
+    if lw > widest then widest = lw end
+  end
+  local cap = math.floor((inner or 0) / 3)
+  local want = math.ceil(widest) + 16
+  if want > w then w = math.min(want, cap) end
+  if w < 120 then w = 120 end
+  return w
+end
 function W.SetMeta(node, key, value)
   local m = W.META[node]
   if not m then m = {}; W.META[node] = m end
@@ -434,16 +454,25 @@ local function layoutCard(card, rows)
 
   if card.table then
     local spec = card.table
+    -- `one`: the table was DESIGNED as a single line, so the card's name is
+    -- its label and the line draws without one. Decided from the spec, not
+    -- from what survived: a five-line table cut to one by a flavour dropping
+    -- options (Forever's Auto Shot colours) still needs its line labelled,
+    -- and a wildcard list with one entry still names that entry.
     local t = { cols = {}, rows = {}, one = #spec.rows == 1 }
+    local expanded = false
     for _, col in ipairs(spec.cols) do t.cols[#t.cols + 1] = col[1] end
     local function addLine(label, icon, cellKey)
       local line = { label = label, icon = icon, cells = {} }
+      local any = false
       for _, col in ipairs(spec.cols) do
         local cell = {}
-        for _, k in ipairs(cellKey(col)) do local r = byKey[k]; if r then cell[#cell + 1] = take(r) end end
+        for _, k in ipairs(cellKey(col)) do local r = byKey[k]; if r then cell[#cell + 1] = take(r); any = true end end
         line.cells[#line.cells + 1] = cell
       end
-      t.rows[#t.rows + 1] = line
+      -- A line whose options are all missing (a flavour dropped them) would
+      -- draw as a bare label with empty cells: leave it out.
+      if any then t.rows[#t.rows + 1] = line end
     end
     for _, rs in ipairs(spec.rows) do
       local base = type(rs[1]) == "string" and rs[1]:match("^(.-)%*$")
@@ -458,6 +487,7 @@ local function layoutCard(card, rows)
           if id then ids[#ids + 1] = { id = id, order = metaOf(r.node, "seq") or r.order or 0, r = r } end
         end
         table.sort(ids, function(a, b) if a.order == b.order then return a.id < b.id end return a.order < b.order end)
+        expanded = true
         for _, e in ipairs(ids) do
           take(e.r)
           addLine(strip(e.r.name), metaOf(e.r.node, "icon"), function(col)
@@ -481,7 +511,7 @@ local function layoutCard(card, rows)
         end)
       end
     end
-    t.one = #t.rows == 1
+    t.one = #spec.rows == 1 and not expanded
     t.grid = spec.grid   -- N: draw the lines as pills in N columns instead of a table
     card.tableRows = t
   else

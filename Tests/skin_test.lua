@@ -80,5 +80,28 @@ ok(math.abs(Skin.IconSize(t2, 24) - 40) < 1e-9, "IconSize: a 24 px glyph at scal
 local fs = f:CreateFontString()
 ok(Skin.Font(fs, "mono", 11) ~= nil, "Skin.Font sets a font")
 
+-- The first FontString to use a face in a client session stays BLANK
+-- (metrics fine, glyphs never drawn) until its font really changes; a
+-- same-args SetFont is a no-op, and SetFont's return value is no signal (the
+-- load-time warm-up gets false for every face, the first label gets true and
+-- is blank anyway). So the first SUCCESSFUL user of each face bounces the
+-- size once, and the face is then marked warm.
+for role in pairs(Skin.FONTS) do Skin.WARMED[role] = false end
+local calls = {}
+local ffs = { SetFont = function(self, path, size, flags) calls[#calls + 1] = size; self._font = { path, size }; return true end }
+ok(Skin.Font(ffs, "uiMedium", 12) == true, "Skin.Font: first user of a cold face succeeds")
+ok(#calls == 3 and calls[1] == 12 and calls[2] == 13 and calls[3] == 12, "Skin.Font: first user bounces = size, size+1, size (got " .. table.concat(calls, ",") .. ")")
+ok(ffs._font[1] == Skin.FONTS.uiMedium and ffs._font[2] == 12 and Skin.WARMED.uiMedium == true, "Skin.Font: ends on the face at size, face marked warm")
+calls = {}
+ok(Skin.Font(ffs, "uiMedium", 12) == true and #calls == 1, "Skin.Font: a warm face needs one call")
+-- A refusal (the face not loadable yet) also bounces, and a still-cold face
+-- is not marked warm by a failure.
+Skin.WARMED.mono = false
+calls = {}
+local rfs = { SetFont = function(self, path, size, flags) calls[#calls + 1] = size; return false end }
+ok(Skin.Font(rfs, "mono", 11) == false and #calls >= 3 and Skin.WARMED.mono == false, "Skin.Font: a refused face is bounced, falls back and stays cold")
+-- The warm-up can be re-run (PLAYER_LOGIN) and marks only what loaded.
+ok(type(Skin.Warm) == "function", "Skin.Warm exists for the login retry")
+
 print(("skin: %d passed, %d failed"):format(pass, fail))
 if fail > 0 then os.exit(1) end

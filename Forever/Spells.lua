@@ -21,6 +21,12 @@ local Spells = {
   -- Sting rank 1). Blizzard's whitelisted GCD spell 61304 returns no cooldown
   -- data on this client, so it is not usable here.
   GCD_PROBE = 1978,
+  -- Pet spells (level-10 dump, 2026-09-23). Call Pet shows as "Call <family>"
+  -- (883 is vanilla's Call Pet id).
+  PET = {
+    MEND_PET = 136, FEED_PET = 6991, FEED_PET_EFFECT = 1539,
+    REVIVE_PET = 982, DISMISS_PET = 2641, CALL_PET = 883, TAME_BEAST = 1515,
+  },
 }
 Nock.Spells = Spells
 
@@ -49,10 +55,17 @@ Spells.TRACKED = {
 -- and a seed duration; the aura's real duration is learned out of combat and
 -- remembered per character. Procs and other people's buffs are not here:
 -- they have no cast to stamp.
+-- `units` lists where the buff lands (default the player); `aura` is the
+-- buff's own spell id when it differs from the cast's.
 Spells.BUFFS = {
   { id = 3045,    key = "RF",    dur = 15 },   -- Rapid Fire
   { id = 1259799, key = "Elune", dur = nil },  -- Elune's Light (duration unmeasured)
   { id = 20580,   key = "Meld",  dur = nil },  -- Shadowmeld (until moved/cancelled)
+  -- Pet upkeep, cast by you, living on the pet: learned from the pet's auras
+  -- out of combat, stamped from the cast in combat (spec: pet health is a
+  -- sink, pet auras are never read while secret).
+  { id = 136,  key = "Mend", dur = nil, units = { "pet" } },                 -- Mend Pet
+  { id = 6991, key = "Feed", dur = nil, units = { "pet", "player" }, aura = 1539 }, -- Feed Pet -> Feed Pet Effect
 }
 
 -- Cooldown-row layout (same shape as Constants.REACT_CD_ROWS).

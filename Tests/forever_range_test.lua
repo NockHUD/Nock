@@ -8,7 +8,8 @@ _G.GetTime = function() return 100 end
 _G.GetRangedHaste = function() return 0 end
 local shoot, item7, mid10 = nil, nil, nil
 _G.C_Spell = { IsSpellInRange = function(id) if id == 75 then return shoot end return true end }  -- melee spells answer true everywhere (measured)
-_G.C_Item = { IsItemInRange = function(id) if id == 8149 then return item7 end end }
+local itemCalls = 0
+_G.C_Item = { IsItemInRange = function(id) itemCalls = itemCalls + 1; if id == 8149 then return item7 end end }
 _G.CheckInteractDistance = function(unit, idx) if idx == 3 then return mid10 end end
 local exists, dead, canAttack = true, false, true
 _G.UnitExists = function() return exists end
@@ -73,5 +74,13 @@ ok(st.ranged.targetInRange == false, "swing-range signal owns the gate once seen
 st.ranged.swingRangeSignal = false; canAttack = "SECRET"
 RF:Refresh(st)
 ok(t.rangeState == nil, "secret attackability -> no zone (safe)")
+-- PLAYER_TARGET_CHANGED fires INSIDE the client's own TurnOrActionStop call
+-- (right-click targeting); a range probe made there is ADDON_ACTION_BLOCKED
+-- (seen 2026-09-23). The handler only asks the tick for the next refresh.
+RF._nextRefresh = 999
+local before = itemCalls
+RF:PLAYER_TARGET_CHANGED()
+ok(itemCalls == before, "target change makes no range probe of its own")
+ok(RF._nextRefresh == nil, "target change brings the next tick refresh forward")
 print(("forever_range: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

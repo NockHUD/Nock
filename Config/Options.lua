@@ -6361,6 +6361,19 @@ local function buildOptionsTable()
       "The rotation notation (e.g. \"1:1\", \"6:9:1:1 3w\") right-aligned on the Auto Shot bar.", 31)
     barsArgs.reactShowClipTicks = reactToggle("reactShowClipTicks", "Clip ticks",
       "The Steady (red) and Multi (orange) clip-threshold tick pairs on the Auto Shot bar. Off hides them; the wind-up mark and the GCD divider keep their own switches.", 31.5)
+    -- The SHARED showWindupMark key (same row on the classic swing bar and the
+    -- Fluffy tab); on Forever the pair draws the spell-queue mark instead and
+    -- OptionsForever renames this row.
+    barsArgs.showWindupMark = {
+      type = "toggle",
+      name = "Wind-up commit mark",
+      desc = "The neutral vertical mark where the next Auto Shot commits (wind-up start). Shared with the classic swing bar and the Fluffy Auto Shot bar -- one setting for all three.",
+      order = 31.7,
+      width = "full",
+      disabled = notReact,
+      get = function() return Nock.db.profile.showWindupMark ~= false end,
+      set = function(_, v) visualsSet(_, "showWindupMark", v) end,
+    }
     barsArgs.reactShowDelay = {
       type = "toggle",
       name = "Auto Shot delay readout",

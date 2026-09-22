@@ -25,12 +25,13 @@ function Probe.Format(d)
   L[#L + 1] = "reads: " .. table.concat(parts, "  ")
   L[#L + 1] = "UnitCastingInfo: " .. tostring(d.castingInfo)
   L[#L + 1] = ""
-  L[#L + 1] = "PLAYER_SWING (gap since previous, type, duration):"
+  L[#L + 1] = "PLAYER_SWING (gap since previous, type, duration, still for / MOVING at the release):"
   local prev
   local TYPE = { [0] = "MainHand", [1] = "OffHand", [2] = "Ranged" }
   for _, s in ipairs(d.swings or {}) do
     local gap = prev and (s.t - prev) or 0
-    L[#L + 1] = ("  %+6.3f  %s  %.3f"):format(gap, TYPE[s.swingType] or tostring(s.swingType), tonumber(s.duration) or -1)
+    local move = s.moving and "MOVING" or (s.stillFor and ("still %.3f"):format(s.stillFor) or "still")
+    L[#L + 1] = ("  %+6.3f  %s  %.3f  %s"):format(gap, TYPE[s.swingType] or tostring(s.swingType), tonumber(s.duration) or -1, move)
     prev = s.t
   end
   L[#L + 1] = ""

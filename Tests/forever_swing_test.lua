@@ -92,5 +92,38 @@ st.ranged.repeating = true
 fire("PLAYER_ENTERING_WORLD")
 ok(st.ranged.repeating == false and st.ranged.autoDelay == 0, "entering world resets repeating/autoDelay")
 
+-- Spell-queue window: the cvar in ms -> state.ranged.queueWindow in seconds.
+local Q = module.QueueWindowSeconds
+ok(Q("400") == 0.4, "400 ms -> 0.4 s")
+ok(Q("150") == 0.15, "150 ms -> 0.15 s")
+ok(Q(nil) == 0.4 and Q("junk") == 0.4, "unreadable -> client default 0.4")
+ok(Q("5000") == 1.0, "clamped to one second")
+ok(Q("-3") == 0.4, "negative -> default")
+_G.GetCVar = function(name) return name == "SpellQueueWindow" and "250" or nil end
+module:RefreshQueueWindow()
+ok(st.ranged.queueWindow == 0.25, "RefreshQueueWindow reads the cvar")
+_G.GetCVar = function(name) return name == "SpellQueueWindow" and "300" or nil end
+fire("CVAR_UPDATE", "SomethingElse")
+ok(st.ranged.queueWindow == 0.25, "another cvar leaves the window alone")
+fire("CVAR_UPDATE", "SpellQueueWindow")
+ok(st.ranged.queueWindow == 0.3, "CVAR_UPDATE(SpellQueueWindow) re-reads")
+
+-- Movement stamps on the swing samples (wind-up probe, 2026-09-23): each
+-- ranged sample carries how long the player had stood still at the release,
+-- and whether a move was in progress.
+ok(module.events["PLAYER_STARTED_MOVING"] and module.events["PLAYER_STOPPED_MOVING"], "movement events registered")
+now = 200
+fire("PLAYER_SWING", 1.9, 2)
+local S = module:Samples()
+ok(S[#S].stillFor == nil and S[#S].moving == false, "never moved -> no stillFor, not moving")
+now = 200.5; fire("PLAYER_STARTED_MOVING")
+now = 200.9; fire("PLAYER_SWING", 1.9, 2)
+S = module:Samples()
+ok(S[#S].moving == true and S[#S].stillFor == nil, "shot while moving is stamped moving")
+now = 201.0; fire("PLAYER_STOPPED_MOVING")
+now = 201.45; fire("PLAYER_SWING", 1.9, 2)
+S = module:Samples()
+ok(S[#S].moving == false and math.abs(S[#S].stillFor - 0.45) < 1e-9, "shot after stopping carries the still time")
+
 print(("forever_swing: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

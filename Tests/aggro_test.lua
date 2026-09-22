@@ -53,8 +53,11 @@ end
 local WA = "Interface\\AddOns\\WeakAuras\\PowerAurasMedia\\Sounds\\aggro.ogg"
 local base = { aggroSoundFile = WA, aggroSound = "Ping", aggroSpeechText = "Aggro" }
 ok(Aggro.PlayCue(base, env({ [WA] = true }, true, { Ping = "p.ogg" })) == "file", "auto: the WeakAuras clip wins when it plays")
-ok(Aggro.PlayCue(base, env({}, true, { Ping = "p.ogg" })) == "speech" and log[2] == "speak:Aggro", "auto: no clip -> speech says the text")
+local STOCK = Aggro.STOCK_SOUND
+ok(Aggro.PlayCue(base, env({ [STOCK] = true }, true, { Ping = "p.ogg" })) == "stock" and log[2] == "file:" .. STOCK, "auto: no WeakAuras clip -> Nock's own clip")
+ok(Aggro.PlayCue(base, env({}, true, { Ping = "p.ogg" })) == "speech" and log[3] == "speak:Aggro", "auto: no clip at all -> speech says the text")
 ok(Aggro.PlayCue(base, env({ ["p.ogg"] = true }, false, { Ping = "p.ogg" })) == "sound", "auto: no clip, no speech -> the picked sound")
+ok(Aggro.PlayCue({ aggroSoundMode = "file", aggroSoundFile = WA }, env({ [STOCK] = true }, true, {})) == nil, "file mode is the user's file only, not the stock clip")
 ok(Aggro.PlayCue(base, env({}, false, {})) == "kit" and log[#log] == "kit", "auto: nothing else -> raid-warning kit")
 ok(Aggro.PlayCue({ aggroSoundMode = "none" }, env({ [WA] = true }, true, {})) == nil and #log == 0, "none: silent")
 ok(Aggro.PlayCue({ aggroSoundMode = "speech", aggroSoundFile = WA }, env({ [WA] = true }, true, {})) == "speech", "speech mode skips the clip")

@@ -125,6 +125,11 @@ Nock.state = {
     -- (no target, TBC). false blanks the auto bar: a shot cannot fire.
     targetInRange  = nil,
     swingRangeSignal = false, -- true once PLAYER_SWING_RANGE_UPDATE has ever fired (then it owns targetInRange)
+    -- Forever: the client's spell-queue window in seconds (cvar
+    -- SpellQueueWindow, ms). A press inside the last queueWindow of the
+    -- cycle is queued behind the shot instead of clipping it; the auto bar
+    -- marks that edge (Forever/SwingTimer keeps it current).
+    queueWindow    = 0.4,
   },
   melee = {
     swingStart     = 0,

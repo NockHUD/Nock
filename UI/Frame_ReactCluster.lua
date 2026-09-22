@@ -669,43 +669,55 @@ end
 -- are duration-space values projected the same way at fraction lo/sd.
 -- Thresholds are computed by the caller (Refresh) so this stays pure placement
 -- and the diff-guard can key on the same values it passes in.
-function ReactCluster:PositionAutoMarks(sd, steadyT, multiT, windup)
+-- One threshold mark (a mirrored pair in converge mode, the *L texture alone
+-- in the directional modes) `T` seconds before the release on a cycle of
+-- `sd` seconds. Shared by the TBC clip/wind-up marks and the Forever
+-- spell-queue mark.
+function ReactCluster:PlaceMarkPair(tL, tR, sd, T, wKey)
   local auto = self.auto
-  local halfW = self._halfW or 0
+  if sd <= 0 or T <= 0 then
+    tL:Hide(); tR:Hide()
+    return
+  end
+  -- Clamp rather than hide when the cast can't fit the cycle at all — a
+  -- missing mark reads as "no clip risk". Mirrors Frame_SwingTimers:place.
+  if T > sd then T = sd end
   -- Directional (ltr/rtl) modes project onto the FULL inner width from the
-  -- fill's origin edge and use a single mark per threshold (the *L texture);
-  -- converge keeps the reference mirrored pairs.
+  -- fill's origin edge; converge keeps the reference mirrored pairs.
   local dir = self._dirAuto or "converge"
-  local innerW = self._innerW or 0
-
-  local ps   = self._pixelScale
+  local ps  = self._pixelScale
   local devW = self._markDevW or {}
   -- The bar's edges in PHYSICAL pixels: the pixel grid lives in absolute
   -- screen space, and the two edges carry different sub-pixel phases, so each
   -- half of a mirrored pair snaps against its own edge. nil before layout ->
-  -- relative snap (the old behaviour), corrected on the next re-place.
+  -- relative snap, corrected on the next re-place.
   local barL, barR = auto:GetLeft(), auto:GetRight()
   local leftPx  = (ps and barL) and barL * ps or nil
   local rightPx = (ps and barR) and barR * ps or nil
-  local function placePair(tL, tR, T, wKey)
-    if sd <= 0 or T <= 0 then
-      tL:Hide(); tR:Hide()
-      return
-    end
-    -- Clamp rather than hide when the cast can't fit the cycle at all — a
-    -- missing mark reads as "no clip risk". Mirrors Frame_SwingTimers:place.
-    if T > sd then T = sd end
-    -- Shared projection (Nock.UI.ReactAxisPoint) — same one the GCD divider
-    -- places through, so the two can't drift apart.
-    local edge, x, mirrored, xR =
-      Nock.UI.ReactAxisPoint((sd - T) / sd, dir, halfW, innerW, ps, devW[wKey], leftPx, rightPx, self._edge)
-    tL:ClearAllPoints(); tL:SetPoint("CENTER", auto, edge, x, 0); tL:Show()
-    if mirrored then
-      tR:ClearAllPoints(); tR:SetPoint("CENTER", auto, "RIGHT", -xR, 0); tR:Show()
-    else
-      tR:Hide()
-    end
+  -- Shared projection (Nock.UI.ReactAxisPoint) — same one the GCD divider
+  -- places through, so the two can't drift apart.
+  local edge, x, mirrored, xR =
+    Nock.UI.ReactAxisPoint((sd - T) / sd, dir, self._halfW or 0, self._innerW or 0,
+                           ps, devW[wKey], leftPx, rightPx, self._edge)
+  tL:ClearAllPoints(); tL:SetPoint("CENTER", auto, edge, x, 0); tL:Show()
+  if mirrored then
+    tR:ClearAllPoints(); tR:SetPoint("CENTER", auto, "RIGHT", -xR, 0); tR:Show()
+  else
+    tR:Hide()
   end
+end
+
+function ReactCluster:PositionAutoMarks(sd, steadyT, multiT, windup)
+  local auto = self.auto
+  local halfW = self._halfW or 0
+  local dir = self._dirAuto or "converge"
+  local innerW = self._innerW or 0
+  local ps   = self._pixelScale
+  local devW = self._markDevW or {}
+  local barL, barR = auto:GetLeft(), auto:GetRight()
+  local leftPx  = (ps and barL) and barL * ps or nil
+  local rightPx = (ps and barR) and barR * ps or nil
+  local function placePair(tL, tR, T, wKey) self:PlaceMarkPair(tL, tR, sd, T, wKey) end
   -- The vertical marks are individually hideable: reactShowClipTicks owns the
   -- Steady/Multi pairs, the SHARED showWindupMark owns the commit mark below.
   if profile().reactShowClipTicks == false then
@@ -877,11 +889,23 @@ function ReactCluster:RefreshAuto(state)
     if self._dirAuto == "converge" then auto.fillR:SetWidth(fw) end
   end
 
-  -- Forever: no clip model yet (no wind-up feed, and the cast time behind
+  -- Forever: no clip model (no wind-up feed, and the cast time behind
   -- Nock.ClipThreshold reads GetRangedHaste, which is secret in combat). The
-  -- marks stay hidden (makeMark hides them at creation); the delay and
-  -- notation texts below still work off state.
-  if not (Nock.Flavor and Nock.Flavor.forever) then
+  -- one mark that has a plain feed is the client's spell-queue window: a
+  -- press inside the last queueWindow of the cycle is queued behind the shot
+  -- instead of clipping it. Drawn with the wind-up pair (same meaning: the
+  -- lower edge of the clip band), gated by the shared showWindupMark toggle.
+  if Nock.Flavor and Nock.Flavor.forever then
+    local sd = r.swingDuration
+    local qw = (profile().showWindupMark ~= false) and (r.queueWindow or 0) or 0
+    local barLeft = auto:GetLeft()
+    if sd ~= self._markSd or qw ~= self._markWindup or barLeft ~= self._markBarLeft then
+      self:PlaceMarkPair(auto.windupL, auto.windupR, sd, qw, "reactTickWindupWidth")
+      self._markSd      = sd
+      self._markWindup  = qw
+      self._markBarLeft = barLeft
+    end
+  else
     -- Marks reposition only when their inputs change. Thresholds come from the
     -- shared Nock.ClipThreshold, same as the classic bar and the rotation engine.
     local sd = r.swingDuration

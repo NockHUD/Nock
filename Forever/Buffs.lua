@@ -24,15 +24,39 @@ local function baseSpell(id)
   return id
 end
 
+-- Blizzard's pet happiness faces (PetPaperDollFrame art), one atlas cell per
+-- state; the tables are kept so the slot painter can diff them by identity.
+local HAPPINESS_TEX = [[Interface\PetPaperDollFrame\UI-PetHappiness]]
+local HAPPINESS_COORD = {
+  [1] = { 0.375,  0.5625, 0, 0.359375 },  -- Unhappy
+  [2] = { 0.1875, 0.375,  0, 0.359375 },  -- Content
+}
+local PLAYER_ONLY = { "player" }
+
 function BuffLedger:OnEnable()
   self._track, self._order = {}, {}
   local mem = remembered()
   for i, b in ipairs(Nock.Spells.BUFFS) do
     local dur = (mem and mem[b.id]) or b.dur
-    self._track[b.id] = { key = b.key, dur = dur, exp = 0, icon = Nock.API.SpellIcon(b.id) }
+    self._track[b.id] = { key = b.key, dur = dur, exp = 0, icon = Nock.API.SpellIcon(b.id),
+                          units = b.units or PLAYER_ONLY, aura = b.aura or b.id }
     self._order[i] = b.id
   end
   self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+end
+
+-- The pet face: in combat only (out of combat the pet frame says it), while
+-- the pet is out and not Happy. C_PetInfo.GetPetHappiness is plain on
+-- Forever (probed 2026-09-23); a secret answer draws nothing.
+function BuffLedger:PetFace(state)
+  if not (state.player and state.player.inCombat) then return nil end
+  local P = Nock.Flavor.Plain
+  if P(_G.UnitExists and UnitExists("pet")) ~= true then return nil end
+  local PI = _G.C_PetInfo
+  if not (PI and PI.GetPetHappiness) then return nil end
+  local h = P(PI.GetPetHappiness())
+  if type(h) ~= "number" then return nil end
+  return HAPPINESS_COORD[h]
 end
 
 -- A cast starts the buff from its learned duration; without one there is
@@ -58,7 +82,11 @@ function BuffLedger:Refresh(state)
     if AC then
       for _, id in ipairs(self._order) do
         local t = self._track[id]
-        local a = AC.BySpell("player", id)
+        local a
+        for _, unit in ipairs(t.units) do
+          a = AC.BySpell(unit, t.aura)
+          if a then break end
+        end
         if a then
           learn(self, id, t, a.duration)
           t.exp = a.expirationTime or 0
@@ -85,12 +113,12 @@ function BuffLedger:Refresh(state)
       n = n + 1
       local e = lb[n]
       if not e then e = {}; lb[n] = e end
-      e.icon, e.exp, e.dur = t.icon, 0, 0
+      e.icon, e.exp, e.dur, e.coords = t.icon, 0, 0, nil
     elseif t.exp > now then
       n = n + 1
       local e = lb[n]
       if not e then e = {}; lb[n] = e end
-      e.icon, e.exp, e.dur = t.icon, t.exp, t.dur or 0
+      e.icon, e.exp, e.dur, e.coords = t.icon, t.exp, t.dur or 0, nil
       -- insertion sort on exp: walk the new entry down past later expiries
       -- (permanent entries, exp 0, are skipped so they stay at the end)
       local j = n
@@ -99,6 +127,13 @@ function BuffLedger:Refresh(state)
         j = j - 1
       end
     end
+  end
+  local face = self:PetFace(state)
+  if face then
+    n = n + 1
+    local e = lb[n]
+    if not e then e = {}; lb[n] = e end
+    e.icon, e.exp, e.dur, e.coords = HAPPINESS_TEX, 0, 0, face
   end
   lb.n = n
 end

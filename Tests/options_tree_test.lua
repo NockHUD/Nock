@@ -629,7 +629,7 @@ onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "
   "reactShowCastBar", "reactShowAutoShotCast", "reactShowGrid", "reactShowAspectIcon", "reactShowMarkIcon",
   "orderHeader", "order_reset", "castBarNonCombatCasts" }, "react tabSize",
   { "order_lbl_", "order_up_", "order_dn_" })
-onlyKeys(raBars, { "autoHeader", "reactAutoLegend", "reactShowNotation", "reactShowClipTicks", "reactShowDelay",
+onlyKeys(raBars, { "autoHeader", "reactAutoLegend", "reactShowNotation", "reactShowClipTicks", "showWindupMark", "reactShowDelay",
   "reactShowBrackets", "reactShowGcdDivider", "dirHeader", "reactDirAuto", "reactDirMelee",
   "grpEngine" }, "react tabBars")
 onlyKeys(raRange, { "rangeHeader", "rangeFinderFindingStyle" }, "react tabRange")
@@ -1058,6 +1058,12 @@ end
 --------------------------------------------------------------------------------
 ok(raBars.reactShowGcdDivider and raBars.reactShowGcdDivider.type == "toggle",
    "GCD divider toggle is on the Bars subtab")
+-- The shared wind-up mark key has a row on every HUD's bar tab (React was the
+-- one without; on Forever the same row is the spell-queue mark).
+ok(raBars.showWindupMark and raBars.showWindupMark.type == "toggle"
+   and raBars.showWindupMark.order > raBars.reactShowClipTicks.order
+   and raBars.showWindupMark.order < raBars.reactShowDelay.order,
+   "wind-up mark toggle sits between the clip ticks and the delay readout on the React Bars subtab")
 ok(D.reactShowGcdDivider == false,
    "GCD divider ships off by default")
 ok(raBars.reactShowGcdDivider and raBars.reactShowBrackets

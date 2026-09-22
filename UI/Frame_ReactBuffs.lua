@@ -52,16 +52,17 @@ end
 
 -- Reused item pool — entry tables are created once and overwritten in place
 -- (no per-tick allocation). `n` is the live length; entries past it are stale.
-local function addItem(t, icon, exp, dur, label, desat)
+local function addItem(t, icon, exp, dur, label, desat, coords)
   if t.n >= MAX_ICONS then return end
   local n = t.n + 1
   local it = t[n]
   if not it then it = {}; t[n] = it end
-  it.icon  = icon
-  it.exp   = exp or 0
-  it.dur   = dur or 0
-  it.label = label
-  it.desat = desat and true or false
+  it.icon   = icon
+  it.exp    = exp or 0
+  it.dur    = dur or 0
+  it.label  = label
+  it.desat  = desat and true or false
+  it.coords = coords
   t.n = n
 end
 
@@ -596,7 +597,7 @@ function ReactBuffs:Refresh(state)
       -- Forever: own-cast buffs from the ledger (Forever/Buffs.lua). The TBC
       -- scans below read auras, which are secret in combat there.
       local lb = state.ledgerBuffs
-      for i = 1, (lb and lb.n or 0) do addItem(items, lb[i].icon, lb[i].exp, lb[i].dur) end
+      for i = 1, (lb and lb.n or 0) do addItem(items, lb[i].icon, lb[i].exp, lb[i].dur, nil, false, lb[i].coords) end
     else
 
       -- ORDER MATTERS: the row drops everything past MAX_ICONS silently, and a

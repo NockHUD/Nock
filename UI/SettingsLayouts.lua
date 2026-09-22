@@ -302,7 +302,7 @@ end
 function Settings:DrawTable(c, t, y, width, noHead)
   if t.grid and not t.one then return self:DrawTableGrid(c, t, y, width) end
   local inner = width - 32
-  local labelW = t.one and 0 or 120
+  local labelW = t.one and 0 or W.TableLabelWidth(t.rows, self._measure, inner)
   local ncol = #t.cols
   local gap = 12
   local colW = math.floor((inner - labelW - gap * (ncol - 1)) / math.max(1, ncol))

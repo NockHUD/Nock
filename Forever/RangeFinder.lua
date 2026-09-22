@@ -53,8 +53,14 @@ function RangeFinder:OnEnable()
   self:RegisterEvent("PLAYER_TARGET_CHANGED")
 end
 
+-- PLAYER_TARGET_CHANGED fires synchronously inside the client's own
+-- TurnOrActionStop (right-click targeting). A range probe made from inside
+-- that call is ADDON_ACTION_BLOCKED (IsItemInRange is AllowedWhenUntainted;
+-- seen in prod 2026-09-23), while the same probe from the tick is fine. So
+-- the handler only brings the tick's next refresh forward: one frame later,
+-- outside the protected call, the finder re-reads the new target.
 function RangeFinder:PLAYER_TARGET_CHANGED()
-  self:Refresh(Nock.state)
+  self._nextRefresh = nil
 end
 
 function RangeFinder:Refresh(state)

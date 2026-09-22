@@ -31,17 +31,46 @@ F.DROP = {
   -- (M3a Task 5). The corners and the range bar came back with M3a.
   "hud.react.tabSize.reactShowAutoShotCast",
   "hud.react.tabSize.reactMeleeStageCue", "hud.react.tabSize.stagePre*",
-  -- Skin: marks, brackets, GCD divider, cast bar, corners, range colours.
-  "hud.react.tabSkin.autoMarksHeader", "hud.react.tabSkin.reactBracketWidth", "hud.react.tabSkin.reactColorBracket",
+  -- Skin: the Steady/Multi clip ticks (no clip model, and neither spell is
+  -- in the game yet), brackets and the GCD divider go; the wind-up pair
+  -- stays as the spell-queue mark (renamed below).
+  "hud.react.tabSkin.reactBracketWidth", "hud.react.tabSkin.reactColorBracket",
   "hud.react.tabSkin.reactColorGcdDivider", "hud.react.tabSkin.reactGcdDividerWidth",
-  "hud.react.tabSkin.reactColorTick*",
+  "hud.react.tabSkin.reactTickSteadyWidth", "hud.react.tabSkin.reactColorTickSteady",
+  "hud.react.tabSkin.reactTickMultiWidth", "hud.react.tabSkin.reactColorTickMulti",
   -- General: no cast bar, no setup check, no HUD-mode look, no wizard, no profiler.
   "general.grpCastBar", "general.grpSetup", "general.grpLook",
   "general.runWizard", "general.runWizardGuided", "general.perfPanel",
 }
 
+-- A string renames the node; a table sets name and desc.
 F.RENAME = {
   ["hud.react"] = "Nock HUD",
+  ["hud.react.tabBars.showWindupMark"] = {
+    name = "Spell-queue mark",
+    desc = "The neutral mark on the Auto Shot bar where the client's spell-queue window opens before the next shot (SpellQueueWindow, 400 ms by default). Past it a press is queued behind the shot and comes out right after it; before it, a cast started now would push the shot back.",
+  },
+  ["hud.react.tabSkin.autoMarksHeader"] = "Spell-queue mark",
+  ["hud.react.tabSkin.reactTickWindupWidth"] = {
+    name = "Spell-queue mark width",
+    desc = "Width of the spell-queue mark on the Auto Shot bar, in real screen pixels (independent of your UI scale).",
+  },
+  ["hud.react.tabSkin.reactColorTickWindup"] = {
+    name = "Spell-queue mark",
+    desc = "The mark showing where the client's spell-queue window opens before the next Auto Shot (SpellQueueWindow, 400 ms by default): past it a press is queued behind the shot instead of pushing it back.",
+  },
+}
+
+-- Rows tagged Advanced by the shared rules that are the plain feature switch
+-- on Forever (one HUD, one mark): untagged so Simple mode reaches them.
+F.SIMPLE = { "hud.react.tabBars.showWindupMark" }
+
+-- Table cards keep their line labels in the layout spec (Config/
+-- OptionsLayoutData.lua), not on the option nodes, so RENAME cannot reach
+-- them; per card, old line label -> new. Lines whose options were dropped
+-- vanish on their own (Core/OptionsWalk skips a line with no cell).
+F.TABLE_LINES = {
+  ["hud.react.tabSkin.autoShotColoursCard"] = { ["Wind-up mark"] = "Spell-queue mark" },
 }
 
 local function nodeAt(root, path)
@@ -75,6 +104,33 @@ function F.Apply(root)
   for _, path in ipairs(F.DROP) do dropPath(root, path) end
   for path, name in pairs(F.RENAME) do
     local n = nodeAt(root, path)
-    if n then n.name = name end
+    if n then
+      if type(name) == "table" then
+        n.name = name.name or n.name
+        if name.desc then n.desc = name.desc end
+      else
+        n.name = name
+      end
+    end
+  end
+  local W = Nock.OptionsWalk
+  if not W then return end
+  for _, path in ipairs(F.SIMPLE) do
+    local n = nodeAt(root, path)
+    if n then W.SetMeta(n, "advanced", nil) end
+  end
+  for path, map in pairs(F.TABLE_LINES) do
+    local n = nodeAt(root, path)
+    local spec = n and W.Meta(n) and W.Meta(n).table
+    if spec then
+      -- A copy: the spec object is the layout data itself, shared by every
+      -- rebuild, and the TBC labels must survive in it.
+      local rows = {}
+      for i, rs in ipairs(spec.rows) do
+        local label = type(rs[1]) == "string" and map[rs[1]] or rs[1]
+        rows[i] = { label, rs[2] }
+      end
+      W.SetMeta(n, "table", { cols = spec.cols, rows = rows, grid = spec.grid })
+    end
   end
 end

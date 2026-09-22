@@ -281,6 +281,13 @@ do
   W.SetMeta(bx.args.h, "table", { cols = { { "Colour" }, { "Width" } }, rows = { { "Steady tick", { Colour = "sColor", Width = "sWidth" } } } })
   bc = W.Cards({ key = "bx", name = "Bars", node = bx, path = { "bx" }, virtual = true }, "Nock")[1]
   ok(bc.tableRows and bc.tableRows.one and bc.tableRows.rows[1].cells[1][1].key == "sColor" and bc.tableRows.rows[1].cells[2][1].key == "sWidth", "table cells resolve explicit keys")
+  -- A line whose cells all name missing options (a flavour dropped them) is
+  -- not drawn as an empty labelled row.
+  W.SetMeta(bx.args.h, "table", { cols = { { "Colour" }, { "Width" } }, rows = {
+    { "Gone tick", { Colour = "gColor", Width = "gWidth" } },
+    { "Steady tick", { Colour = "sColor", Width = "sWidth" } } } })
+  bc = W.Cards({ key = "bx", name = "Bars", node = bx, path = { "bx" }, virtual = true }, "Nock")[1]
+  ok(bc.tableRows and #bc.tableRows.rows == 1 and bc.tableRows.rows[1].label == "Steady tick" and not bc.tableRows.one, "a table line with no resolvable cell is dropped; the survivor keeps its label (designed as a list, not a one-liner)")
   -- wildcard table lines: the PvP page's incoming-CC spell table, one line per
   -- pvpCcItem_<id>_lbl node in builder order (built-ins first, then your own)
   do
@@ -322,6 +329,19 @@ do
   ok(ccard.lines[1].rows[1].chips == true, "an input tagged chips carries the flag on its row")
 end
 
+-- Table label column: the stock 120 px unless a line's label needs more, then
+-- the widest label plus padding, capped at a third of the row. Measured in
+-- the window's 12 px probe, scaled to the 13 px label face.
+do
+  local m = function(s) return #s * 8 end   -- 8 px per char at 12 px
+  ok(W.TableLabelWidth({ { label = "Steady tick" }, { label = "GCD divider" } }, m, 900) == 120, "short labels keep the stock 120 px column")
+  local w = W.TableLabelWidth({ { label = "Spell-queue mark" } }, m, 900)
+  ok(w > 120 and w == math.ceil(16 * 8 * 13 / 12) + 16, "a long label widens the column to fit it (got " .. w .. ")")
+  ok(W.TableLabelWidth({ { label = "Spell-queue mark", icon = 1 } }, m, 900) == w + 30, "an icon line adds the icon's room")
+  ok(W.TableLabelWidth({ { label = string.rep("x", 200) } }, m, 900) == 300, "capped at a third of the row")
+  ok(W.TableLabelWidth({ { label = "Spell-queue mark" } }, nil, 900) == 120, "no probe -> the stock column")
+end
+
 -- Legend painters are exported without AceGUI present (UI/AceGUI_BarLegends.lua).
 _G.CreateFrame = dofile("Tests/lib/frame_stub.lua").CreateFrame
 _G.UIParent = _G.CreateFrame("Frame", "UIParent")
@@ -334,6 +354,26 @@ Nock.UI.PaintReactLegend(lf)
 ok(lf._legends.react ~= nil and lf._legends.shot ~= nil, "both legends can share one pooled frame, parts kept apart")
 local rf = _G.CreateFrame("Frame"); rf:SetWidth(600)
 ok(Nock.UI.PaintReactLegend(rf) > 40, "react painter measures a height")
+local tbcParts = rf._legends.react
+ok(tbcParts.ticks[1].L:IsShown() and tbcParts.ticks[2].L:IsShown() and tbcParts.marks[1].text:GetText() == "Steady clip", "TBC legend: Steady/Multi/wind-up marks")
+-- Forever: no clip model, so the miniature shows the swing and ONE mark, the
+-- spell-queue window, and the rows never mention Steady or Multi.
+Nock.Flavor.forever = true
+local ff = _G.CreateFrame("Frame"); ff:SetWidth(600)
+ok(Nock.UI.PaintReactLegend(ff) > 40, "forever react painter measures a height")
+local fp = ff._legends.react
+ok(not fp.ticks[1].L:IsShown() and not fp.ticks[2].L:IsShown() and fp.ticks[3].L:IsShown() and fp.ticks[3].R:IsShown(), "forever legend: only the queue mark pair is drawn")
+ok(fp.marks[1].text:GetText() == "queue window" and fp.marks[2].text:GetText() == "" and fp.marks[3].text:GetText() == "shot", "forever legend captions: queue window + shot")
+local shownRows, mentions = 0, false
+for _, r in ipairs(fp.rows) do
+  if r.text:IsShown() then
+    shownRows = shownRows + 1
+    if r.text:GetText():find("Steady") or r.text:GetText():find("Multi") then mentions = true end
+  end
+end
+ok(shownRows == 2 and not mentions, "forever legend: two rows, no Steady/Multi text (rows " .. shownRows .. ")")
+ok(fp.rows[2].text:GetText():find("spell%-queue") ~= nil, "forever legend: the mark row explains the spell-queue window")
+Nock.Flavor.forever = false
 
 print(("%d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

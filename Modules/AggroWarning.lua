@@ -49,10 +49,14 @@ local function realEnv()
     end,
     speak = function(text)
       if not (C_VoiceChat and C_VoiceChat.SpeakText) then return false end
+      -- SpeakText "succeeds" with no voice installed and nothing is heard,
+      -- which swallowed the whole chain on Forever (no WeakAuras file there,
+      -- so the speech tier was next). No voice = this tier is unavailable.
       local voiceID
       if C_VoiceChat.GetTtsVoices then
         local voices = C_VoiceChat.GetTtsVoices()
-        if voices and voices[1] then voiceID = voices[1].voiceID end
+        if not (voices and voices[1]) then return false end
+        voiceID = voices[1].voiceID
       end
       local dest = (Enum and Enum.VoiceTtsDestination and Enum.VoiceTtsDestination.LocalPlayback) or 1
       local ok = pcall(C_VoiceChat.SpeakText, voiceID or 0, text, dest, 0, 100)
@@ -69,6 +73,11 @@ local function realEnv()
   }
 end
 
+-- Nock's own cue (see ATTRIBUTION.md): the
+-- stock clip behind the user's file in auto mode, so a client without
+-- WeakAuras (Forever) still hears something before the speech/kit tiers.
+Aggro.STOCK_SOUND = [[Interface\AddOns\Nock\Media\NockAggro.mp3]]
+
 function Aggro.PlayCue(p, env)
   if not p then return nil end
   env = env or realEnv()
@@ -78,6 +87,7 @@ function Aggro.PlayCue(p, env)
   if mode == "auto" or mode == "file" then
     if env.playFile(p.aggroSoundFile, channel) then return "file" end
     if mode == "file" then return nil end
+    if env.playFile(Aggro.STOCK_SOUND, channel) then return "stock" end
   end
   if mode == "auto" or mode == "speech" then
     if env.speak(p.aggroSpeechText or "Aggro") then return "speech" end

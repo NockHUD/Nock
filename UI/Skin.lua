@@ -123,7 +123,57 @@ end
 -- of a session (user, 2026-08-27). One near-transparent pixel in the corner,
 -- behind everything, renders every face once at load.
 Skin.WARMED = {}
+-- The first FontString to use a face in a client session stays BLANK: its
+-- metrics are right (GetFont, GetStringWidth), the glyphs are never drawn,
+-- and a later SetFont with the same arguments is a no-op to the client. The
+-- glyphs appear once the font REALLY changes, so that string gets its size
+-- bounced once (size+1, then size). SetFont's return value is no signal for
+-- it: the load-time warm-up gets false for every face (too early in the
+-- load), the first real label gets true and is blank anyway. So the trigger
+-- is "first successful user of this face this session" (Skin.WARMED), and
+-- the warm-up runs again at PLAYER_LOGIN where it does load the faces, so
+-- normally no visible label is ever the first. Measured on Forever
+-- 2026-09-23: the settings pill's "Simple" after a fresh launch; SetFont(13)
+-- then SetFont(12) on it brought the text back at once.
+local function bounce(fs, path, size, flags)
+  fs:SetFont(path, size + 1, flags)
+  return fs:SetFont(path, size, flags) and true or false
+end
+
+local function setFace(fs, role, path, size, flags)
+  if fs:SetFont(path, size, flags) then
+    if not Skin.WARMED[role] then
+      bounce(fs, path, size, flags)
+      Skin.WARMED[role] = true
+    end
+    return true
+  end
+  -- refused: try once more with a real change, in case the file loads on the
+  -- second touch; a still-cold face stays marked cold
+  if bounce(fs, path, size, flags) then Skin.WARMED[role] = true; return true end
+  return false
+end
+
 local warm = CreateFrame and CreateFrame("Frame", nil, UIParent) or nil
+local warmStrings = {}
+function Skin.Warm()
+  if not (warm and warm.CreateFontString) then return end
+  for role, path in pairs(Skin.FONTS) do
+    if not Skin.WARMED[role] then
+      local fs = warmStrings[role]
+      if not fs then
+        fs = warm:CreateFontString(nil, "OVERLAY")
+        warmStrings[role] = fs
+        if fs.SetPoint then fs:SetPoint("BOTTOMLEFT", warm, "BOTTOMLEFT", 0, 0) end
+        if fs.SetTextColor then fs:SetTextColor(0, 0, 0, 0.02) end
+      end
+      if fs and fs.SetFont then
+        Skin.WARMED[role] = setFace(fs, role, path, 12, "")
+        if fs.SetText then fs:SetText("Nock 0123456789 " .. role) end
+      end
+    end
+  end
+end
 if warm and warm.CreateFontString then
   if warm.SetSize then warm:SetSize(1, 1) end
   if warm.SetPoint and UIParent then warm:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0) end
@@ -131,14 +181,12 @@ if warm and warm.CreateFontString then
   if warm.SetFrameLevel then warm:SetFrameLevel(0) end
   if warm.SetAlpha then warm:SetAlpha(0.02) end
   if warm.Show then warm:Show() end
-  for role, path in pairs(Skin.FONTS) do
-    local fs = warm:CreateFontString(nil, "OVERLAY")
-    if fs and fs.SetFont then
-      Skin.WARMED[role] = fs:SetFont(path, 12, "") and true or false
-      if fs.SetPoint then fs:SetPoint("BOTTOMLEFT", warm, "BOTTOMLEFT", 0, 0) end
-      if fs.SetTextColor then fs:SetTextColor(0, 0, 0, 0.02) end
-      if fs.SetText then fs:SetText("Nock 0123456789 " .. role) end
-    end
+  Skin.Warm()
+  -- Too early at file load on some clients (every face refused): once more
+  -- at login, before any window is built.
+  if warm.RegisterEvent and warm.SetScript then
+    warm:RegisterEvent("PLAYER_LOGIN")
+    warm:SetScript("OnEvent", function(f) Skin.Warm(); f:UnregisterEvent("PLAYER_LOGIN") end)
   end
 end
 
@@ -149,7 +197,7 @@ function Skin.Font(fs, role, size, flags)
   local path = Skin.FONTS[role] or Skin.FONTS.ui
   size = size or Skin.SIZES.body
   if not (fs and fs.SetFont) then return end
-  if fs:SetFont(path, size, flags or "") then return true end
+  if setFace(fs, role, path, size, flags or "") then return true end
   fs:SetFont((C and C.FONT and C.FONT.PATH) or "Fonts\\FRIZQT__.TTF", size, flags or "")
   return false
 end

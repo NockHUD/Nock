@@ -238,6 +238,11 @@ local R_FILL  = 0.55               -- how far the halves have closed, for illust
 -- does. From the representative cycle: Steady clip 1.449s, Multi clip 0.724s,
 -- wind-up 0.362s against an eWS of 2.174.
 local R_STEADY, R_MULTI, R_WINDUP = 0.333, 0.667, 0.833
+-- Forever: the one mark with a feed is the client's spell-queue window, 400 ms
+-- (default cvar) before the release on a 1.909 s cycle.
+local R_QUEUE = 0.790
+
+local function forever() return Nock.Flavor and Nock.Flavor.forever == true end
 
 -- Every swatch below names a real profile key, so the legend tracks whatever
 -- you set under React HUD -> Skin rather than describing a colour you no
@@ -252,6 +257,14 @@ local REACT_LEGEND = {
     text = "Orange: the same limit for Multi-Shot, which is a shorter cast and so survives later." },
   { key = "reactColorTickWindup", fallback = { 0.85, 0.85, 0.85, 0.80 },
     text = "Grey, nearest the centre: the wind-up begins. From here on a press is free — it is held and fires as the arrow leaves." },
+}
+
+-- Forever has no clip model (and no Steady Shot): the swing and the
+-- spell-queue mark, drawn with the wind-up pair's skin keys.
+local REACT_LEGEND_FOREVER = {
+  REACT_LEGEND[1],
+  { key = "reactColorTickWindup", fallback = { 0.85, 0.85, 0.85, 0.80 },
+    text = "Grey: the spell-queue window opens (SpellQueueWindow, 400 ms by default). From here on a press is queued behind the shot and fires right after it; before it, a cast started now would push the shot back." },
 }
 
 -- Appended only while reactShowGcdDivider is on. It is deliberately NOT drawn
@@ -283,24 +296,35 @@ local function redrawReact(self)
 
   -- Mirrored mark pairs, measured from each edge inward — the same projection
   -- the live bar uses, so the picture matches it at a glance.
+  local fv = forever()
   local fracs = { R_STEADY, R_MULTI, R_WINDUP }
   -- Widths track the skin too, for the same reason the colours do: this picture
   -- exists to match the live bar at a glance.
   local wKeys = { "reactTickSteadyWidth", "reactTickMultiWidth", "reactTickWindupWidth" }
+  local defs  = REACT_LEGEND
+  if fv then
+    -- Forever: the third (wind-up) pair alone, at the queue window.
+    fracs = { nil, nil, R_QUEUE }
+    defs  = { nil, nil, nil, REACT_LEGEND_FOREVER[2] }
+  end
   local prof  = Nock and Nock.db and Nock.db.profile
   for i = 1, 3 do
-    local x = math.floor(fracs[i] * halfW)
-    local def = REACT_LEGEND[i + 1]
+    local def = defs[i + 1]
     local tw = prof and tonumber(prof[wKeys[i]])
     if not tw or tw <= 0 then tw = 2 end
     for _, side in ipairs({ "L", "R" }) do
       local t = self.ticks[i][side]
-      t:ClearAllPoints()
-      t:SetPoint("TOPLEFT", self.frame, side == "L" and "TOPLEFT" or "TOPRIGHT",
-                 side == "L" and x or -x, 0)
-      t:SetSize(tw, R_BAR_H)
-      t:SetVertexColor(profileColor(def.key, def.fallback))
-      t:Show()
+      if def then
+        local x = math.floor(fracs[i] * halfW)
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", self.frame, side == "L" and "TOPLEFT" or "TOPRIGHT",
+                   side == "L" and x or -x, 0)
+        t:SetSize(tw, R_BAR_H)
+        t:SetVertexColor(profileColor(def.key, def.fallback))
+        t:Show()
+      else
+        t:Hide()
+      end
     end
   end
 
@@ -309,15 +333,35 @@ local function redrawReact(self)
   -- mark is described in the legend rows instead of pretending otherwise.
   local capY = -(R_BAR_H + TICK_H + 1)
   local capX = { math.floor(R_STEADY * halfW), math.floor(R_MULTI * halfW) }
+  local captions = { "Steady clip", "Multi clip", "shot" }
+  if fv then
+    -- One caption, the queue window, placed under its mark; the second slot
+    -- goes dark.
+    capX = { math.floor(R_QUEUE * halfW), nil }
+    captions = { "queue window", "", "shot" }
+  end
+  for i = 1, 3 do self.marks[i].text:SetText(captions[i]) end
   for i = 1, 2 do
     local tick = self.marks[i].tick
-    tick:ClearAllPoints()
-    tick:SetPoint("TOPLEFT", self.frame, "TOPLEFT", capX[i], -R_BAR_H)
-    tick:SetSize(1, TICK_H)
-    tick:SetVertexColor(0.75, 0.75, 0.75, 0.9)
-    tick:Show()
-    self.marks[i].text:ClearAllPoints()
-    self.marks[i].text:SetPoint("TOPLEFT", self.frame, "TOPLEFT", capX[i] + 2, capY)
+    if capX[i] then
+      tick:ClearAllPoints()
+      tick:SetPoint("TOPLEFT", self.frame, "TOPLEFT", capX[i], -R_BAR_H)
+      tick:SetSize(1, TICK_H)
+      tick:SetVertexColor(0.75, 0.75, 0.75, 0.9)
+      tick:Show()
+      self.marks[i].text:ClearAllPoints()
+      -- The queue caption sits close to the centre: right-align it to its
+      -- mark so it never runs into "shot".
+      if fv then
+        self.marks[i].text:SetPoint("TOPRIGHT", self.frame, "TOPLEFT", capX[i] - 2, capY)
+      else
+        self.marks[i].text:SetPoint("TOPLEFT", self.frame, "TOPLEFT", capX[i] + 2, capY)
+      end
+      self.marks[i].text:Show()
+    else
+      tick:Hide()
+      self.marks[i].text:Hide()
+    end
   end
   self.marks[3].tick:ClearAllPoints()
   self.marks[3].tick:SetPoint("TOPLEFT", self.frame, "TOPLEFT", halfW, -R_BAR_H)
@@ -327,8 +371,8 @@ local function redrawReact(self)
   self.marks[3].text:ClearAllPoints()
   self.marks[3].text:SetPoint("TOP", self.frame, "TOPLEFT", halfW, capY)
 
-  local legend = REACT_LEGEND
-  if Nock and Nock.db and Nock.db.profile and Nock.db.profile.reactShowGcdDivider == true then
+  local legend = fv and REACT_LEGEND_FOREVER or REACT_LEGEND
+  if not fv and Nock and Nock.db and Nock.db.profile and Nock.db.profile.reactShowGcdDivider == true then
     legend = {}
     for i = 1, #REACT_LEGEND do legend[i] = REACT_LEGEND[i] end
     legend[#legend + 1] = REACT_GCD_ROW
@@ -349,13 +393,12 @@ local function buildReact(widget, frame)
     widget.ticks[i] = { L = newTexture(frame, "OVERLAY"), R = newTexture(frame, "OVERLAY") }
   end
   widget.marks = {}
-  local captions = { "Steady clip", "Multi clip", "shot" }
+  -- Captions are set on every redraw (they differ per flavour).
   for i = 1, 3 do
     widget.marks[i] = {
       tick = newTexture(frame, "OVERLAY"),
       text = newFont(frame, "GameFontDisableSmall", i == 3 and "CENTER" or "LEFT"),
     }
-    widget.marks[i].text:SetText(captions[i])
   end
   widget.rows = buildRows(frame, #REACT_LEGEND + 1)  -- +1: the optional GCD row
   widget.note = newFont(frame, "GameFontDisableSmall", "LEFT")

@@ -61,9 +61,10 @@ end
 local function newSlot()
   local slot = { time = fontString(), label = fontString() }
   slot.icon = {
-    tex = nil, desat = nil,
+    tex = nil, desat = nil, coords = nil, coordSets = 0,
     SetTexture     = function(s, t) s.tex = t end,
     SetDesaturated = function(s, d) s.desat = d end,
+    SetTexCoord    = function(s, a, b, c, d) s.coords = { a, b, c, d }; s.coordSets = s.coordSets + 1 end,
   }
   return slot
 end
@@ -76,6 +77,18 @@ local function isRed(c) return c and c[1] > 0.7 and c[2] < 0.3 end
 local s = newSlot()
 Paint(s, { icon = 1, exp = 130, dur = 120, desat = false }, 100)
 ok(s.time.text == "30", "countdown renders the remaining seconds")
+-- Texture crop: the spell-icon crop by default, an item's own `coords`
+-- (an atlas cell, e.g. the pet happiness face) when given; diffed.
+ok(s.icon.coords and s.icon.coords[1] == 0.08 and s.icon.coords[2] == 0.92 and s.icon.coordSets == 1, "default crop applied once")
+Paint(s, { icon = 1, exp = 130, dur = 120, desat = false }, 101)
+ok(s.icon.coordSets == 1, "same crop -> no SetTexCoord")
+local CELL = { 0.375, 0.5625, 0, 0.359375 }
+Paint(s, { icon = 2, exp = 0, dur = 0, coords = CELL }, 101)
+ok(s.icon.coords[1] == 0.375 and s.icon.coords[4] == 0.359375 and s.icon.coordSets == 2, "item coords applied")
+Paint(s, { icon = 2, exp = 0, dur = 0, coords = CELL }, 102)
+ok(s.icon.coordSets == 2, "same coords table -> no SetTexCoord")
+Paint(s, { icon = 1, exp = 130, dur = 120 }, 102)
+ok(s.icon.coords[1] == 0.08 and s.icon.coordSets == 3, "back to the default crop")
 ok(s.label.text == "", "no sub -> bottom line empty")
 ok(s.icon.tex == 1 and s.icon.desat == false, "icon + desaturation applied")
 

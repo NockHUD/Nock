@@ -19,6 +19,14 @@ function SwingTimer:OnEnable()
   self:RegisterEvent("STOP_AUTOREPEAT_SPELL")
   self:RegisterEvent("PLAYER_ENTERING_WORLD")
   self:RegisterEvent("PLAYER_TARGET_CHANGED")
+  self:RegisterEvent("CVAR_UPDATE")
+  -- Probe instrumentation (wind-up question, 2026-09-23): the client's own
+  -- movement edges, so each swing sample can say how long the player had
+  -- stood still at the release. A wind-up shows as a floor on that number.
+  self:RegisterEvent("PLAYER_STARTED_MOVING")
+  self:RegisterEvent("PLAYER_STOPPED_MOVING")
+  self._moving, self._movedAt, self._stoppedAt = false, nil, nil
+  self:RefreshQueueWindow()
   -- The client's own ranged range check: off until asked for, then it
   -- signals PLAYER_SWING_RANGE_UPDATE on every edge (plain in combat).
   local ST, kind = _G.C_SwingTimer, swingType("Ranged")
@@ -30,6 +38,25 @@ function SwingTimer:OnEnable()
 end
 
 -- Direct read on target change; the event covers every edge after that.
+-- SpellQueueWindow is milliseconds as a string ("400"); anything unreadable
+-- falls back to the client default. Clamped to a second: a window longer
+-- than that is a misconfiguration, not a mark to draw.
+function SwingTimer.QueueWindowSeconds(raw)
+  local ms = tonumber(raw)
+  if not ms or ms < 0 then ms = 400 end
+  if ms > 1000 then ms = 1000 end
+  return ms / 1000
+end
+
+function SwingTimer:RefreshQueueWindow()
+  local raw = _G.GetCVar and Nock.Flavor.Plain(_G.GetCVar("SpellQueueWindow")) or nil
+  Nock.state.ranged.queueWindow = SwingTimer.QueueWindowSeconds(raw)
+end
+
+function SwingTimer:CVAR_UPDATE(event, name)
+  if name == "SpellQueueWindow" then self:RefreshQueueWindow() end
+end
+
 function SwingTimer:RefreshTargetRange()
   local ST, kind = _G.C_SwingTimer, swingType("Ranged")
   local v = nil
@@ -58,10 +85,19 @@ end
 
 -- Fires when a swing happens; `duration` is the time until the next one at
 -- the current speed (Blizzard_SwingTimer resets its bar the same way).
+function SwingTimer:PLAYER_STARTED_MOVING()
+  self._moving, self._movedAt = true, GetTime()
+end
+
+function SwingTimer:PLAYER_STOPPED_MOVING()
+  self._moving, self._stoppedAt = false, GetTime()
+end
+
 function SwingTimer:PLAYER_SWING(event, duration, kind)
   local now = GetTime()
   local S = self._samples
-  S[#S + 1] = { t = now, swingType = kind, duration = duration }
+  local stillFor = (not self._moving and self._stoppedAt) and (now - self._stoppedAt) or nil
+  S[#S + 1] = { t = now, swingType = kind, duration = duration, moving = self._moving == true, stillFor = stillFor }
   if #S > SAMPLE_MAX then table.remove(S, 1) end
   if type(duration) ~= "number" or duration <= 0 then return end
   if kind == swingType("Ranged") then

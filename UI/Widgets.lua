@@ -33,6 +33,8 @@ if LSM then
   -- The Windfury proc cue's stock sound (Alerts -> Sounds -> Weaving): a
   -- lightsaber ignition, Pixabay Content License (see ATTRIBUTION.md).
   LSM:Register("sound", "Nock Windfury", [[Interface\AddOns\Nock\Media\NockWindfury.mp3]])
+  -- The aggro cue's stock clip (Alerts -> Sounds -> Aggro), see ATTRIBUTION.md.
+  LSM:Register("sound", "Nock Aggro", [[Interface\AddOns\Nock\Media\NockAggro.mp3]])
 end
 
 -- Registries of media-consuming widgets for live-refresh via RefreshMedia.
@@ -1262,10 +1264,18 @@ end
 -- `sub` is the additive form of the same bottom line: it rides ALONGSIDE the
 -- countdown instead of replacing it. Label mode ignores it -- the two would be
 -- competing for one FontString, and `label` is the mode that asked for it.
+local SLOT_ICON_CROP = { 0.08, 0.92, 0.08, 0.92 }
 function Nock.UI.PaintReactSlot(slot, item, now)
   if item.icon ~= slot._icon then
     slot.icon:SetTexture(item.icon)
     slot._icon = item.icon
+  end
+  -- The spell-icon crop unless the item names an atlas cell (`coords`, a
+  -- table kept by the producer so identity diffs it): the pet happiness face.
+  local coords = item.coords or SLOT_ICON_CROP
+  if coords ~= slot._coords then
+    slot.icon:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+    slot._coords = coords
   end
   local desat = item.desat and true or false
   if desat ~= slot._desat then

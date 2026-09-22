@@ -7,6 +7,9 @@ local function ok(c, n) if c then pass = pass + 1 else fail = fail + 1; print("F
 local now = 100
 _G.GetTime = function() return now end
 _G.GetRangedHaste = function() return 0 end
+local petExists, happiness = true, 3
+_G.UnitExists = function(u) return u == "pet" and petExists or false end
+_G.C_PetInfo = { GetPetHappiness = function() return happiness, 125, 20 end }
 local secretAuras = false
 local cache, reads = {}, 0
 local Nock = {
@@ -86,5 +89,59 @@ fire("UNIT_SPELLCAST_SUCCEEDED", "target", "g", 3045)
 fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 42)
 B:Refresh(st)
 ok(lb.n == 1, "ignored casts")
+
+-- Pet buffs: Mend Pet and Feed Pet are cast on the player but live on the
+-- pet, so they are learned from the pet's auras (Feed Pet's buff is a
+-- different spell from the cast).
+secretAuras = false
+now = 400
+cache["pet136"] = { duration = 15, expirationTime = 412 }
+cache["pet1539"] = { duration = 20, expirationTime = 418 }
+B:Refresh(st)
+local seen = {}
+for i = 1, lb.n do seen[lb[i].icon] = lb[i] end
+ok(seen[1000 + 136] and seen[1000 + 136].exp == 412 and seen[1000 + 6991] and seen[1000 + 6991].exp == 418, "Mend and Feed published from the pet's auras")
+ok(Nock.db.char.foreverBuffLearned[136] == 15 and Nock.db.char.foreverBuffLearned[6991] == 20, "pet buff durations remembered under the cast id")
+cache["pet136"], cache["pet1539"] = nil, nil
+secretAuras = true
+now = 500
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 136)
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 6991)
+B:Refresh(st)
+seen = {}
+for i = 1, lb.n do seen[lb[i].icon] = lb[i] end
+ok(seen[1000 + 136] and seen[1000 + 136].exp == 515 and seen[1000 + 6991] and seen[1000 + 6991].exp == 520, "in combat the casts stamp the learned durations")
+
+-- Pet happiness: a face tile in combat only, only while the pet is not
+-- Happy, read live (plain on Forever), never with a countdown.
+now = 600
+st.player.inCombat = true
+happiness = 3
+B:Refresh(st)
+local function faceEntry() for i = 1, lb.n do if lb[i].coords then return lb[i] end end return nil end
+ok(faceEntry() == nil, "happy pet -> no face")
+happiness = 2
+B:Refresh(st)
+local f = faceEntry()
+ok(f and f.exp == 0 and f.dur == 0 and f.coords[1] == 0.1875, "content pet -> the Content face, no countdown")
+happiness = 1
+B:Refresh(st)
+f = faceEntry()
+ok(f and f.coords[1] == 0.375, "unhappy pet -> the Unhappy face")
+st.player.inCombat = false
+B:Refresh(st)
+ok(faceEntry() == nil, "out of combat -> no face")
+st.player.inCombat = true
+petExists = false
+B:Refresh(st)
+ok(faceEntry() == nil, "no pet -> no face")
+petExists = true
+Nock.Flavor.Plain = function(v) return nil end
+B:Refresh(st)
+ok(faceEntry() == nil, "secret happiness -> no face")
+Nock.Flavor.Plain = function(v) return v end
+happiness = 3
+B:Refresh(st)
+for i = 1, lb.n do ok(lb[i].coords == nil, "a reused entry carries no stale coords") end
 print(("forever_buffs: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
