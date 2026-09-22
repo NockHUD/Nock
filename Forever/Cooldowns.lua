@@ -83,8 +83,28 @@ local function seedLearned(ledger, e)
   end
 end
 
+-- A cast arrives with its own rank's id. The client's base-spell lookup
+-- links it to the catalog on Anniversary; on Forever ranks are separate
+-- spells it does not link (Arcane Shot rank 2 stopped the Arc tile,
+-- 2026-09-23), so the spell NAME is the fallback: every tracked id's name
+-- is indexed at build, and a cast whose id is unknown resolves through it.
+local function nameOf(id)
+  local n = Nock.API and Nock.API.SpellName and Nock.API.SpellName(id)
+  n = Nock.Flavor.Plain(n)
+  return type(n) == "string" and n or nil
+end
+
+function Cooldowns:Resolve(spellID)
+  local id = baseSpell(spellID)
+  local e = self._byId[id]
+  if e then return e, id end
+  local hit = self._byName[nameOf(spellID) or false]
+  if hit then return hit.e, hit.id end
+  return nil
+end
+
 function Cooldowns:RebuildLists()
-  self._tracked, self._byKey, self._byId = {}, {}, {}
+  self._tracked, self._byKey, self._byId, self._byName = {}, {}, {}, {}
   self.ledger = self.ledger or Engine.New()
   local groups = {}
   for _, e in ipairs(C.TRACKED_COOLDOWNS) do
@@ -94,7 +114,11 @@ function Cooldowns:RebuildLists()
       ensureStateSlot(e.key)
       local s = Nock.state.cooldowns[e.key]
       local ids = entryIds(e)
-      for i = 1, #ids do self._byId[ids[i]] = e end
+      for i = 1, #ids do
+        self._byId[ids[i]] = e
+        local n = nameOf(ids[i])
+        if n then self._byName[n] = { e = e, id = ids[i] } end
+      end
       -- Range tint follows the last id (the ranged one of a pair); the pair
       -- tile draws ids[1] on the left half and ids[2] on the right.
       s.spellId = ids[#ids]
@@ -172,18 +196,19 @@ end
 -- the next SPELL_UPDATE_COOLDOWN learns the real duration for that spell.
 function Cooldowns:UNIT_SPELLCAST_SUCCEEDED(event, unit, castGUID, spellID)
   if unit ~= "player" or type(spellID) ~= "number" then return end
-  local id = baseSpell(spellID)
-  local e = self._byId[id]
+  local e, id = self:Resolve(spellID)
   if not e then return end
   Engine.OnCast(self.ledger, id, GetTime())
-  if not Nock.Restricted("cooldowns") then self._learnPending = id end
+  -- the learn read uses the cast's own rank (that is the spell on cooldown);
+  -- the ledger is keyed by the catalog id
+  if not Nock.Restricted("cooldowns") then self._learnPending, self._learnRead = id, spellID end
 end
 
 function Cooldowns:SPELL_UPDATE_COOLDOWN()
-  local id = self._learnPending
+  local id, read = self._learnPending, self._learnRead
   if not id or Nock.Restricted("cooldowns") then return end
-  self._learnPending = nil
-  local start, duration = Nock.API.SpellCooldown(id)
+  self._learnPending, self._learnRead = nil, nil
+  local start, duration = Nock.API.SpellCooldown(read or id)
   start = Nock.Flavor.Plain(start); duration = Nock.Flavor.Plain(duration)
   if type(duration) == "number" and duration > GCD_TOLERANCE then
     learnAll(self.ledger, self._byId[id], duration)

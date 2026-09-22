@@ -31,7 +31,8 @@ for k, v in pairs(opts.args) do if type(v) == "table" and v.type == "group" then
 table.sort(top)
 ok(table.concat(top, ",") == "alerts,general,hud,profiles", "alerts/general/hud/profiles remain, got " .. table.concat(top, ","))
 ok(nodeAt(opts, "alerts.aggro") ~= nil, "aggro page kept")
-for _, p in ipairs({ "alerts.helpers", "alerts.sounds", "alerts.warnings.settings.noReleasePreview" }) do ok(nodeAt(opts, p) == nil, p .. " gone") end
+for _, p in ipairs({ "alerts.helpers", "alerts.warnings.settings.noReleasePreview", "alerts.sounds.deadZone", "alerts.sounds.warnings", "alerts.sounds.weave", "alerts.sounds.other" }) do ok(nodeAt(opts, p) == nil, p .. " gone") end
+ok(nodeAt(opts, "alerts.sounds") ~= nil, "sounds page kept for the Range tab")
 ok(nodeAt(opts, "alerts.warnings") ~= nil and nodeAt(opts, "alerts.warnings.settings.previewButton") ~= nil, "warnings page kept with its preview (Forever/Warnings.lua supplies the catalog)")
 
 -- HUD: React only, renamed.

@@ -1267,6 +1267,18 @@ if Nock.Flavor and Nock.Flavor.forever then
   local p = Nock.Defaults.profile
   p.warningLabelFont  = "Nock Plex Sans SemiBold"  -- the HUD's own face (UI/Skin.lua registers it with LSM)
   p.warningLabelStyle = "THICKOUTLINE"
+  -- Spoken range cues (Forever/RangeCues.lua): one master switch, the dead
+  -- zone on, the rest off; each with Nock's own clip preselected.
+  p.soundCuesEnabled     = true
+  p.cueDeadZoneEnabled   = true
+  p.cueDeadZoneSound     = "Nock Dead Zone"
+  p.cueMeleeEnabled      = false
+  p.cueMeleeSound        = "Nock Melee"
+  p.cueInRangeEnabled    = false
+  p.cueInRangeSound      = "Nock In Range"
+  p.cueOutOfRangeEnabled = false
+  p.cueOutOfRangeSound   = "Nock Out of Range"
+  p.cueRepeatSeconds     = 4       -- the same zone's cue not again within this many seconds
 end
 
 function Nock:GetDefaultPosition()

@@ -14,7 +14,7 @@ local secretAuras = false
 local cache, reads = {}, 0
 local Nock = {
   Flavor = { forever = true, Plain = function(v) return v end }, Constants = {},
-  API = { SpellIcon = function(id) return 1000 + id end, SpellName = function(id) return "s" .. id end },
+  API = { SpellIcon = function(id) return 1000 + id end, SpellName = function(id) return ({ [136] = "Mend Pet", [3111] = "Mend Pet" })[id] or ("s" .. id) end },
   AuraCache = { BySpell = function(unit, id) reads = reads + 1; return cache[unit .. id] end },
   Restricted = function() return secretAuras end,
   db = { char = {} },
@@ -149,6 +149,15 @@ B:Refresh(st)
 seen = {}
 for i = 1, lb.n do seen[lb[i].icon] = lb[i] end
 ok(seen[1000 + 136] and seen[1000 + 136].exp == 515 and seen[1000 + 6991] and seen[1000 + 6991].exp == 520, "in combat the casts stamp the learned durations")
+
+-- A higher rank resolves by name (ranks are separate spells on Forever).
+secretAuras = true
+now = 550
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 3111)
+B:Refresh(st)
+seen = {}
+for i = 1, lb.n do seen[lb[i].icon] = lb[i] end
+ok(seen[1000 + 136] and seen[1000 + 136].exp == 565, "Mend Pet rank 2 stamps the Mend entry by name")
 
 -- Pet happiness: a face tile in combat only, only while the pet is not
 -- Happy, read live (plain on Forever), never with a countdown.

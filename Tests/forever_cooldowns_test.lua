@@ -23,6 +23,8 @@ local Nock = {
   API = {
     SpellCooldown = function(id) apiReads = apiReads + 1; if secretCds then return "SECRET", "SECRET", true end; local c = apiCd[id]; if c then return c[1], c[2], true end; return 0, 0, true end,
     SpellIcon = function(id) return 100000 + id end,
+    -- ranks are separate spells on Forever: the name is what they share
+    SpellName = function(id) return ({ [3044] = "Arcane Shot", [14281] = "Arcane Shot", [2973] = "Raptor Strike", [14260] = "Raptor Strike" })[id] or ("spell" .. id) end,
   },
   Constants = { GCD_BASE = 1.5, TRACKED_COOLDOWNS = { { key = "TBC", type = "spell", id = 1, label = "x" } }, REACT_CD_ROWS = { { h = 32, keys = { "TBC" } } }, DIM = { COOLDOWN_ICON = 32, INNER_GAP = 2 }, COOLDOWN_ROWS = 1 },
   db = { profile = {} },
@@ -116,6 +118,20 @@ ok(st.cooldowns.AimMulti.startTime == 0, "rescan cleared the pair from the API t
 
 -- Non-player casts are ignored.
 fire("UNIT_SPELLCAST_SUCCEEDED", "target", "guid", 2973)
+
+-- A higher rank (a separate spell id the client does not link to its base,
+-- 2026-09-23: Arcane Shot rank 2 stopped the Arc tile) resolves by name.
+now = 300
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 14281)
+CD:Refresh()
+ok(st.cooldowns.Arc.startTime == 300 and st.cooldowns.Arc.duration == 6, "rank 2 Arcane Shot stamps the Arc entry by name")
+-- the learn read uses the cast's own rank, the ledger key stays the base
+apiCd[14281] = { 300, 7 }
+fire("SPELL_UPDATE_COOLDOWN")
+CD:Refresh()
+ok(st.cooldowns.Arc.duration == 7 and CD.ledger.learned[3044] == 7, "the rank's cooldown reading teaches the base entry")
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 99999)
+ok(st.cooldowns.Arc.startTime == 300, "an unknown spell with an unknown name stamps nothing")
 CD:Refresh()
 ok(st.cooldowns.Raptor.startTime ~= 400, "target casts ignored")
 

@@ -104,6 +104,8 @@ def main():
             path = page if tab == "__self" else page + "." + tab
             out.append("  {")
             out.append("    path = %s," % lua_str(path))
+            if spec.get("forever"):
+                out.append("    forever = true,")  # WoW Forever only: the layout check skips it on TBC
             out.append("    cards = {")
             for i, cd in enumerate(spec["cards"]):
                 fields = ["key = %s" % lua_str(slug(cd["name"])), "name = %s" % lua_str(cd["name"])]

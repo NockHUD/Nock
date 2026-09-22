@@ -66,6 +66,7 @@ Forever\ManaTick.lua
 Forever\Cooldowns.lua
 Forever\Probe.lua
 Forever\Warnings.lua
+Forever\RangeCues.lua
 Modules\ProfileShare.lua
 Modules\AggroWarning.lua
 

@@ -312,6 +312,15 @@ L.TABS = {
     desc = { deadZoneSoundChannel = "The audio channel the dead-zone cues play through; Master ignores the music and ambience sliders." },
   },
   {
+    path = "alerts.sounds.range",
+    forever = true,
+    cards = {
+      { key = "rangeCuesCard", name = "Range cues", icon = { glyph = "bell" }, desc = "A spoken cue when the target's range zone changes.", table = { cols = { { "On" }, { "Sound" }, { "Preview" } }, rows = { { "Dead zone", { ["On"] = "cueDeadZoneEnabled", ["Sound"] = "cueDeadZoneSound", ["Preview"] = "cueDeadZonePreview" } }, { "Melee", { ["On"] = "cueMeleeEnabled", ["Sound"] = "cueMeleeSound", ["Preview"] = "cueMeleePreview" } }, { "In range", { ["On"] = "cueInRangeEnabled", ["Sound"] = "cueInRangeSound", ["Preview"] = "cueInRangePreview" } }, { "Out of range", { ["On"] = "cueOutOfRangeEnabled", ["Sound"] = "cueOutOfRangeSound", ["Preview"] = "cueOutOfRangePreview" } } } }, rows = { "intro", "soundCuesEnabled", "deadZoneSoundChannel", "cueRepeatSeconds", "cueDeadZoneEnabled", "cueDeadZoneSound", "cueDeadZonePreview", "cueMeleeEnabled", "cueMeleeSound", "cueMeleePreview", "cueInRangeEnabled", "cueInRangeSound", "cueInRangePreview", "cueOutOfRangeEnabled", "cueOutOfRangeSound", "cueOutOfRangePreview" } },
+    },
+    rename = { consumeBannerSound = "Chime when Well Fed lands", deadZoneSoundChannel = "Output channel", aggroSoundMode = "Aggro cue", aggroPreview = "Preview aggro cue" },
+    desc = { deadZoneSoundChannel = "The audio channel the dead-zone cues play through; Master ignores the music and ambience sliders." },
+  },
+  {
     path = "alerts.warnings.settings",
     cards = {
       { key = "squaresCard", name = "Squares", icon = { glyph = "warn" }, desc = "The alert squares; drag the row while frames are unlocked, Reset puts it back top centre.", actions = { "warningsResetPosition" }, rows = { "warningsResetPosition", "warningIconSize", "warningBorderSize" } },

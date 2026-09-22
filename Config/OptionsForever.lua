@@ -17,7 +17,9 @@ F.DROP = {
   -- Alerts: the aggro flash runs on own threat state (plain in combat) and
   -- the warnings page builds from Forever/Warnings.lua's own catalog;
   -- helpers and sounds return later. No DO NOT RELEASE banner on Forever.
-  "alerts.helpers", "alerts.sounds", "alerts.warnings.settings.noReleasePreview",
+  "alerts.helpers", "alerts.warnings.settings.noReleasePreview",
+  -- Sounds: only the Range tab has a Forever feed (Forever/RangeCues.lua).
+  "alerts.sounds.deadZone", "alerts.sounds.warnings", "alerts.sounds.weave", "alerts.sounds.other",
   -- HUD family: one HUD only, no mode switching.
   "hud.classic", "hud.fluffy", "hud.hudMode", "hud.react.hudMode", "hud.react.useLook",
   -- React bars: no clip model (no wind-up feed, haste secret in combat), no papers.

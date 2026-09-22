@@ -8050,20 +8050,21 @@ local function buildOptionsTable()
         if lsm then for _, name in ipairs(lsm:List("sound")) do out[name] = name end end
         return out
       end
-      local function cue(prefix, label, order, what)
-        wa[prefix .. "Enabled"] = {
+      local function cue(prefix, label, order, what, into)
+        local t = into or wa
+        t[prefix .. "Enabled"] = {
           type = "toggle", name = label, desc = what, order = order, width = "full",
           get = function() return Nock.db.profile[prefix .. "Enabled"] == true end,
           set = function(_, v) Nock.db.profile[prefix .. "Enabled"] = v and true or false end,
         }
-        wa[prefix .. "Sound"] = {
+        t[prefix .. "Sound"] = {
           type = "select", name = label .. " sound", desc = "'None' is silent.", order = order + 1,
           dialogControl = lsmWidget(nil, "plain"), values = soundValues,
           disabled = function() return not Nock.db.profile[prefix .. "Enabled"] end,
           get = function() return Nock.db.profile[prefix .. "Sound"] or "None" end,
           set = function(_, v) Nock.db.profile[prefix .. "Sound"] = v end,
         }
-        wa[prefix .. "Preview"] = {
+        t[prefix .. "Preview"] = {
           type = "execute", name = "Preview", order = order + 2, width = "half",
           disabled = function() return not Nock.db.profile[prefix .. "Enabled"] or (Nock.db.profile[prefix .. "Sound"] or "None") == "None" end,
           func = function() previewSound(Nock.db.profile[prefix .. "Sound"], Nock.db.profile.deadZoneSoundChannel) end,
@@ -8071,6 +8072,42 @@ local function buildOptionsTable()
       end
       cue("weaveRaptorHit", "Raptor Strike hit", 10, "Play a sound when your Raptor Strike lands (a miss, dodge or parry stays silent).")
       cue("weaveWfProc", "Windfury proc", 20, "Play a sound when Windfury grants you extra attacks.")
+
+      -- WoW Forever: the spoken range cues (Forever/RangeCues.lua), one tab
+      -- of their own so more cue families can follow. Same rows as the weave
+      -- cues, under one master switch. Nothing of this exists on TBC.
+      if Nock.Flavor and Nock.Flavor.forever then
+        sounds.args.range = tab("Range", 5, "A spoken cue when your target's range zone changes: the dead zone, melee, in range, out of range. Each has its own switch and clip; the dead zone is on by default.")
+        local ra = sounds.args.range.args
+        ra.soundCuesEnabled = {
+          type = "toggle", name = "Sound cues", desc = "The master switch for every range cue below.", order = 1, width = "full",
+          get = function() return Nock.db.profile.soundCuesEnabled ~= false end,
+          set = function(_, v) Nock.db.profile.soundCuesEnabled = v and true or false end,
+        }
+        ra.deadZoneSoundChannel = copyRow(sounds.args.deadZone.args.deadZoneSoundChannel or {
+          type = "select", name = "Output channel", order = 2, values = { Master = "Master", SFX = "SFX", Music = "Music", Ambience = "Ambience", Dialog = "Dialog" },
+          dialogControl = lsmWidget(nil, "plain"),
+          get = function() return Nock.db.profile.deadZoneSoundChannel or "Master" end,
+          set = function(_, v) Nock.db.profile.deadZoneSoundChannel = v end,
+        }, 2)
+        local function rcue(prefix, label, order, what)
+          cue(prefix, label, order, what, ra)
+          ra[prefix .. "Enabled"].disabled = function() return Nock.db.profile.soundCuesEnabled == false end
+          ra[prefix .. "Sound"].disabled = function() return Nock.db.profile.soundCuesEnabled == false or not Nock.db.profile[prefix .. "Enabled"] end
+          ra[prefix .. "Preview"].disabled = function() return (Nock.db.profile[prefix .. "Sound"] or "None") == "None" end
+        end
+        ra.cueRepeatSeconds = {
+          type = "range", name = "Quiet time between repeats", desc = "A zone's cue does not play again within this many seconds, so a mob dancing on a range edge does not talk your ear off. Any two cues keep 1.5 s apart regardless.",
+          order = 3, min = 1, max = 15, step = 1,
+          disabled = function() return Nock.db.profile.soundCuesEnabled == false end,
+          get = function() return Nock.db.profile.cueRepeatSeconds or 4 end,
+          set = function(_, v) Nock.db.profile.cueRepeatSeconds = v end,
+        }
+        rcue("cueDeadZone",   "Dead zone",    10, "Spoken when you step into the dead zone: too close to shoot, too far to swing.")
+        rcue("cueMelee",      "Melee",        20, "Spoken when the target comes into melee reach.")
+        rcue("cueInRange",    "In range",     30, "Spoken when the target comes into Auto Shot range.")
+        rcue("cueOutOfRange", "Out of range", 40, "Spoken when the target moves beyond Auto Shot range.")
+      end
     end
     local hs = options.args.helpers and options.args.helpers.args.tabSettings
     if hs and hs.args and hs.args.consumeBannerSound then

@@ -16,6 +16,9 @@ A.KEEP = {
   scale = true, reactScale = true, fluffyScale = true, reactWidth = true, fluffyWidth = true,
   iconSize = true, warningIconSize = true, helpersIconSize = true, helpersScale = true,
   practiceScale = true,
+  -- The Forever range cues' previews: a sound row without its preview is
+  -- half a row (Alerts -> Sounds -> Range).
+  cueDeadZonePreview = true, cueMeleePreview = true, cueInRangePreview = true, cueOutOfRangePreview = true,
 }
 -- Whole groups (a card or a tab): every row inside is advanced.
 A.GROUPS = {

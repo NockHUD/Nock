@@ -24,6 +24,14 @@ local function baseSpell(id)
   return id
 end
 
+-- Ranks are separate spells on Forever with no base link (see
+-- Forever/Cooldowns.lua): a cast whose id is unknown resolves by name.
+local function nameOf(id)
+  local n = Nock.API and Nock.API.SpellName and Nock.API.SpellName(id)
+  n = Nock.Flavor.Plain(n)
+  return type(n) == "string" and n or nil
+end
+
 -- Blizzard's pet happiness faces (PetPaperDollFrame art), one atlas cell per
 -- state; the tables are kept so the slot painter can diff them by identity.
 local HAPPINESS_TEX = [[Interface\PetPaperDollFrame\UI-PetHappiness]]
@@ -34,13 +42,15 @@ local HAPPINESS_COORD = {
 local PLAYER_ONLY = { "player" }
 
 function BuffLedger:OnEnable()
-  self._track, self._order = {}, {}
+  self._track, self._order, self._byName = {}, {}, {}
   local mem = remembered()
   for i, b in ipairs(Nock.Spells.BUFFS) do
     local dur = (mem and mem[b.id]) or b.dur
     self._track[b.id] = { key = b.key, dur = dur, exp = 0, icon = Nock.API.SpellIcon(b.id),
                           units = b.units or PLAYER_ONLY, aura = b.aura or b.id }
     self._order[i] = b.id
+    local n = nameOf(b.id)
+    if n then self._byName[n] = b.id end
   end
   self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 end
@@ -64,6 +74,11 @@ end
 function BuffLedger:UNIT_SPELLCAST_SUCCEEDED(event, unit, castGUID, spellID)
   if unit ~= "player" or type(spellID) ~= "number" then return end
   local t = self._track[baseSpell(spellID)]
+  if not t then
+    local n = nameOf(spellID)
+    local id = n and self._byName[n]
+    t = id and self._track[id] or nil
+  end
   if not t then return end
   if t.dur then t.exp = GetTime() + t.dur end
 end

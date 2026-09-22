@@ -90,6 +90,13 @@ end
 
 -- Tag the built table. Idempotent; RebuildOptionsArgs calls it again after
 -- refilling the dynamic blocks.
+-- A tab flagged `forever` in the canvas belongs to WoW Forever alone: it is
+-- neither applied nor expected on TBC.
+local function tabApplies(tab)
+  if tab.forever and not (Nock.Flavor and Nock.Flavor.forever) then return false end
+  return true
+end
+
 function L.Apply(root)
   local W, D = Nock.OptionsWalk, Nock.OptionsLayoutData
   if not (W and D) then return end
@@ -114,7 +121,7 @@ function L.Apply(root)
     if type(r) == "table" and type(r.name) == "string" then r.name = name end
   end
   for _, tab in ipairs(D.TABS) do
-    local node = nodeAt(root, tab.path)
+    local node = tabApplies(tab) and nodeAt(root, tab.path) or nil
     if node and node.args then applyTab(W, node, tab) end
   end
 end
@@ -123,8 +130,10 @@ end
 function L.Missing(root)
   local D, out = Nock.OptionsLayoutData, {}
   for _, tab in ipairs(D and D.TABS or {}) do
-    local node = nodeAt(root, tab.path)
-    if not node then out[#out + 1] = tab.path
+    local node = tabApplies(tab) and nodeAt(root, tab.path) or nil
+    if not tabApplies(tab) then
+      -- a WoW Forever tab is not expected on this client
+    elseif not node then out[#out + 1] = tab.path
     else
       for _, card in ipairs(tab.cards) do
         for _, key in ipairs(card.rows) do
