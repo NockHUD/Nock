@@ -587,6 +587,16 @@ function Nock.UI.ShowCopyBox(text)
     eb:SetFontObject(_G.ChatFontNormal or _G.GameFontHighlightSmall)
     eb:SetWidth(560)
     eb:SetScript("OnEscapePressed", function() f:Hide() end)
+    -- The text is selected for copying, so any key (a movement key, say)
+    -- replaces the whole report. Restore it: the box is for reading out,
+    -- never for editing.
+    eb:SetScript("OnTextChanged", function(e, userInput)
+      if userInput and f._text and e:GetText() ~= f._text then
+        e:SetText(f._text)
+        e:HighlightText()
+        e:SetCursorPosition(0)
+      end
+    end)
     sf:SetScrollChild(eb)
     f.eb = eb
 
@@ -598,6 +608,7 @@ function Nock.UI.ShowCopyBox(text)
 
     copyBox = f
   end
+  copyBox._text = text or ""
   copyBox.eb:SetText(text or "")
   local _, nl = tostring(text or ""):gsub("\n", "\n")
   copyBox.eb:SetHeight(math.max(320, (nl + 2) * 14))

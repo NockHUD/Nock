@@ -239,10 +239,213 @@ function Probe:FramesReport()
   return table.concat(L, "\n")
 end
 
-function Probe:Show(which)
+-- How the aura cache stored one player aura, against the id the catalog
+-- expects: the value's type and secrecy, whether it equals the id, whether
+-- the id lookup finds it and whether the buff row carries it.
+function Probe.AuraReport(a, id, hit, inRow)
+  local L = {}
+  local sid = a.spellId
+  L[#L + 1] = ("aura %s"):format(tostring(a.name))
+  L[#L + 1] = ("  spellId: %s %s"):format(type(sid), tostring(sid))
+  L[#L + 1] = ("  secret: %s"):format(tostring(_G.issecretvalue and issecretvalue(sid) or false))
+  L[#L + 1] = ("  == %s: %s"):format(tostring(id), tostring(sid == id))
+  L[#L + 1] = ("  BySpell(%s): %s"):format(tostring(id), hit and "hit" or "miss")
+  L[#L + 1] = ("  duration: %s  expirationTime: %s  instance: %s  icon: %s"):format(
+    tostring(a.duration), tostring(a.expirationTime), tostring(a.auraInstanceID), tostring(a.icon))
+  L[#L + 1] = ("  ledger row: %s"):format(inRow and "yes" or "no")
+  return table.concat(L, "\n")
+end
+
+-- The buff row's state at the same moment: why a ledger entry may not draw.
+function Probe.RowState()
+  local L = {}
+  local R = Nock.GetModule and Nock:GetModule("ReactBuffs", true)
+  if not R then L[#L + 1] = "row: no ReactBuffs module"; return table.concat(L, "\n") end
+  local f = R.frame
+  local function b(v) return tostring(v) end
+  local okE, en = pcall(function() return R:IsEnabled() end)
+  L[#L + 1] = ("row enabled: %s"):format(okE and b(en) or "err")
+  if f then
+    local parent = f.GetParent and f:GetParent()
+    L[#L + 1] = ("  shown: %s  visible: %s  alpha: %s  size: %sx%s  parent shown: %s"):format(
+      b(f:IsShown()), b(f:IsVisible()), b(f:GetAlpha()), b(f:GetWidth()), b(f:GetHeight()),
+      parent and b(parent:IsShown()) or "nil")
+  else
+    L[#L + 1] = "  no frame"
+  end
+  L[#L + 1] = ("  items: %s  lastN: %s"):format(b(R._items and R._items.n), b(R._lastN))
+  local s = R._slots and R._slots[1]
+  if s then
+    L[#L + 1] = ("  slot1 shown: %s  texture: %s"):format(b(s:IsShown()), b(s.icon and s.icon.GetTexture and s.icon:GetTexture()))
+  end
+  local p = Nock.db and Nock.db.profile or {}
+  local pl = Nock.state and Nock.state.player or {}
+  L[#L + 1] = ("  inCombat: %s  hideOoc: %s  opacityOoc: %s  reactBuffRows: %s  wizardHides: %s"):format(
+    b(pl.inCombat), b(p.hideOoc), b(p.opacityOoc), b(p.reactBuffRows), b(Nock.WizardHides and Nock.WizardHides("react.buffs")))
+  local hud = Nock.parentFrame
+  if hud then L[#L + 1] = ("  hud shown: %s  alpha: %s"):format(b(hud:IsShown()), b(hud:GetAlpha())) end
+  return table.concat(L, "\n")
+end
+
+-- Poll the cache for a named player aura for two minutes (a 12 s proc can't
+-- be caught by hand) and open the report the moment it shows.
+function Probe:WatchAura(name, id)
+  local T = _G.C_Timer
+  if not (T and T.NewTicker) then Nock:Print("No ticker on this client."); return end
+  T.NewTicker(0.5, function(t)
+    local AC = Nock.AuraCache
+    local a = AC and AC.ByName and AC.ByName("player", name)
+    if not a then return end
+    t:Cancel()
+    local hit = (AC.BySpell and AC.BySpell("player", id)) and true or false
+    local inRow = false
+    local lb = Nock.state and Nock.state.ledgerBuffs
+    for i = 1, (lb and lb.n or 0) do if lb[i].icon == a.icon then inRow = true end end
+    local text = Probe.AuraReport(a, id, hit, inRow) .. "\n" .. Probe.RowState()
+    if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
+  end, 240)
+  Nock:Print(("Watching for %s for two minutes."):format(name))
+end
+
+-- The aura-container spike (spec: Blizzard `CustomAuraContainerTemplate`
+-- as the row for "everything else"). The client renders the auras itself,
+-- so procs and outside buffs can show in combat without the addon reading
+-- a secret. This builds one row of the player's own helpful auras under the
+-- HUD and reports which steps the client accepted; what it draws is the
+-- in-game answer. Throwaway until proven.
+local CONTAINER_TILE = 28
+
+-- A CustomAuraButtonTemplate button draws NOTHING until the addon hands it
+-- regions: the icon texture and the cooldown swipe here (the client fills
+-- them; the addon never reads them). Done once per button.
+local function styleAuraButton(b)
+  if b._nockStyled then return end
+  b._nockStyled = true
+  b:SetSize(CONTAINER_TILE, CONTAINER_TILE)
+  -- a green square behind every button: shows where the client puts a
+  -- button even when it fills no icon
+  local bg = b:CreateTexture(nil, "BACKGROUND")
+  bg:SetAllPoints(b)
+  bg:SetColorTexture(0.2, 0.6, 0.2, 0.5)
+  local tex = b:CreateTexture(nil, "ARTWORK")
+  tex:SetAllPoints(b)
+  tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  b:SetIcon(tex)
+  local cd = CreateFrame("Cooldown", nil, b, "CooldownFrameTemplate")
+  cd:SetAllPoints(b)
+  b:SetDurationCooldown(cd)
+end
+
+function Probe:ContainerSpike()
+  local L = {}
+  local function step(name, fn)
+    local okc, err = pcall(fn)
+    L[#L + 1] = ("  %s: %s"):format(name, okc and "ok" or ("err " .. tostring(err)))
+    return okc
+  end
+  local c = self._container
+  if not c then
+    L[#L + 1] = "aura container (new):"
+    if not step("CreateFrame", function()
+      c = CreateFrame("AuraContainer", "NockProbeAuraContainer", UIParent, "CustomAuraContainerTemplate")
+    end) then return table.concat(L, "\n") end
+    self._container = c
+    step("SetPoint", function()
+      c:SetPoint("TOP", UIParent, "CENTER", 0, -160)
+      c:SetSize(8 * (CONTAINER_TILE + 2), CONTAINER_TILE)
+      c:SetFrameStrata("HIGH")
+      -- a dark strip so the container's spot is visible even when empty
+      local bg = c:CreateTexture(nil, "BACKGROUND")
+      bg:SetAllPoints(c)
+      bg:SetColorTexture(0, 0, 0, 0.6)
+      -- and a plain marker frame at the same spot that no layout can
+      -- resize: if THIS is not on screen, the spot is wrong, not the container
+      local m = CreateFrame("Frame", nil, UIParent)
+      m.marker = true
+      m:SetPoint("TOP", UIParent, "CENTER", 0, -160)
+      m:SetSize(8 * (CONTAINER_TILE + 2), 4)
+      m:SetFrameStrata("HIGH")
+      local mt = m:CreateTexture(nil, "OVERLAY")
+      mt:SetAllPoints(m)
+      mt:SetColorTexture(1, 0.2, 0.2, 0.9)
+      m:Show()
+    end)
+    -- the template's flow layout; the enums live in AnchorUtil (dumped below)
+    local AU = _G.AnchorUtil or {}
+    step("SetFlowLayoutAxis", function()
+      c:SetFlowLayoutAxis(AU.FlowLayoutAxis and AU.FlowLayoutAxis.Horizontal or 1)
+    end)
+    step("SetFlowLayoutGrowthDirection", function()
+      local D = AU.FlowDirection or {}
+      c:SetFlowLayoutGrowthDirection(D.Right or 2, D.Down or 4)
+    end)
+    step("SetFlowLayoutAnchorPoint", function() c:SetFlowLayoutAnchorPoint("TOPLEFT") end)
+    step("SetUnit", function() c:SetUnit("player") end)
+    step("AddAuraGroup", function()
+      c:AddAuraGroup("own", "HELPFUL|PLAYER", { maxFrameCount = 8, initializeFrame = styleAuraButton })
+    end)
+    step("SetAuraGroupLayout", function()
+      c:SetAuraGroupLayout("own", { elementWidth = CONTAINER_TILE, elementHeight = CONTAINER_TILE, elementSpacing = 2 })
+    end)
+    step("SetEnabled", function() c:SetEnabled(true) end)
+    step("Show", function() c:Show() end)
+  else
+    L[#L + 1] = "aura container (existing):"
+  end
+  step("UpdateAllAuras", function() c:UpdateAllAuras() end)
+  local n = 0
+  step("GetAuraGroupFrame", function()
+    -- The frames exist for the addon; their shown state is a secret boolean
+    -- (measured 2026-09-23), so count frames, never read them.
+    for i = 1, 8 do
+      local f = c:GetAuraGroupFrame("own", i)
+      if f then n = n + 1; styleAuraButton(f) end
+    end
+  end)
+  L[#L + 1] = ("  group frames: %d"):format(n)
+  -- What the container and its first button say about themselves (every
+  -- read guarded: some of it is secret).
+  local function geo(label, f)
+    local okg, line = pcall(function()
+      return ("%s: shown %s  visible %s  alpha %s  size %sx%s  left %s  top %s  strata %s  level %s  scale %s"):format(
+        label, tostring(f:IsShown()), tostring(f:IsVisible()), tostring(f:GetAlpha()),
+        tostring(f:GetWidth()), tostring(f:GetHeight()), tostring(f:GetLeft()), tostring(f:GetTop()),
+        tostring(f:GetFrameStrata()), tostring(f:GetFrameLevel()), tostring(f:GetEffectiveScale()))
+    end)
+    L[#L + 1] = "  " .. (okg and line or (label .. ": err " .. tostring(line)))
+  end
+  geo("container", c)
+  local b1 = n > 0 and c:GetAuraGroupFrame("own", 1) or nil
+  if b1 then geo("button1", b1) end
+  -- The layout enums, as the client has them, so the next round guesses less.
+  local AU = _G.AnchorUtil
+  if type(AU) == "table" then
+    for k, v in pairs(AU) do
+      if type(v) == "table" and (k:find("Flow") or k:find("Direction") or k:find("Axis")) then
+        local parts = {}
+        for mk, mv in pairs(v) do parts[#parts + 1] = tostring(mk) .. "=" .. tostring(mv) end
+        table.sort(parts)
+        L[#L + 1] = ("  AnchorUtil.%s: %s"):format(k, table.concat(parts, " "))
+      end
+    end
+  else
+    L[#L + 1] = "  AnchorUtil: missing"
+  end
+  L[#L + 1] = "  look under the screen centre: a dark strip; green squares where the client places a button; icons if it fills them."
+  return table.concat(L, "\n")
+end
+
+function Probe:Show(which, rest)
   local text
   if which == "spells" then text = self:SpellbookReport()
   elseif which == "frames" then text = self:FramesReport()
+  elseif which == "container" then
+    text = self:ContainerSpike()
+  elseif which == "aura" then
+    local name, id = (rest or ""):match("^(.-)%s*(%d*)$")
+    if name == "" then name = "Quick Shots" end
+    self:WatchAura(name, tonumber(id) or 6150)
+    return
   else text = self:Report() end
   if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
 end

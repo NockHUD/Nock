@@ -84,6 +84,20 @@ function ReactBuffs:OnInitialize()
   end
   self._items = { n = 0 }
 
+  -- Forever only (Nock.ForeverAuraRow is nil on TBC, the Camelot toc alone
+  -- loads it): the client's aura container draws the player's short own
+  -- buffs, procs included, centred on the bottom line (Forever/AuraRow.lua).
+  if Nock.Flavor and Nock.Flavor.forever and Nock.ForeverAuraRow then
+    self._auraRow = Nock.ForeverAuraRow.Create(panel, REACT.ICON, REACT.GAP)
+    -- With the container in place the ledger tiles (pet only) become a
+    -- smaller centred line above it: the row grows upward, the glue holds
+    -- its bottom edge.
+    if self._auraRow then
+      panel:SetHeight(Nock.ForeverAuraRow.LineHeight(REACT.ICON))
+      for i = 1, MAX_ICONS do Nock.UI.SetReactSlotSize(self._slots[i], Nock.ForeverAuraRow.PET_ICON) end
+    end
+  end
+
   -- Unlock-mode frame (cast-bar convention): the row is invisible whenever no
   -- proc is up, which is exactly when the user is laying out the HUD -- so
   -- while unlocked, Refresh paints placeholder procs and this border marks
@@ -410,8 +424,19 @@ function ReactBuffs:OnVisualsChanged()
   self:RebuildImportantIds()
   -- Re-run the slot skin so a reactFont change reaches the row live —
   -- SetReactSlotSize is where the React font resolves (Widgets.lua).
+  local AR = self._auraRow and Nock.ForeverAuraRow or nil
   for i = 1, MAX_ICONS do
-    Nock.UI.SetReactSlotSize(self._slots[i], REACT.ICON)
+    Nock.UI.SetReactSlotSize(self._slots[i], AR and AR.PET_ICON or REACT.ICON)
+  end
+  -- Forever: the client's buttons take the font too (size and fonts only;
+  -- nothing is read back from them).
+  if AR then
+    pcall(function()
+      for i = 1, AR.MAX_FRAMES do
+        local b = self._auraRow:GetAuraGroupFrame(AR.GROUP, i)
+        if b and b.time then Nock.UI.SetReactSlotSize(b, REACT.ICON) end
+      end
+    end)
   end
   -- Re-anchor unconditionally: reactCastH feeds the welded lift and reactWidth
   -- feeds the free row's explicit width, and both arrive through this message.
@@ -707,11 +732,21 @@ function ReactBuffs:Refresh(state)
     self._lastN, self._lastW = n, w
     local size, gap = REACT.ICON, REACT.GAP
     local totalW = n * size + (n - 1) * gap
-    local x0 = (w - totalW) / 2
-    for i = 1, n do
-      local s = slots[i]
-      s:ClearAllPoints()
-      s:SetPoint("BOTTOMLEFT", self.frame, "BOTTOMLEFT", x0 + (i - 1) * (size + gap), 0)
+    if self._auraRow then
+      -- Forever: the client centres its container on the bottom line; the
+      -- pet tiles are a smaller line above it, centred by Nock (nothing
+      -- may anchor to the container).
+      local AR = Nock.ForeverAuraRow
+      AR.Anchor(self._auraRow, self.frame)
+      local y = size + AR.LINE_GAP
+      for i = 1, n do AR.AnchorTile(slots[i], self.frame, AR.TileX(i, n, AR.PET_ICON, gap, w), y) end
+    else
+      local x0 = (w - totalW) / 2
+      for i = 1, n do
+        local s = slots[i]
+        s:ClearAllPoints()
+        s:SetPoint("BOTTOMLEFT", self.frame, "BOTTOMLEFT", x0 + (i - 1) * (size + gap), 0)
+      end
     end
   end
   local now = GetTime()

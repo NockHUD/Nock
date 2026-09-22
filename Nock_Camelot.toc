@@ -60,6 +60,7 @@ Forever\RangeFinder.lua
 Forever\CastBar.lua
 Forever\Auras.lua
 Forever\Buffs.lua
+Forever\AuraRow.lua
 Modules\ManaTickEngine.lua
 Forever\ManaTick.lua
 Forever\Cooldowns.lua

@@ -51,16 +51,15 @@ Spells.TRACKED = {
   { key = "Meld",     id = 20580, label = "Meld",   cd = 120 },                                -- Shadowmeld
 }
 
--- Own-cast buffs for the React buff row (Forever/Buffs.lua): base id, key
--- and a seed duration; the aura's real duration is learned out of combat and
--- remembered per character. Procs and other people's buffs are not here:
--- they have no cast to stamp.
+-- Ledger buffs for the React buff row (Forever/Buffs.lua): base id, key and
+-- a seed duration; the aura's real duration is learned out of combat and
+-- remembered per character. Since 2026-09-23 the player's OWN short buffs
+-- (Rapid Fire, Quick Shots and every other proc) are drawn by the client's
+-- aura container (Forever/AuraRow.lua) with their true countdowns, so this
+-- list holds only what the container cannot reach: buffs living on the pet.
 -- `units` lists where the buff lands (default the player); `aura` is the
 -- buff's own spell id when it differs from the cast's.
 Spells.BUFFS = {
-  { id = 3045,    key = "RF",    dur = 15 },   -- Rapid Fire
-  { id = 1259799, key = "Elune", dur = nil },  -- Elune's Light (duration unmeasured)
-  { id = 20580,   key = "Meld",  dur = nil },  -- Shadowmeld (until moved/cancelled)
   -- Pet upkeep, cast by you, living on the pet: learned from the pet's auras
   -- out of combat, stamped from the cast in combat (spec: pet health is a
   -- sink, pet auras are never read while secret).

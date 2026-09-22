@@ -569,9 +569,10 @@ function Nock:HandleSlashCommand(input)
     if #out == 0 then out[1] = "(no output)" end
     if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox("> " .. code .. "\n" .. table.concat(out, "\n"))
     else self:Print(table.concat(out, "\n")) end
-  elseif input == "probe" or input == "probe spells" or input == "probe frames" then
+  elseif input == "probe" or input:match("^probe%s") then
     local pr = self:GetModule("ForeverProbe", true)
-    if pr and pr.Show then pr:Show(input:match("probe%s+(%w+)")) else self:Print("Probe is only available on WoW Forever.") end
+    local which, rest = input:match("^probe%s+(%w+)%s*(.*)$")
+    if pr and pr.Show then pr:Show(which, rest) else self:Print("Probe is only available on WoW Forever.") end
   elseif input == "lock" then
     self:SetLocked(true)
     self:Print("All Nock frames locked.")

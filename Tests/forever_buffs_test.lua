@@ -29,6 +29,21 @@ dofile("Core/State.lua")
 dofile("Forever/Spells.lua")
 dofile("Forever/Buffs.lua")
 local B = module
+-- The shipped catalog holds only what the client's aura container cannot
+-- draw: buffs living on the pet. The engine tests below run on a fuller
+-- list so seeds, learning, permanents and procs stay covered.
+local shipped = {}
+for _, b in ipairs(Nock.Spells.BUFFS) do shipped[#shipped + 1] = b.id end
+table.sort(shipped)
+ok(table.concat(shipped, ",") == "136,6991", "shipped ledger list = Mend Pet + Feed Pet only, got " .. table.concat(shipped, ","))
+Nock.Spells.BUFFS = {
+  { id = 3045,    key = "RF",    dur = 15 },
+  { id = 1259799, key = "Elune", dur = nil },
+  { id = 20580,   key = "Meld",  dur = nil },
+  { id = 136,  key = "Mend", dur = nil, units = { "pet" } },
+  { id = 6991, key = "Feed", dur = nil, units = { "pet", "player" }, aura = 1539 },
+  { id = 6150, key = "Quick", dur = nil },
+}
 ok(B and B.name == "BuffLedger" and B.refreshInterval == 0.1, "module BuffLedger on the slow lane")
 B:OnEnable()
 local st = Nock.state
@@ -89,6 +104,29 @@ fire("UNIT_SPELLCAST_SUCCEEDED", "target", "g", 3045)
 fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 42)
 B:Refresh(st)
 ok(lb.n == 1, "ignored casts")
+
+-- A proc (Quick Shots, no cast to stamp): shown from the cache out of
+-- combat (dummies are not combat on Forever), nothing in combat until the
+-- aura-container row exists.
+secretAuras = false
+now = 350
+cache["player6150"] = { duration = 12, expirationTime = 360 }
+B:Refresh(st)
+local quick
+for i = 1, lb.n do if lb[i].icon == 1000 + 6150 then quick = lb[i] end end
+ok(quick and quick.exp == 360 and quick.dur == 12, "Quick Shots published from the cache out of combat")
+cache["player6150"] = nil
+secretAuras = true
+now = 355
+B:Refresh(st)
+quick = nil
+for i = 1, lb.n do if lb[i].icon == 1000 + 6150 then quick = lb[i] end end
+ok(quick and quick.exp == 360, "a proc seen before combat keeps counting down into it")
+now = 365
+B:Refresh(st)
+quick = nil
+for i = 1, lb.n do if lb[i].icon == 1000 + 6150 then quick = lb[i] end end
+ok(quick == nil, "no cast, no stamp: a proc that fires in combat is not shown")
 
 -- Pet buffs: Mend Pet and Feed Pet are cast on the player but live on the
 -- pet, so they are learned from the pet's auras (Feed Pet's buff is a
