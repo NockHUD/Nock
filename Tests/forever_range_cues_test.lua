@@ -44,6 +44,37 @@ p.soundCuesEnabled = false
 ok(P("SWEET", "CLOSE", p) == nil, "master switch off: silent")
 p.soundCuesEnabled = true
 
+-- Gates: where a cue may play. A ladder: Solo = always, Party = only
+-- grouped (party or raid), Raid = only in a raid. Unset = Solo.
+local G = R.GateAllows
+ok(G("solo", "solo") and G("solo", "party") and G("solo", "raid"), "Solo (always): everywhere")
+ok(not G("party", "solo") and G("party", "party") and G("party", "raid"), "Party: grouped only")
+ok(not G("raid", "solo") and not G("raid", "party") and G("raid", "raid"), "Raid: raids only")
+ok(G(nil, "solo") and G("junk", "solo"), "unset or unknown: Solo")
+p.cueDeadZoneGate = "raid"
+ok(P("SWEET", "CLOSE", p, "solo") == nil and P("SWEET", "CLOSE", p, "party") == nil, "a raid-gated cue is silent alone and in a party")
+ok(P("SWEET", "CLOSE", p, "raid") == R.CUES.CLOSE, "and speaks in a raid")
+p.cueDeadZoneGate = nil
+ok(P("SWEET", "CLOSE", p, "solo") == R.CUES.CLOSE and P("SWEET", "CLOSE", p) == R.CUES.CLOSE, "unset gate: speaks anywhere, context or not")
+ok(R.CUES.CLOSE.gate == "cueDeadZoneGate" and R.CUES.MELEE.gate == "cueMeleeGate" and R.CUES.SWEET.gate == "cueInRangeGate" and R.CUES.LONG.gate == "cueOutOfRangeGate", "each cue names its gate key")
+
+-- The group context reader: the Mainline pair first, the Classic counts
+-- as the fallback (IsInRaid has lied on Anniversary).
+_G.IsInRaid, _G.IsInGroup = function() return false end, function() return false end
+ok(R.GroupContext() == "solo", "alone")
+_G.IsInGroup = function() return true end
+ok(R.GroupContext() == "party", "in a party")
+_G.IsInRaid = function() return true end
+ok(R.GroupContext() == "raid", "in a raid")
+_G.IsInRaid, _G.IsInGroup = nil, nil
+_G.GetNumRaidMembers, _G.GetNumPartyMembers = function() return 0 end, function() return 3 end
+ok(R.GroupContext() == "party", "fallback counts: party")
+_G.GetNumRaidMembers = function() return 25 end
+ok(R.GroupContext() == "raid", "fallback counts: raid")
+_G.GetNumRaidMembers, _G.GetNumPartyMembers = nil, nil
+ok(R.GroupContext() == "solo", "no API at all: solo")
+p.soundCuesEnabled = true
+
 -- Refresh: settle, then play through LSM on the dead-zone channel.
 R:OnEnable()
 local st = { target = { rangeState = "SWEET" } }

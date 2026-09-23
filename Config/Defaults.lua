@@ -264,6 +264,8 @@ Nock.Defaults = {
     warnPetMissingEnabled = true,     -- in combat with no pet out
     warnPetUnhappyEnabled = true,     -- pet happiness at Unhappy
     warnPetLowHpEnabled   = true,     -- pet HP below mendPetThreshold (client-decided square)
+    warnNotAttackingEnabled = true,   -- in combat on a live hostile target with both auto-attacks off
+    warnNotInRangeEnabled   = true,   -- the target sits where the attack in use cannot reach it
     warnFDResistEnabled  = true,
     warnFDResistTimeout  = 5,         -- seconds the resist warning stays visible
     warnFDResistSound    = "None",    -- LSM "sound" name; "None" = silent
@@ -807,6 +809,12 @@ Nock.Defaults = {
     -- proportions hold: small labels stay 2 under, slot text keeps tracking
     -- the icon edge, grid text shifts off its own overlay size.
     reactFontSize        = 9,
+    reactFontStyle       = "OUTLINE",   -- NONE / OUTLINE / THICKOUTLINE on every React text
+    reactFontShadow      = false,       -- 1 px black drop shadow under the React text
+    reactTextOffsetY     = 0,           -- vertical nudge (px) for the buff row's countdown numbers
+    reactTextOffsetX     = 0,           -- horizontal nudge (px), same numbers
+    reactCdFontSize      = 10,          -- the cooldown grid's text size (reference: the overlay size)
+    reactCdWholeSeconds  = false,       -- cooldown grid countdowns in whole seconds under 10 s (reference: tenths)
     reactAutoH           = 14,          -- auto bar height px
     reactMeleeH          = 12,          -- melee bar height px
     reactRangeH          = 12,          -- range bar height px
@@ -1265,8 +1273,31 @@ Nock.Defaults = {
 -- Core/Flavor.lua before this file). Anniversary never enters this block.
 if Nock.Flavor and Nock.Flavor.forever then
   local p = Nock.Defaults.profile
-  p.warningLabelFont  = "Nock Plex Sans SemiBold"  -- the HUD's own face (UI/Skin.lua registers it with LSM)
+  p.warningLabelFont  = "Nock Lemon Milk Bold"   -- LEMON MILK (uppercase display face) for the alert labels
   p.warningLabelStyle = "THICKOUTLINE"
+  p.reactFont         = "Nock Lemon Milk Bold"   -- and for the HUD's numbers and labels
+  -- The Forever HUD baseline (user, 2026-09-23): the reference skin with
+  -- Solid bars, the face at 8 px under an outline and a drop shadow, a
+  -- thinner melee bar, taller range and cast bars, both corner icons on.
+  p.reactBarTexture   = "Solid"
+  p.reactFontSize     = 8
+  p.reactFontStyle    = "OUTLINE"
+  p.reactFontShadow   = true
+  p.reactTextOffsetY  = 0
+  p.reactTextOffsetX  = 1        -- the face's digits lean left in a tile (user, 2026-09-23)
+  p.reactAutoH        = 14
+  p.reactMeleeH       = 8
+  p.reactRangeH       = 14
+  p.reactManaH        = 12
+  p.reactCastH        = 17
+  p.reactCornerIconSize = 42
+  p.reactCornerIconX  = 30
+  p.reactCornerIconY  = 50
+  p.reactShowAspectIcon = true
+  p.reactShowMarkIcon   = true
+  p.reactCdFontSize     = 14       -- the grid digits read at 14 (user, 2026-09-23)
+  p.reactCdWholeSeconds = true
+  p.reactTickWindupWidth = 2      -- the spell-queue mark (Forever's name for the wind-up mark) at 2 px
   -- Spoken range cues (Forever/RangeCues.lua): one master switch, the dead
   -- zone on, the rest off; each with Nock's own clip preselected.
   p.soundCuesEnabled     = true
@@ -1279,6 +1310,13 @@ if Nock.Flavor and Nock.Flavor.forever then
   p.cueOutOfRangeEnabled = false
   p.cueOutOfRangeSound   = "Nock Out of Range"
   p.cueRepeatSeconds     = 4       -- the same zone's cue not again within this many seconds
+  -- Where each cue may play: "solo" always, "party" grouped only, "raid"
+  -- raids only. Raid is the baseline (user, 2026-09-23): the cues are a
+  -- raid tool, not a levelling companion.
+  p.cueDeadZoneGate      = "raid"
+  p.cueMeleeGate         = "raid"
+  p.cueInRangeGate       = "raid"
+  p.cueOutOfRangeGate    = "raid"
 end
 
 function Nock:GetDefaultPosition()

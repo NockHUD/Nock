@@ -49,6 +49,113 @@ dofile("UI/Widgets.lua")
 local Paint = Nock.UI.PaintReactSlot
 ok(type(Paint) == "function", "Nock.UI.PaintReactSlot exists")
 
+-- The React text style readers: reference look by default, every value
+-- reachable, the shadow applied and cleared.
+do
+  Nock.db = Nock.db or { profile = {} }
+  local p = Nock.db.profile
+  p.reactFontStyle, p.reactFontShadow, p.reactTextOffsetY = nil, nil, nil
+  ok(Nock.UI.GetReactFontStyle() == "OUTLINE" and Nock.UI.GetReactTextOffsetY() == 0, "reference: outline, no nudge")
+  p.reactFontStyle = "NONE"; ok(Nock.UI.GetReactFontStyle() == "", "None -> no flags")
+  p.reactFontStyle = "THICKOUTLINE"; ok(Nock.UI.GetReactFontStyle() == "THICKOUTLINE", "thick outline")
+  p.reactFontStyle = "junk"; ok(Nock.UI.GetReactFontStyle() == "OUTLINE", "unknown -> outline")
+  p.reactTextOffsetY = -2; ok(Nock.UI.GetReactTextOffsetY() == -2, "nudge read")
+  ok(Nock.UI.GetReactTextOffsetX() == 0, "reference: no horizontal nudge")
+  p.reactTextOffsetX = 1; ok(Nock.UI.GetReactTextOffsetX() == 1, "horizontal nudge read")
+  -- The tile countdown follows both nudges: a centred string moves its
+  -- centre, a boxed one (the client row) moves both corners. Re-anchored
+  -- only when the nudge changes.
+  local function fs()
+    local f = { pts = {}, SetFont = function() return true end, GetFont = function() return "p", 9, "" end,
+                SetShadowColor = function() end, SetShadowOffset = function() end }
+    function f:ClearAllPoints() self.cleared = (self.cleared or 0) + 1 end
+    function f:SetPoint(p, rel, rp, x, y) self.pts[#self.pts + 1] = { p, x, y } end
+    return f
+  end
+  local slot = { SetSize = function() end, time = fs(), label = fs() }
+  p.reactTextOffsetX, p.reactTextOffsetY = 1, -2
+  Nock.UI.SetReactSlotSize(slot, 24)
+  ok(slot.time.cleared == 1 and slot.time.pts[1][1] == "CENTER" and slot.time.pts[1][2] == 1 and slot.time.pts[1][3] == -2, "centred countdown: nudged centre")
+  Nock.UI.SetReactSlotSize(slot, 24)
+  ok(slot.time.cleared == 1, "same nudge: not re-anchored")
+  local boxed = { SetSize = function() end, time = fs(), label = fs(), _timeBoxed = true }
+  Nock.UI.SetReactSlotSize(boxed, 24)
+  ok(boxed.time.pts[1][1] == "TOPLEFT" and boxed.time.pts[1][2] == 1 and boxed.time.pts[1][3] == -2 and boxed.time.pts[2][1] == "BOTTOMRIGHT" and boxed.time.pts[2][2] == 1 and boxed.time.pts[2][3] == -2, "boxed countdown: both corners nudged")
+  p.reactTextOffsetX, p.reactTextOffsetY = nil, nil
+  Nock.UI.SetReactSlotSize(slot, 24)
+  ok(slot.time.cleared == 2 and slot.time.pts[2][2] == 0 and slot.time.pts[2][3] == 0, "back to reference: re-centred")
+  local sh = { SetShadowColor = function(self, r, g, b, a) self.c = { r, g, b, a } end, SetShadowOffset = function(self, x, y) self.o = { x, y } end }
+  p.reactFontShadow = true; Nock.UI.ApplyReactTextShadow(sh)
+  ok(sh.o[1] == 1 and sh.o[2] == -1 and sh.c[4] == 1, "shadow on: 1 px black, down-right")
+  p.reactFontShadow = false; Nock.UI.ApplyReactTextShadow(sh)
+  ok(sh.o[1] == 0 and sh.o[2] == 0, "shadow off: cleared")
+  p.reactFontStyle, p.reactFontShadow, p.reactTextOffsetY, p.reactTextOffsetX = nil, nil, nil, nil
+end
+
+-- The React cooldown grid's texts are React-scoped registry entries: the
+-- media refresh gives them the React face, size, style and shadow (they
+-- used to keep OUTLINE and no shadow whatever the skin said), and a slot
+-- built after the login refresh gets the same look at creation.
+do
+  Nock.Constants.FONT.PATH = "ref.ttf"
+  Nock.Constants.FONT.SIZE_OVERLAY = 10
+  local p = Nock.db.profile
+  local function fs()
+    local f = { calls = {} }
+    function f:SetFont(path, size, style) self.font = { path, size, style }; return true end
+    function f:GetFont() return "x", 1, "" end
+    function f:GetText() return "" end
+    function f:SetText() end
+    function f:SetShadowColor() end
+    function f:SetShadowOffset(x, y) self.shadow = { x, y } end
+    return f
+  end
+  local a, b = fs(), fs()
+  Nock.UI.RegisterFontString(a, "SIZE_OVERLAY", "OUTLINE", true)
+  Nock.UI.RegisterFontString(b, "SIZE_OVERLAY", "OUTLINE")
+  p.reactFontSize, p.reactFontStyle, p.reactFontShadow = 8, "NONE", true
+  Nock.UI.RefreshMedia()
+  ok(a.font[2] == 10 and a.font[3] == "" and a.shadow[1] == 1 and a.shadow[2] == -1, "React-scoped text: its own size (10 by default), the React style and shadow")
+  p.reactCdFontSize = 12
+  Nock.UI.RefreshMedia()
+  ok(a.font[2] == 12, "the cooldown grid's own font size")
+  p.reactCdFontSize = nil
+  ok(b.font[2] == 10 and b.font[3] == "OUTLINE" and b.shadow == nil, "global text: untouched by the React skin")
+  local c = fs()
+  Nock.UI.ApplyReactTextLook(c, "SIZE_OVERLAY")
+  ok(c.font[1] == "ref.ttf" and c.font[2] == 10 and c.font[3] == "" and c.shadow[1] == 1, "ApplyReactTextLook: the same look at creation")
+  p.reactFontSize, p.reactFontStyle, p.reactFontShadow = nil, nil, nil
+  Nock.UI.RefreshMedia()
+  ok(a.font[2] == 10 and a.font[3] == "OUTLINE" and a.shadow[1] == 0, "reference skin: outline, no shadow")
+end
+
+-- The cooldown grid's countdown text: tenths under 10 s by default (the
+-- reference), whole seconds on request; minutes from 90 s either way.
+do
+  local F = Nock.UI.FormatCooldownText
+  ok(F(0) == "" and F(-1) == "", "no cooldown: empty")
+  ok(F(2.34) == "2.3" and F(9.96) == "10.0", "tenths under 10 s")
+  ok(F(2.34, true) == "3" and F(0.2, true) == "1" and F(9.96, true) == "10", "whole seconds: rounded up, never 0")
+  ok(F(45.2) == "46" and F(45.2, true) == "46", "10..90 s: whole seconds either way")
+  ok(F(125) == "2m" and F(125, true) == "2m", "from 90 s: minutes")
+end
+
+-- SafeSetFont: the first successful user of a font path in the session
+-- bounces the size once (the first-use blank), later users set once.
+do
+  local calls = {}
+  local fs = { SetFont = function(self, path, size, style) calls[#calls + 1] = { path, size }; return true end }
+  Nock.UI.SafeSetFont(fs, "Media/X.otf", 12, "OUTLINE")
+  ok(#calls == 3 and calls[1][2] == 12 and calls[2][2] == 13 and calls[3][2] == 12, "first use of a path: size, size+1, size")
+  calls = {}
+  Nock.UI.SafeSetFont(fs, "Media/X.otf", 12, "OUTLINE")
+  ok(#calls == 1, "a warm path sets once")
+  calls = {}
+  local bad = { SetFont = function(self, path, size, style) calls[#calls + 1] = { path, size }; return path ~= "Media/Missing.otf" end }
+  Nock.UI.SafeSetFont(bad, "Media/Missing.otf", 12, "OUTLINE")
+  ok(calls[#calls][1] ~= "Media/Missing.otf", "a refused path falls back to the stock font")
+end
+
 -- Recording stand-ins. `sets` counts SetText calls so an idle repaint can be
 -- proven free, not merely correct.
 local function fontString()

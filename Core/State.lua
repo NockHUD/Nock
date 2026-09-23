@@ -135,6 +135,9 @@ Nock.state = {
     swingStart     = 0,
     swingDuration  = 2.6,
     swingRemaining = 0,
+    -- Melee auto-attack toggled on (the client's PLAYER_ENTER_COMBAT /
+    -- PLAYER_LEAVE_COMBAT pair; Forever/SwingTimer.lua keeps it, TBC leaves it).
+    attacking      = false,
   },
   network = {
     latencyMs = 0,

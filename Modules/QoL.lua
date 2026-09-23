@@ -4,6 +4,68 @@
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 local QoL = Nock:NewModule("QoL", "AceEvent-3.0", "AceTimer-3.0", "AceConsole-3.0")
 
+-- Camera & world quick toggles (Utilities -> Quality of life). These are the
+-- client's own CVars, read and written live: the client keeps them per
+-- character, so Nock stores nothing and never re-applies. Pure over
+-- GetCVar/SetCVar so the page can be tested without a client.
+local QoLCvar = {
+  FOG    = "volumeFog",                    -- 1 on, 0 off
+  CAMERA = "cameraSmoothStyle",            -- Blizzard's "Camera Following Style"
+  ZOOM   = "cameraDistanceMaxZoomFactor",  -- 1.0 .. the client's cap (2.6 on this client, 4 on old ones)
+  CAMERA_STYLES = {
+    ["0"] = "Never adjust camera",
+    ["1"] = "Adjust camera only horizontally when moving",
+    ["4"] = "Adjust camera only when moving",
+    ["2"] = "Always adjust camera",
+  },
+  CAMERA_ORDER   = { "0", "1", "4", "2" },
+  CAMERA_DEFAULT = "4",
+  ZOOM_NEAR = 1.9,   -- Blizzard's default
+  ZOOM_FAR  = 2.6,   -- the far cap on this client
+}
+Nock.QoLCvar = QoLCvar
+
+local function cvarGet(name)
+  local G = _G.GetCVar
+  if not G then return nil end
+  local okc, v = pcall(G, name)
+  return okc and v or nil
+end
+
+local function cvarSet(name, value)
+  local S = _G.SetCVar
+  if S then pcall(S, name, value) end
+end
+
+function QoLCvar.GetBool(name)
+  local v = cvarGet(name)
+  return v == "1" or v == 1 or v == true
+end
+
+function QoLCvar.SetBool(name, on)
+  cvarSet(name, on and "1" or "0")
+end
+
+function QoLCvar.GetChoice(name, choices)
+  local v = cvarGet(name)
+  v = v ~= nil and tostring(v) or nil
+  if v and choices[v] then return v end
+  return QoLCvar.CAMERA_DEFAULT
+end
+
+function QoLCvar.SetChoice(name, value)
+  cvarSet(name, tostring(value))
+end
+
+function QoLCvar.GetNumber(name, fallback)
+  local v = tonumber(cvarGet(name))
+  return v or fallback
+end
+
+function QoLCvar.SetNumber(name, value)
+  cvarSet(name, ("%.1f"):format(tonumber(value) or 0))
+end
+
 local SELL_BATCH, SELL_GAP = 8, 0.25   -- items per pass, seconds between passes
 
 local function profile()
@@ -16,7 +78,7 @@ end
 -- ---------------------------------------------------------------------------
 local function numSlots(bag)
   if C_Container and C_Container.GetContainerNumSlots then return C_Container.GetContainerNumSlots(bag) or 0 end
-  if GetContainerNumSlots then return GetContainerNumSlots(bag) or 0 end
+  if _G.GetContainerNumSlots then return _G.GetContainerNumSlots(bag) or 0 end
   return 0
 end
 
@@ -26,8 +88,8 @@ local function slotInfo(bag, slot)
     local info = C_Container.GetContainerItemInfo(bag, slot)
     if not info then return nil end
     return info.quality, info.stackCount or 1, info.hyperlink, info.isLocked or false
-  elseif GetContainerItemInfo then
-    local _, count, locked, quality, _, _, link = GetContainerItemInfo(bag, slot)
+  elseif _G.GetContainerItemInfo then
+    local _, count, locked, quality, _, _, link = _G.GetContainerItemInfo(bag, slot)
     if not count then return nil end
     return quality, count, link, locked or false
   end
@@ -36,7 +98,7 @@ end
 
 local function useSlot(bag, slot)
   if C_Container and C_Container.UseContainerItem then C_Container.UseContainerItem(bag, slot)
-  elseif UseContainerItem then UseContainerItem(bag, slot) end
+  elseif _G.UseContainerItem then _G.UseContainerItem(bag, slot) end
 end
 
 local function sellPrice(link)
@@ -47,7 +109,7 @@ local function sellPrice(link)
 end
 
 local function moneyText(copper)
-  if GetCoinTextureString then return GetCoinTextureString(copper) end
+  if _G.GetCoinTextureString then return _G.GetCoinTextureString(copper) end
   local g = math.floor(copper / 10000)
   local s = math.floor((copper % 10000) / 100)
   local c = copper % 100

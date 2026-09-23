@@ -17,6 +17,10 @@ function SwingTimer:OnEnable()
   self:RegisterEvent("PLAYER_SWING")
   self:RegisterEvent("START_AUTOREPEAT_SPELL")
   self:RegisterEvent("STOP_AUTOREPEAT_SPELL")
+  -- Melee auto-attack on/off (despite the names these are the attack toggle,
+  -- not combat state); the "not attacking" warning reads state.melee.attacking.
+  self:RegisterEvent("PLAYER_ENTER_COMBAT")
+  self:RegisterEvent("PLAYER_LEAVE_COMBAT")
   self:RegisterEvent("PLAYER_ENTERING_WORLD")
   self:RegisterEvent("PLAYER_TARGET_CHANGED")
   self:RegisterEvent("CVAR_UPDATE")
@@ -119,11 +123,20 @@ function SwingTimer:STOP_AUTOREPEAT_SPELL()
   Nock.state.ranged.repeating = false
 end
 
+function SwingTimer:PLAYER_ENTER_COMBAT()
+  Nock.state.melee.attacking = true
+end
+
+function SwingTimer:PLAYER_LEAVE_COMBAT()
+  Nock.state.melee.attacking = false
+end
+
 function SwingTimer:PLAYER_ENTERING_WORLD()
   -- A loading screen can eat STOP_AUTOREPEAT_SPELL; a stranded `repeating`
   -- would keep the auto bar full (see Nock.AutoSwingLive).
   Nock.state.ranged.repeating = false
   Nock.state.ranged.autoDelay = 0
+  Nock.state.melee.attacking = false
 end
 
 -- The tick calls this on the TBC module after a speed poll; on Forever the

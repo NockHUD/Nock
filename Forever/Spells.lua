@@ -7,7 +7,8 @@
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 
 local Spells = {
-  AUTO_SHOT = 75,      -- same ID on every client
+  AUTO_SHOT = 75,
+  ATTACK    = 6603,    -- melee Attack (the IsCurrentSpell probe for the auto-attack toggle)
   RAPTOR_STRIKE = 2973, -- rank 1; the melee range probe (IsSpellInRange)
   HUNTERS_MARK = 1130,  -- rank 1 (ranks map to it through C_Spell.GetBaseSpell)
   HUNTERS_MARK_DURATION = 120,

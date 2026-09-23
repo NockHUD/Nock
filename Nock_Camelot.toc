@@ -68,6 +68,7 @@ Forever\Probe.lua
 Forever\Warnings.lua
 Forever\RangeCues.lua
 Modules\ProfileShare.lua
+Modules\QoL.lua
 Modules\AggroWarning.lua
 
 UI\Frame_ReactCluster.lua

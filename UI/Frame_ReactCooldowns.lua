@@ -41,11 +41,10 @@ local function slotActive(key)
   return (cd.remaining or 0) > 0 or cd.procActive == true or (cd.buffRemaining or 0) > 0
 end
 
+-- Nock.UI.FormatCooldownText: tenths under 10 s (the reference) or whole
+-- seconds (reactCdWholeSeconds).
 local function formatCD(remaining)
-  if remaining <= 0 then return "" end
-  if remaining < 10 then return ("%.1f"):format(remaining) end
-  if remaining < 90 then return ("%d"):format(math.ceil(remaining)) end
-  return ("%dm"):format(math.floor(remaining / 60))
+  return Nock.UI.FormatCooldownText(remaining, profile().reactCdWholeSeconds == true)
 end
 
 -- Effective key list for a row: the user's reactCdRows override (React HUD

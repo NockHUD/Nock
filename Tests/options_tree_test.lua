@@ -404,9 +404,12 @@ ok(raSkin.reactRangeDividerWidth and raSkin.reactColorRangeDivider
    "react: divider knobs grey out off React mode")
 -- Reset must write the divider keys back too (SKIN_REFERENCE membership —
 -- a key missing there reads nil after reset until /reload).
+Nock.db.profile.reactFontStyle, Nock.db.profile.reactFontShadow, Nock.db.profile.reactTextOffsetY, Nock.db.profile.reactTextOffsetX = "NONE", true, 3, 2
 pcall(raSkin.resetSkin and raSkin.resetSkin.func or function() end)
 ok(Nock.db.profile.reactRangeDividerWidth == 1,
    "react: reset restores divider width 1")
+ok(Nock.db.profile.reactFontStyle == "OUTLINE" and Nock.db.profile.reactFontShadow == false and Nock.db.profile.reactTextOffsetY == 0 and Nock.db.profile.reactTextOffsetX == 0,
+   "react: reset restores the text style keys")
 local dc = Nock.db.profile.reactColorRangeDivider
 ok(type(dc) == "table" and dc[1] == 1 and dc[4] == 0.9,
    "react: reset restores divider colour (white @ 0.9)")
@@ -686,7 +689,7 @@ ok(raGrid.kcHeader.order < raGrid.reactKcProcGlow.order
    "react tabGrid: the KC block sits between the grid rows and the custom entries")
 onlyKeys(raBuff, { "buffHeader", "sharedNote", "reactBuffRows", "reactBuffPositional", "reactBuffFrenzyMode", "customHeader", "customNote",
   "addBuffId", "addBuffBtn" }, "react tabBuff", { "rb_en_", "rbc_" })
-onlyKeys(raSkin, { "skinHeader", "skinNote", "reactBarTexture", "reactFont", "reactFontSize",
+onlyKeys(raSkin, { "skinHeader", "skinNote", "reactBarTexture", "reactFont", "reactFontSize", "reactFontStyle", "reactFontShadow", "reactTextOffsetY", "reactTextOffsetX", "reactCdFontSize", "reactCdWholeSeconds",
   "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH",
   "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY",
   "reactColorAutoFill", "reactColorMeleeReady", "reactColorMeleeAuto", "reactColorManaFill", "reactColorManaTick",

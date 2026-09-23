@@ -95,8 +95,11 @@ function ReactCastBar:ApplyLayout()
   self.bar.fill:SetTexture(Nock.UI.GetReactBarTexture() or WHITE8X8)
   local font = Nock.UI.GetReactFont() or C.FONT.PATH
   local size = math.max(6, REACT.FONT + Nock.UI.GetReactFontDelta())
-  Nock.UI.SafeSetFont(self.bar.nameText, font, size, "OUTLINE")
-  Nock.UI.SafeSetFont(self.bar.timeText, font, size, "OUTLINE")
+  local style = Nock.UI.GetReactFontStyle()
+  Nock.UI.SafeSetFont(self.bar.nameText, font, size, style)
+  Nock.UI.SafeSetFont(self.bar.timeText, font, size, style)
+  Nock.UI.ApplyReactTextShadow(self.bar.nameText)
+  Nock.UI.ApplyReactTextShadow(self.bar.timeText)
 end
 
 -- Recolour the fill when the source flips between a real cast and the Auto

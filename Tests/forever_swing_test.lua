@@ -51,6 +51,16 @@ ok(st.ranged.repeating == true, "auto-repeat on")
 fire("STOP_AUTOREPEAT_SPELL")
 ok(st.ranged.repeating == false, "auto-repeat off")
 
+-- Melee auto-attack: the client's toggle events (not combat state).
+ok(module.events["PLAYER_ENTER_COMBAT"] and module.events["PLAYER_LEAVE_COMBAT"], "melee toggle events registered")
+fire("PLAYER_ENTER_COMBAT")
+ok(st.melee.attacking == true, "melee auto-attack on")
+fire("PLAYER_LEAVE_COMBAT")
+ok(st.melee.attacking == false, "melee auto-attack off")
+fire("PLAYER_ENTER_COMBAT")
+fire("PLAYER_ENTERING_WORLD")
+ok(st.melee.attacking == false, "a loading screen clears a stranded toggle")
+
 -- A haste change mid-swing arrives as the NEXT swing's duration; nothing to reanchor.
 now = 102.174
 fire("PLAYER_SWING", 1.553, 2)

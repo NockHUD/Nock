@@ -24,6 +24,24 @@ AuraRow.LINE_GAP = 2
 
 local SLOT_BG = { 0.08, 0.08, 0.08, 1 }
 
+-- The countdown as a bare number. The client's default binding prints
+-- "12 s"; a numeric rule formatter over the remaining duration (whole
+-- seconds, rounded up like the default) through the button's textFormat
+-- option prints "12". Built once; nil where the client lacks the APIs.
+function AuraRow.DurationFormat()
+  if AuraRow._durationFormat ~= nil then return AuraRow._durationFormat or nil end
+  local SU, E = _G.C_StringUtil, _G.Enum
+  local prop = E and E.DurationTextBindingProperty and E.DurationTextBindingProperty.RemainingDuration
+  local up = E and E.NumericRuleFormatRounding and E.NumericRuleFormatRounding.Up
+  if not (SU and SU.CreateNumericRuleFormatter and prop and up) then AuraRow._durationFormat = false; return nil end
+  local okc, f = pcall(SU.CreateNumericRuleFormatter)
+  if not (okc and f and f.AddBreakpoint) then AuraRow._durationFormat = false; return nil end
+  local okb = pcall(f.AddBreakpoint, f, { threshold = 0, step = 1, rounding = up, format = "%d" })
+  if not okb then AuraRow._durationFormat = false; return nil end
+  AuraRow._durationFormat = { textFormat = { formatString = "{}", components = { { property = prop, formatter = f } } } }
+  return AuraRow._durationFormat
+end
+
 -- One button in the HUD's tile look: black 1 px edge, dark ground, the icon
 -- inset one unit with the spell-icon crop, the countdown centred in the
 -- React font. `time`/`label` are named so SetReactSlotSize can size the
@@ -42,14 +60,22 @@ function AuraRow.Style(b, size)
   icon:SetPoint("TOPLEFT", b, "TOPLEFT", 1, -1)
   icon:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -1, 1)
   icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  -- The countdown fills the tile and centres inside it: the client sets
+  -- its text, so the string must not depend on its own measured size for
+  -- the centre (a self-sized string sat up-left, 2026-09-23).
   local time = b:CreateFontString(nil, "OVERLAY")
-  time:SetPoint("CENTER", b, "CENTER", 0, 0)
+  time:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
+  time:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 0)
+  time:SetJustifyH("CENTER")
+  time:SetJustifyV("MIDDLE")
   local label = b:CreateFontString(nil, "OVERLAY")
   label:SetPoint("BOTTOM", b, "BOTTOM", 0, 1)
   b.time, b.label = time, label
+  b._timeBoxed = true  -- SetReactSlotSize nudges both corners, not a centre
   if Nock.UI and Nock.UI.SetReactSlotSize then Nock.UI.SetReactSlotSize(b, size) else b:SetSize(size, size) end
   b:SetIcon(icon)
-  b:SetDurationText(time)
+  local fmt = AuraRow.DurationFormat()
+  if not (fmt and pcall(b.SetDurationText, b, time, fmt)) then b:SetDurationText(time) end
 end
 
 -- The container's width is a secret in combat, but the CLIENT places a frame

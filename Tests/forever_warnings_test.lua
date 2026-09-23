@@ -22,14 +22,15 @@ dofile("Forever/Spells.lua")
 dofile("Forever/Warnings.lua")
 local W = module
 ok(W and W.name == "Warnings" and W.refreshInterval == 0.1, "registers as Warnings on the slow lane")
-ok(#W.Catalog == 5 and W.Catalog[1].key == "ammo" and W.Catalog[2].key == "petDead" and W.Catalog[3].key == "petMissing" and W.Catalog[4].key == "petUnhappy", "five catalog entries")
+ok(#W.Catalog == 8 and W.Catalog[6].key == "notAttacking" and W.Catalog[7].key == "notInRange" and W.Catalog[7].category == "combat" and W.Catalog[8].key == "petAttack" and W.Catalog[8].category == "pet" and W.Catalog[1].key == "ammo" and W.Catalog[2].key == "petDead" and W.Catalog[3].key == "petMissing" and W.Catalog[4].key == "petUnhappy", "eight catalog entries")
 for _, e in ipairs(W.Catalog) do
   ok(e.category and e.name and e.severity and e.enabledKey and e.iconFn and e.description and e.logic, "catalog entry complete: " .. e.key)
   ok(type(e.iconFn()) == "number", "catalog icon resolves: " .. e.key)
 end
 
 local C = W.Checks
-local base = { ammoId = 2515, ammoCount = 716, ammoIcon = 5, petExists = true, petDead = false, happiness = 3, callPetKnown = true, inCombat = true }
+local base = { ammoId = 2515, ammoCount = 716, ammoIcon = 5, petExists = true, petDead = false, happiness = 3, callPetKnown = true, inCombat = true,
+               rangedOn = true, meleeOn = false, targetHostile = true, now = 100, zone = "SWEET", petTarget = true }
 local function with(t) local r = {}; for k, v in pairs(base) do r[k] = v end; for k, v in pairs(t) do r[k] = v end; return r end
 
 -- ammo
@@ -129,6 +130,85 @@ Nock.db.profile.warnPetLowHpEnabled = false
 ok(W:PetHpAlpha() == 0, "disabled: plain 0")
 Nock.db.profile.warnPetLowHpEnabled = nil
 ok(W.Catalog[5] and W.Catalog[5].key == "petLowHp" and W.Catalog[5].thresholds[1].key == "mendPetThreshold", "catalog: pet HP entry with the TBC threshold key")
+
+-- Not attacking: in combat with a live hostile target and neither auto-attack
+-- on, after a grace so a retarget or a melee swap never blinks it.
+ok(C.notAttacking(base) == nil, "Auto Shot on: quiet")
+ok(C.notAttacking(with({ rangedOn = false, meleeOn = true })) == nil, "melee auto-attack on: quiet")
+ok(C.notAttacking(with({ rangedOn = false, now = 100 })) == nil, "both off: quiet inside the grace")
+ok(C.notAttacking(with({ rangedOn = false, now = 101.4 })) == nil, "1.4 s: still inside the grace")
+local na = C.notAttacking(with({ rangedOn = false, now = 101.6 }))
+ok(na and na.id == "notAttacking" and na.severity == "red" and na.text == "ATTACK" and na.icon == 1000 + 75, "1.6 s: red ATTACK with the Auto Shot icon")
+ok(C.notAttacking(with({ rangedOn = true, now = 101.7 })) == nil, "Auto Shot back on: clears at once")
+ok(C.notAttacking(with({ rangedOn = false, now = 200 })) == nil, "off again: the grace restarts")
+ok(C.notAttacking(with({ rangedOn = false, now = 201.4 })) == nil and C.notAttacking(with({ rangedOn = false, now = 201.6 })) ~= nil, "and fires after it")
+ok(C.notAttacking(with({ rangedOn = false, targetHostile = false, now = 300 })) == nil and C.notAttacking(with({ rangedOn = false, targetHostile = false, now = 310 })) == nil, "no live hostile target: quiet, no grace running")
+ok(C.notAttacking(with({ rangedOn = false, inCombat = false, now = 320 })) == nil and C.notAttacking(with({ rangedOn = false, inCombat = false, now = 330 })) == nil, "out of combat: quiet")
+Nock.db.profile.warnNotAttackingEnabled = false
+ok(C.notAttacking(with({ rangedOn = false, now = 400 })) == nil and C.notAttacking(with({ rangedOn = false, now = 410 })) == nil, "disabled: quiet")
+Nock.db.profile.warnNotAttackingEnabled = nil
+ok(W.Catalog[6].enabledKey == "warnNotAttackingEnabled" and W.Catalog[6].iconFn() == 1000 + 75, "catalog: the toggle key and the Auto Shot icon")
+
+-- Not in range: the zone the range finder publishes against the attack in
+-- use. Ranged (Auto Shot on): the dead zone and out of range. Melee only:
+-- the dead zone. Neither on: quiet (the not-attacking square owns that).
+ok(C.notInRange(base) == nil, "shooting in the sweet spot: quiet")
+ok(C.notInRange(with({ zone = "CLOSE", now = 100 })) == nil, "dead zone: quiet inside the grace")
+local nr = C.notInRange(with({ zone = "CLOSE", now = 101.1 }))
+ok(nr and nr.id == "notInRange" and nr.severity == "amber" and nr.text == "DEAD ZONE" and nr.icon == 1000 + 75, "dead zone past the grace: amber DEAD ZONE")
+ok(C.notInRange(with({ zone = "LONG", now = 101.2 })).text == "RANGE", "out of range while shooting: RANGE, the grace carries over")
+ok(C.notInRange(with({ zone = "SWEET", now = 101.3 })) == nil, "back in range: clears at once")
+ok(C.notInRange(with({ zone = "MELEE", now = 110 })) == nil and C.notInRange(with({ zone = "MELEE", now = 120 })) == nil, "shooting in melee reach: quiet (the client refuses the shot, the auto bar shows it)")
+local m = { rangedOn = false, meleeOn = true }
+local function melee(t) for k, v in pairs(m) do t[k] = v end; return with(t) end
+ok(C.notInRange(melee({ zone = "LONG", now = 200 })) == nil and C.notInRange(melee({ zone = "LONG", now = 210 })) == nil, "meleeing out of range: quiet")
+ok(C.notInRange(melee({ zone = "MELEE", now = 220 })) == nil, "meleeing in reach: quiet")
+ok(C.notInRange(melee({ zone = "CLOSE", now = 230 })) == nil and C.notInRange(melee({ zone = "CLOSE", now = 231.1 })).text == "DEAD ZONE", "meleeing in the dead zone: DEAD ZONE after the grace")
+ok(C.notInRange(with({ rangedOn = true, meleeOn = true, zone = "MELEE", now = 240 })) == nil and C.notInRange(with({ rangedOn = true, meleeOn = true, zone = "MELEE", now = 250 })) == nil, "both on in melee reach: the swing lands, quiet")
+ok(C.notInRange(with({ rangedOn = false, meleeOn = false, zone = "LONG", now = 300 })) == nil and C.notInRange(with({ rangedOn = false, meleeOn = false, zone = "LONG", now = 310 })) == nil, "neither auto-attack on: quiet")
+ok(C.notInRange(with({ zone = nil, now = 320 })) == nil and C.notInRange(with({ zone = nil, now = 330 })) == nil, "no zone: quiet")
+ok(C.notInRange(with({ zone = "LONG", inCombat = false, now = 340 })) == nil and C.notInRange(with({ zone = "LONG", inCombat = false, now = 350 })) == nil, "out of combat: quiet")
+Nock.db.profile.warnNotInRangeEnabled = false
+ok(C.notInRange(with({ zone = "LONG", now = 400 })) == nil and C.notInRange(with({ zone = "LONG", now = 410 })) == nil, "disabled: quiet")
+Nock.db.profile.warnNotInRangeEnabled = nil
+
+-- Pet not attacking: in combat with a living pet that has no target, past
+-- a grace (the order lands a beat after the pull). Same key as TBC.
+ok(C.petAttack(base) == nil, "pet on a target: quiet")
+ok(C.petAttack(with({ petTarget = false, now = 100 })) == nil, "pet idle: quiet inside the grace")
+local pi = C.petAttack(with({ petTarget = false, now = 101.6 }))
+ok(pi and pi.id == "petAttack" and pi.severity == "amber" and pi.text == "PET IDLE" and type(pi.icon) == "number", "pet idle past the grace: amber PET IDLE")
+ok(C.petAttack(with({ petTarget = true, now = 101.7 })) == nil, "pet sent in: clears at once")
+ok(C.petAttack(with({ petTarget = nil, now = 200 })) == nil and C.petAttack(with({ petTarget = nil, now = 210 })) == nil, "a secret answer: quiet")
+ok(C.petAttack(with({ petTarget = false, petExists = false, now = 220 })) == nil and C.petAttack(with({ petTarget = false, petExists = false, now = 230 })) == nil, "no pet: quiet (the no-pet square owns it)")
+ok(C.petAttack(with({ petTarget = false, petDead = true, now = 240 })) == nil and C.petAttack(with({ petTarget = false, petDead = true, now = 250 })) == nil, "dead pet: quiet")
+ok(C.petAttack(with({ petTarget = false, inCombat = false, now = 260 })) == nil and C.petAttack(with({ petTarget = false, inCombat = false, now = 270 })) == nil, "out of combat: quiet")
+Nock.db.profile.warnPetAttackEnabled = false
+ok(C.petAttack(with({ petTarget = false, now = 300 })) == nil and C.petAttack(with({ petTarget = false, now = 310 })) == nil, "disabled: quiet")
+Nock.db.profile.warnPetAttackEnabled = nil
+ok(W.Catalog[8].enabledKey == "warnPetAttackEnabled", "catalog: TBC's toggle key")
+
+-- The live reads carry both auto-attack toggles and the target from state.
+do
+  local st = { player = { inCombat = true }, ranged = { repeating = true }, melee = { attacking = false },
+               target = { exists = true, alive = true, friendly = false } }
+  st.target.rangeState = "CLOSE"
+  local r = W:Reads(st)
+  ok(r.rangedOn == true and r.meleeOn == false and r.targetHostile == true and r.now == now and r.zone == "CLOSE", "reads: toggles, a live hostile target and its zone")
+  st.target.friendly = true
+  ok(W:Reads(st).targetHostile == false, "reads: a friendly target is not hostile")
+  st.target.friendly, st.target.alive = false, false
+  ok(W:Reads(st).targetHostile == false, "reads: a dead target is not hostile")
+  -- The pet's target: a plain false must survive the read (it is the idle case).
+  local saved = _G.UnitExists
+  _G.UnitExists = function(u) if u == "pet" then return true end return false end
+  ok(W:Reads(st).petTarget == false, "reads: pet without a target reads false, not nil")
+  _G.UnitExists = function(u) if u == "pet" then return true end return "SECRET" end
+  ok(W:Reads(st).petTarget == nil, "reads: a secret pet target reads nil")
+  _G.UnitExists = function(u) return true end
+  ok(W:Reads(st).petTarget == true, "reads: pet on a target reads true")
+  _G.UnitExists = saved
+end
 
 -- Call Pet knowledge falls back to the level.
 _G.C_SpellBook = nil

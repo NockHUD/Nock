@@ -143,6 +143,33 @@ ok(repaired == 0 and #prints == 0, "repair: nothing to repair is silent")
 reset()
 QoL:ApplyGlow()
 ok(cvars.ffxGlow == nil, "glow: off leaves the CVar alone at login")
+-- Camera & world quick toggles (Utilities -> Quality of life): live on the
+-- client's CVars, nothing in the profile. Pure helpers over the cvar table.
+do
+  local Q = Nock.QoLCvar
+  ok(type(Q) == "table" and Q.FOG == "volumeFog" and Q.CAMERA == "cameraSmoothStyle" and Q.ZOOM == "cameraDistanceMaxZoomFactor", "the three cvars by name")
+  cvars.volumeFog = "1"
+  ok(Q.GetBool(Q.FOG) == true, "fog on reads true")
+  Q.SetBool(Q.FOG, false)
+  ok(cvars.volumeFog == "0" and Q.GetBool(Q.FOG) == false, "fog off writes 0")
+  cvars.cameraSmoothStyle = "4"
+  ok(Q.GetChoice(Q.CAMERA, Q.CAMERA_STYLES) == "4", "camera style reads the client's value")
+  cvars.cameraSmoothStyle = "7"
+  ok(Q.GetChoice(Q.CAMERA, Q.CAMERA_STYLES) == "4", "an unknown camera value shows the client default")
+  Q.SetChoice(Q.CAMERA, "0")
+  ok(cvars.cameraSmoothStyle == "0", "camera style writes the chosen value")
+  ok(Q.CAMERA_STYLES["0"] and Q.CAMERA_STYLES["1"] and Q.CAMERA_STYLES["2"] and Q.CAMERA_STYLES["4"] and #Q.CAMERA_ORDER == 4, "the four following styles")
+  cvars.cameraDistanceMaxZoomFactor = "1.9"
+  ok(Q.GetNumber(Q.ZOOM, 1.9) == 1.9, "zoom factor reads")
+  Q.SetNumber(Q.ZOOM, 2.6)
+  ok(cvars.cameraDistanceMaxZoomFactor == "2.6", "zoom factor writes")
+  Q.SetNumber(Q.ZOOM, 2.3456)
+  ok(cvars.cameraDistanceMaxZoomFactor == "2.3", "zoom factor written to one decimal")
+  cvars.cameraDistanceMaxZoomFactor = "junk"
+  ok(Q.GetNumber(Q.ZOOM, 1.9) == 1.9, "an unreadable zoom shows the fallback")
+  ok(Q.ZOOM_NEAR == 1.9 and Q.ZOOM_FAR == 2.6, "the two presets: Blizzard's default and the far cap")
+end
+
 Nock.db.profile.qolNoGlow = true
 QoL:ApplyGlow()
 ok(cvars.ffxGlow == "0", "glow: on writes ffxGlow 0")

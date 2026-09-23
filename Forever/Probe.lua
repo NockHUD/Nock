@@ -54,6 +54,20 @@ function Probe:OnEnable()
   self:RegisterEvent("UNIT_SPELLCAST_START", "OnCast")
   self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", "OnCast")
   self:RegisterEvent("UNIT_SPELLCAST_STOP", "OnCast")
+  -- The melee auto-attack toggle pair (the "not attacking" warning's feed):
+  -- logged with the casts so one report shows whether they fire here.
+  self:RegisterEvent("PLAYER_ENTER_COMBAT", "OnAttackToggle")
+  self:RegisterEvent("PLAYER_LEAVE_COMBAT", "OnAttackToggle")
+  -- The pet's own pair, the fallback feed for the pet-idle warning should
+  -- UnitExists("pettarget") turn out secret.
+  self:RegisterEvent("PET_ATTACK_START", "OnAttackToggle")
+  self:RegisterEvent("PET_ATTACK_STOP", "OnAttackToggle")
+end
+
+function Probe:OnAttackToggle(event)
+  local C = self._casts
+  C[#C + 1] = { t = GetTime(), ev = event }
+  if #C > CAST_MAX then table.remove(C, 1) end
 end
 
 function Probe:OnCast(event, unit, castGUID, spellID, castBarID)
@@ -137,6 +151,15 @@ local function readRows()
   end
   if _G.CheckInteractDistance then try("CheckInteractDistance(3)", CheckInteractDistance, "target", 3) end
   if _G.C_Item and C_Item.IsItemInRange then try("IsItemInRange(8149)", C_Item.IsItemInRange, 8149, "target") end
+  -- The auto-attack toggles: the events' state and the polled fallback.
+  if _G.IsCurrentSpell and Nock.Spells then
+    try("IsCurrentSpell(Attack)", IsCurrentSpell, Nock.Spells.ATTACK)
+    try("IsCurrentSpell(AutoShot)", IsCurrentSpell, Nock.Spells.AUTO_SHOT)
+  end
+  if _G.UnitExists then try("UnitExists(pettarget)", UnitExists, "pettarget") end
+  try("state.ranged.repeating", function() return Nock.state.ranged.repeating end)
+  try("state.melee.attacking", function() return Nock.state.melee.attacking end)
+  try("state.target.exists/alive/friendly", function() local t = Nock.state.target; return ("%s/%s/%s"):format(tostring(t.exists), tostring(t.alive), tostring(t.friendly)) end)
   -- What the swing timer and the range finder currently believe.
   try("state.targetInRange", function() return Nock.state.ranged.targetInRange end)
   try("state.rangeState", function() return Nock.state.target.rangeState end)

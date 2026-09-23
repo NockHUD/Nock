@@ -35,6 +35,12 @@ if LSM then
   LSM:Register("sound", "Nock Windfury", [[Interface\AddOns\Nock\Media\NockWindfury.mp3]])
   -- The aggro cue's stock clip (Alerts -> Sounds -> Aggro), see ATTRIBUTION.md.
   LSM:Register("sound", "Nock Aggro", [[Interface\AddOns\Nock\Media\NockAggro.mp3]])
+  -- LEMON MILK (marsnev, donationware; uppercase only): the Forever HUD's
+  -- numbers, labels and warning labels. Registered on both clients so the
+  -- font pickers list it; the Forever defaults pick the Bold face.
+  LSM:Register("font", "Nock Lemon Milk",        [[Interface\AddOns\Nock\Media\LemonMilk-Regular.otf]])
+  LSM:Register("font", "Nock Lemon Milk Medium", [[Interface\AddOns\Nock\Media\LemonMilk-Medium.otf]])
+  LSM:Register("font", "Nock Lemon Milk Bold",   [[Interface\AddOns\Nock\Media\LemonMilk-Bold.otf]])
   -- The spoken range cues (Forever/RangeCues.lua; Alerts -> Sounds -> Range).
   LSM:Register("sound", "Nock Dead Zone",    [[Interface\AddOns\Nock\Media\NockDeadZone.mp3]])
   LSM:Register("sound", "Nock Melee",        [[Interface\AddOns\Nock\Media\NockMelee.mp3]])
@@ -122,6 +128,50 @@ end
 function Nock.UI.GetReactFontDelta()
   local v = tonumber(profile("reactFontSize", 9)) or 9
   return v - 9
+end
+
+-- The React text's outline flags ("" = none), its drop shadow and a vertical
+-- nudge for the bar labels. Reference look: OUTLINE, no shadow, 0.
+local REACT_STYLES = { NONE = "", OUTLINE = "OUTLINE", THICKOUTLINE = "THICKOUTLINE" }
+function Nock.UI.GetReactFontStyle()
+  local v = profile("reactFontStyle", "OUTLINE")
+  return REACT_STYLES[v] or "OUTLINE"
+end
+
+function Nock.UI.GetReactTextOffsetY()
+  return tonumber(profile("reactTextOffsetY", 0)) or 0
+end
+
+function Nock.UI.GetReactTextOffsetX()
+  return tonumber(profile("reactTextOffsetX", 0)) or 0
+end
+
+-- The cooldown grid's text has its own size (reference 10, the overlay
+-- size); it used to shift with the buff-row size, which reads differently
+-- on a bigger tile.
+function Nock.UI.GetReactCdFontSize()
+  return tonumber(profile("reactCdFontSize", C.FONT.SIZE_OVERLAY or 10)) or 10
+end
+
+-- The cooldown grid's countdown text. Tenths under 10 s is the reference
+-- look; `whole` prints whole seconds there too (rounded up, so a running
+-- cooldown never reads 0). Minutes from 90 s. Pure.
+function Nock.UI.FormatCooldownText(remaining, whole)
+  if not remaining or remaining <= 0 then return "" end
+  if remaining < 10 and not whole then return ("%.1f"):format(remaining) end
+  if remaining < 90 then return ("%d"):format(math.ceil(remaining)) end
+  return ("%dm"):format(math.floor(remaining / 60))
+end
+
+-- A 1 px black drop shadow when reactFontShadow is on; cleared when off.
+function Nock.UI.ApplyReactTextShadow(fs)
+  if not (fs and fs.SetShadowOffset) then return end
+  if profile("reactFontShadow", false) == true then
+    fs:SetShadowColor(0, 0, 0, 1)
+    fs:SetShadowOffset(1, -1)
+  else
+    fs:SetShadowOffset(0, 0)
+  end
 end
 
 -- Fluffy-scoped media (FluffyHUD tab → Skin): the React trio's exact shape on
@@ -482,15 +532,42 @@ end
 -- the cascade in applyHeaderFont so a bad LSM path can never leave a
 -- FontString blank. Also kicks a relayout via SetText (see kickRelayout) so a
 -- mid-life font change actually re-rasterizes.
+-- The first FontString to use a font FILE in a client session stays blank
+-- until its font really changes (same-args SetFont is a no-op); the first
+-- successful user of each path bounces the size once. The skin's own faces
+-- get the same in UI/Skin.lua; this covers every LSM-picked face (the React
+-- font, the warning labels). Ruling of 2026-09-23.
+local warmPaths = {}
+local function setFace(fs, path, size, style)
+  if not fs:SetFont(path, size, style) then return false end
+  if not warmPaths[path] then
+    warmPaths[path] = true
+    fs:SetFont(path, size + 1, style)
+    fs:SetFont(path, size, style)
+  end
+  return true
+end
+
 local function safeSetFont(fs, path, size, style)
   if not (fs and fs.SetFont) then return end
-  if path and fs:SetFont(path, size, style) then kickRelayout(fs); return end
+  if path and setFace(fs, path, size, style) then kickRelayout(fs); return end
   fs:SetFont(C.FONT.PATH, size, style)
   kickRelayout(fs)
 end
 -- Exported for the React views, which apply their own (reactFont-resolved)
 -- font outside the fontStrings registry but want the same bad-path cascade.
 Nock.UI.SafeSetFont = safeSetFont
+
+-- The React skin's text look on a React-scoped string (the React cooldown
+-- grid): reactFont when set, else the global face; the React size delta;
+-- the React style and shadow. Used by the media refresh and by the slot
+-- builder, so a slot created after the login refresh (the grid pools lazily)
+-- does not sit in the global font until the next settings change.
+function Nock.UI.ApplyReactTextLook(fs)
+  safeSetFont(fs, Nock.UI.GetReactFont() or Nock.UI.GetFont(),
+              math.max(6, Nock.UI.GetReactCdFontSize()), Nock.UI.GetReactFontStyle())
+  Nock.UI.ApplyReactTextShadow(fs)
+end
 
 function Nock.UI.RefreshMedia()
   for _, e in ipairs(barFills) do
@@ -499,12 +576,12 @@ function Nock.UI.RefreshMedia()
     end
   end
   local fontPath = Nock.UI.GetFont()
-  local reactFontPath = Nock.UI.GetReactFont()
-  local reactDelta = Nock.UI.GetReactFontDelta()
   for _, e in ipairs(fontStrings) do
-    local size = C.FONT[e.sizeKey] or C.FONT.SIZE_OVERLAY
-    if e.react then size = math.max(6, size + reactDelta) end
-    safeSetFont(e.fs, (e.react and reactFontPath) or fontPath, size, e.style)
+    if e.react then
+      Nock.UI.ApplyReactTextLook(e.fs)
+    else
+      safeSetFont(e.fs, fontPath, C.FONT[e.sizeKey] or C.FONT.SIZE_OVERLAY, e.style)
+    end
   end
   refreshHeaderFontStrings()
   for _, slot in ipairs(iconSlots) do
@@ -912,6 +989,11 @@ function Nock.UI.CreateIconSlot(parent, name, size, reactScoped)
   topText:SetTextColor(unpack(C.COLORS.TEXT))
   f.topText = topText
   Nock.UI.RegisterFontString(topText, "SIZE_OVERLAY", "OUTLINE", reactScoped)
+  if reactScoped then
+    Nock.UI.ApplyReactTextLook(cdText)
+    Nock.UI.ApplyReactTextLook(countText)
+    Nock.UI.ApplyReactTextLook(topText)
+  end
 
   -- Register for live border-refresh and apply the current border style.
   iconSlots[#iconSlots + 1] = f
@@ -1235,8 +1317,27 @@ function Nock.UI.SetReactSlotSize(slot, size)
   -- applies live.
   local font = Nock.UI.GetReactFont() or C.FONT.PATH
   local d = Nock.UI.GetReactFontDelta()
-  safeSetFont(slot.time,  font, math.max(6, timeSize + d),  "OUTLINE")
-  safeSetFont(slot.label, font, math.max(6, labelSize + d), "OUTLINE")
+  local style = Nock.UI.GetReactFontStyle()
+  safeSetFont(slot.time,  font, math.max(6, timeSize + d),  style)
+  safeSetFont(slot.label, font, math.max(6, labelSize + d), style)
+  Nock.UI.ApplyReactTextShadow(slot.time)
+  Nock.UI.ApplyReactTextShadow(slot.label)
+  -- The buff row's countdown nudge (a display face's digits can sit off
+  -- the box centre; the bar labels are fine and stay put): the reference
+  -- tile's centre anchor moves, a boxed countdown (the Forever client row,
+  -- slot._timeBoxed) moves both corners.
+  -- Re-anchored only on a change; 0/0 is the reference anchor exactly.
+  local ox, oy = Nock.UI.GetReactTextOffsetX(), Nock.UI.GetReactTextOffsetY()
+  if slot.time and slot.time.SetPoint and (slot._timeOffX ~= ox or slot._timeOffY ~= oy) then
+    slot._timeOffX, slot._timeOffY = ox, oy
+    slot.time:ClearAllPoints()
+    if slot._timeBoxed then
+      slot.time:SetPoint("TOPLEFT", slot, "TOPLEFT", ox, oy)
+      slot.time:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", ox, oy)
+    else
+      slot.time:SetPoint("CENTER", slot, "CENTER", ox, oy)
+    end
+  end
 end
 
 function Nock.UI.CreateReactSlot(parent, name, size)

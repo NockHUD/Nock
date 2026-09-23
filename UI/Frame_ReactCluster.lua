@@ -142,7 +142,8 @@ local function makeText(bar, size, point, x)
   fs:SetPoint(point, bar, point, x or 0, 0)
   fs:SetTextColor(unpack(REACT.TEXT))
   fs:SetText("")
-  mediaTexts[#mediaTexts + 1] = { fs = fs, size = size }
+  -- the anchor is kept so the skin's vertical nudge can re-place the text
+  mediaTexts[#mediaTexts + 1] = { fs = fs, size = size, bar = bar, point = point, x = x or 0 }
   return fs
 end
 
@@ -506,9 +507,11 @@ function ReactCluster:ApplyLayout()
   end
   local font = Nock.UI.GetReactFont() or C.FONT.PATH
   local delta = Nock.UI.GetReactFontDelta()
+  local style = Nock.UI.GetReactFontStyle()
   for i = 1, #mediaTexts do
     local e = mediaTexts[i]
-    Nock.UI.SafeSetFont(e.fs, font, math.max(6, e.size + delta), "OUTLINE")
+    Nock.UI.SafeSetFont(e.fs, font, math.max(6, e.size + delta), style)
+    Nock.UI.ApplyReactTextShadow(e.fs)
   end
 
   -- Melee takeover triangle runs: triangles the bar's inner height (minus

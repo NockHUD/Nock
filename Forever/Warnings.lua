@@ -12,6 +12,19 @@ local Warnings = Nock:NewModule("Warnings", "AceEvent-3.0")
 local SEVERITY_RANK = { red = 3, amber = 2, blue = 1 }
 local AMMO_SLOT = 0
 local DEMO_DURATION = 10
+-- Seconds both auto-attacks may be off on a live hostile target before the
+-- "not attacking" square fires: a retarget or a swap to melee never blinks it.
+local NOT_ATTACKING_GRACE = 1.5
+-- Seconds the target may sit in a zone the attack in use cannot reach before
+-- the "not in range" square fires: a step through the dead zone never blinks.
+local NOT_IN_RANGE_GRACE = 1.0
+-- Seconds a living pet may stand without a target in combat before the
+-- "pet idle" square fires: the attack order lands a beat after the pull.
+local PET_IDLE_GRACE = 1.5
+local PET_ATTACK_ICON = 132152  -- Ability_GhoulFrenzy, the pet Attack command
+-- The zones the range finder publishes that each attack cannot reach.
+local RANGED_MISSES = { CLOSE = "DEAD ZONE", LONG = "RANGE" }
+local MELEE_MISSES  = { CLOSE = "DEAD ZONE" }
 
 local function P(v) return Nock.Flavor.Plain(v) end
 
@@ -44,6 +57,11 @@ end
 --   reads.ammoId, reads.ammoCount   the ammo slot (nil = empty)
 --   reads.petExists, reads.petDead, reads.happiness (1..3 or nil)
 --   reads.callPetKnown, reads.inCombat
+--   reads.rangedOn, reads.meleeOn   the two auto-attack toggles
+--   reads.targetHostile             a live, attackable target
+--   reads.zone                      the range finder's zone (MELEE/CLOSE/SWEET/LONG)
+--   reads.petTarget                 the pet has a target (nil = secret)
+--   reads.now
 local Checks = {}
 Warnings.Checks = Checks
 
@@ -73,7 +91,54 @@ function Checks.petUnhappy(reads)
   return warn("petUnhappy", "amber", spellIcon(Nock.Spells.PET.FEED_PET) or 132165, "FEED", nil)
 end
 
-Warnings.ORDER = { Checks.ammo, Checks.petDead, Checks.petMissing, Checks.petUnhappy }
+-- Both auto-attacks off in combat on a live hostile target, past the grace.
+-- The grace runs only while the condition holds; anything else resets it.
+local idleSince
+function Checks.notAttacking(reads)
+  local idle = isEnabled("warnNotAttackingEnabled") and reads.inCombat == true
+    and reads.targetHostile == true and reads.rangedOn ~= true and reads.meleeOn ~= true
+  if not idle then idleSince = nil; return nil end
+  local now = reads.now or 0
+  if not idleSince then idleSince = now end
+  if now - idleSince < NOT_ATTACKING_GRACE then return nil end
+  return warn("notAttacking", "red", spellIcon(Nock.Spells.AUTO_SHOT) or 132222, "ATTACK", nil)
+end
+
+-- The target sits where the attack in use cannot reach it: shooting, the
+-- dead zone and out of range; meleeing, the dead zone. Auto Shot on decides
+-- the ranged reading unless a melee swing can land (both on in reach).
+local farSince
+function Checks.notInRange(reads)
+  local text
+  if isEnabled("warnNotInRangeEnabled") and reads.inCombat == true and reads.targetHostile == true then
+    if reads.rangedOn == true then
+      text = RANGED_MISSES[reads.zone]
+      if reads.meleeOn == true and reads.zone == "MELEE" then text = nil end
+    elseif reads.meleeOn == true then
+      text = MELEE_MISSES[reads.zone]
+    end
+  end
+  if not text then farSince = nil; return nil end
+  local now = reads.now or 0
+  if not farSince then farSince = now end
+  if now - farSince < NOT_IN_RANGE_GRACE then return nil end
+  return warn("notInRange", "amber", spellIcon(Nock.Spells.AUTO_SHOT) or 132222, text, nil)
+end
+
+-- A living pet with no target in combat (TBC's rule, same key): it is not
+-- attacking, or about to. A secret answer stays quiet.
+local petIdleSince
+function Checks.petAttack(reads)
+  local idle = isEnabled("warnPetAttackEnabled") and reads.inCombat == true
+    and reads.petExists == true and reads.petDead ~= true and reads.petTarget == false
+  if not idle then petIdleSince = nil; return nil end
+  local now = reads.now or 0
+  if not petIdleSince then petIdleSince = now end
+  if now - petIdleSince < PET_IDLE_GRACE then return nil end
+  return warn("petAttack", "amber", PET_ATTACK_ICON, "PET IDLE", nil)
+end
+
+Warnings.ORDER = { Checks.ammo, Checks.petDead, Checks.petMissing, Checks.petUnhappy, Checks.notAttacking, Checks.notInRange, Checks.petAttack }
 
 -- The live reads, every one secret-guarded: a secret answer is a nil read
 -- and the check stays quiet.
@@ -85,11 +150,26 @@ function Warnings:Reads(state)
   r.ammoIcon  = P(_G.GetInventoryItemTexture and GetInventoryItemTexture("player", AMMO_SLOT))
   r.petExists = P(_G.UnitExists and UnitExists("pet")) == true
   r.petDead   = P(_G.UnitIsDead and UnitIsDead("pet")) == true
+  -- Plain true/false only; a secret (or no pet) reads nil. Written out in
+  -- full: `x and false or nil` would turn the idle answer into nil.
+  r.petTarget = nil
+  if r.petExists and _G.UnitExists then
+    local pt = P(UnitExists("pettarget"))
+    if pt == true then r.petTarget = true elseif pt == false then r.petTarget = false end
+  end
   local PI = _G.C_PetInfo
   r.happiness = r.petExists and PI and PI.GetPetHappiness and P(PI.GetPetHappiness()) or nil
   if type(r.happiness) ~= "number" then r.happiness = nil end
   r.inCombat = state.player and state.player.inCombat == true
   r.callPetKnown = self:CallPetKnown()
+  -- The toggles and the target come from state: the swing timer keeps both
+  -- auto-attack edges, the range finder the target's presence and side.
+  r.rangedOn = state.ranged and state.ranged.repeating == true
+  r.meleeOn  = state.melee and state.melee.attacking == true
+  local t = state.target
+  r.targetHostile = t and t.exists == true and t.alive == true and t.friendly == false
+  r.zone = t and t.rangeState or nil
+  r.now = GetTime()
   return r
 end
 
@@ -228,5 +308,35 @@ Warnings.Catalog = {
     thresholds  = {
       { key = "mendPetThreshold", label = "Pet HP threshold (%)", min = 20, max = 90, step = 5 },
     },
+  },
+  {
+    key         = "notAttacking",
+    category    = "combat",
+    name        = "Not attacking",
+    severity    = "red",
+    enabledKey  = "warnNotAttackingEnabled",
+    iconFn      = function() return spellIcon(Nock.Spells.AUTO_SHOT) or 132222 end,
+    description = "You have a live hostile target and neither auto-attack is on.",
+    logic       = "Fires when:\n• You are in combat\n• Your target is alive and attackable\n• Auto Shot is off and melee auto-attack is off\n• That has held for 1.5 s\n\nClears the moment either auto-attack is on, the target dies or combat ends.",
+  },
+  {
+    key         = "notInRange",
+    category    = "combat",
+    name        = "Not in range",
+    severity    = "amber",
+    enabledKey  = "warnNotInRangeEnabled",
+    iconFn      = function() return spellIcon(Nock.Spells.AUTO_SHOT) or 132222 end,
+    description = "Your target sits where the attack you are using cannot reach it.",
+    logic       = "Fires when:\n• You are in combat on a live, attackable target\n• Auto Shot is on and the target is in the dead zone (DEAD ZONE) or out of range (RANGE)\n• or only melee auto-attack is on and the target is in the dead zone\n• That has held for 1 s\n\nQuiet in melee reach while a melee swing can land, and quiet when no auto-attack is on (the Not attacking square covers that).",
+  },
+  {
+    key         = "petAttack",
+    category    = "pet",
+    name        = "Pet not attacking",
+    severity    = "amber",
+    enabledKey  = "warnPetAttackEnabled",
+    iconFn      = function() return PET_ATTACK_ICON end,
+    description = "Your pet is standing idle in combat.",
+    logic       = "Fires when:\n• You are in combat\n• A living pet is out\n• It has no target\n• That has held for 1.5 s\n\nSend it in with the pet Attack command or a /petattack macro; the square clears the moment it has a target.",
   },
 }

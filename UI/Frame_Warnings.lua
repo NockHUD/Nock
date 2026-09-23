@@ -225,7 +225,7 @@ function WarningsView:Refresh(state)
         or labelSize ~= sq._lastLabelSize
         or labelStyle ~= sq._lastLabelStyle
       then
-        sq.label:SetFont(labelFontPath, labelSize, labelStyle)
+        Nock.UI.SafeSetFont(sq.label, labelFontPath, labelSize, labelStyle)
         sq._lastLabelFont = labelFontPath
         sq._lastLabelSize = labelSize
         sq._lastLabelStyle = labelStyle
@@ -288,7 +288,7 @@ function WarningsView:Refresh(state)
       ph._lastIcon = true
     end
     if labelFontPath ~= ph._lastLabelFont or labelSize ~= ph._lastLabelSize or labelStyle ~= ph._lastLabelStyle then
-      ph.label:SetFont(labelFontPath, labelSize, labelStyle)
+      Nock.UI.SafeSetFont(ph.label, labelFontPath, labelSize, labelStyle)
       ph._lastLabelFont, ph._lastLabelSize, ph._lastLabelStyle = labelFontPath, labelSize, labelStyle
     end
     if labelOffset ~= ph._lastLabelOffset then

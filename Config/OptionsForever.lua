@@ -8,7 +8,11 @@ local F = {}
 Nock.OptionsForever = F
 
 -- Top-level families that survive. Everything else at the root goes.
-F.FAMILIES = { general = true, hud = true, profiles = true, alerts = true }
+F.FAMILIES = { general = true, hud = true, profiles = true, alerts = true, utilities = true }
+-- Families that keep only the listed pages (every other group inside goes):
+-- Utilities is the TBC toolbox (practice, mailbox, weave binds, ...); only
+-- the Quality of life page has a feed on Forever (Modules/QoL.lua).
+F.KEEP_PAGES = { utilities = { qol = true } }
 
 -- Dotted args paths removed inside the surviving families. A trailing `*`
 -- matches every key with that prefix (same convention as OptionsLayout rows).
@@ -49,6 +53,8 @@ F.DROP = {
 -- A string renames the node; a table sets name and desc.
 F.RENAME = {
   ["hud.react"] = "Nock HUD",
+  -- The family intro is a description node; only the QoL page survives.
+  ["utilities.intro"] = { name = "Quality-of-life helpers: what happens at a vendor, the full-screen glow, and the camera and world switches the game hides." },
   ["hud.react.tabBars.showWindupMark"] = {
     name = "Spell-queue mark",
     desc = "The neutral mark on the Auto Shot bar where the client's spell-queue window opens before the next shot (SpellQueueWindow, 400 ms by default). Past it a press is queued behind the shot and comes out right after it; before it, a cast started now would push the shot back.",
@@ -103,6 +109,14 @@ function F.Apply(root)
   if type(root) ~= "table" or type(root.args) ~= "table" then return end
   for k, v in pairs(root.args) do
     if type(v) == "table" and v.type == "group" and not F.FAMILIES[k] then root.args[k] = nil end
+  end
+  for fam, keep in pairs(F.KEEP_PAGES) do
+    local node = root.args[fam]
+    if type(node) == "table" and type(node.args) == "table" then
+      for k, v in pairs(node.args) do
+        if type(v) == "table" and v.type == "group" and not keep[k] then node.args[k] = nil end
+      end
+    end
   end
   for _, path in ipairs(F.DROP) do dropPath(root, path) end
   for path, name in pairs(F.RENAME) do

@@ -3099,7 +3099,7 @@ local function buildOptionsTable()
         args = {
           intro = {
             type = "description",
-            name = "Small conveniences that need no HUD: what happens at a vendor, and the full-screen glow.\n",
+            name = "Small conveniences that need no HUD: what happens at a vendor, the full-screen glow, and three camera and world switches the game keeps but hides.\n",
             order = 1,
             fontSize = "medium",
           },
@@ -3134,6 +3134,54 @@ local function buildOptionsTable()
               local m = Nock:GetModule("QoL", true)
               if m and m.SetNoGlow then m.SetNoGlow(v) else Nock.db.profile.qolNoGlow = v and true or false end
             end,
+          },
+          -- Camera & world: the client's own CVars, live (Nock.QoLCvar in
+          -- Modules/QoL.lua); the client keeps them per character.
+          cameraHeader = { type = "header", name = "Camera & world", order = 30 },
+          qolFog = {
+            type = "toggle",
+            name = "Fog",
+            desc = "The world's distance fog (the volumeFog CVar). Off gives a clear horizon.",
+            order = 31,
+            width = "full",
+            get = function() return Nock.QoLCvar and Nock.QoLCvar.GetBool(Nock.QoLCvar.FOG) end,
+            set = function(_, v) if Nock.QoLCvar then Nock.QoLCvar.SetBool(Nock.QoLCvar.FOG, v) end end,
+          },
+          qolCameraStyle = {
+            type = "select",
+            name = "Camera following style",
+            desc = "How the camera swings back behind you (the cameraSmoothStyle CVar). The game's own setting, no longer in its menu.",
+            order = 32,
+            values = function() return Nock.QoLCvar and Nock.QoLCvar.CAMERA_STYLES or {} end,
+            sorting = function() return Nock.QoLCvar and Nock.QoLCvar.CAMERA_ORDER or {} end,
+            dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
+            get = function() return Nock.QoLCvar and Nock.QoLCvar.GetChoice(Nock.QoLCvar.CAMERA, Nock.QoLCvar.CAMERA_STYLES) or "4" end,
+            set = function(_, v) if Nock.QoLCvar then Nock.QoLCvar.SetChoice(Nock.QoLCvar.CAMERA, v) end end,
+          },
+          qolMaxZoom = {
+            type = "range",
+            name = "Max camera zoom",
+            desc = "How far the camera may zoom out (the cameraDistanceMaxZoomFactor CVar). 1.9 is the game's default; this client caps at 2.6 and clamps anything above it.",
+            min = 1, max = 4, step = 0.1,
+            order = 33,
+            get = function() return Nock.QoLCvar and Nock.QoLCvar.GetNumber(Nock.QoLCvar.ZOOM, 1.9) or 1.9 end,
+            set = function(_, v) if Nock.QoLCvar then Nock.QoLCvar.SetNumber(Nock.QoLCvar.ZOOM, v) end end,
+          },
+          qolZoomNear = {
+            type = "execute",
+            name = "Near (1.9)",
+            desc = "The game's default zoom cap.",
+            order = 34,
+            width = "half",
+            func = function() if Nock.QoLCvar then Nock.QoLCvar.SetNumber(Nock.QoLCvar.ZOOM, Nock.QoLCvar.ZOOM_NEAR) end end,
+          },
+          qolZoomFar = {
+            type = "execute",
+            name = "Far (2.6)",
+            desc = "The far cap on this client.",
+            order = 35,
+            width = "half",
+            func = function() if Nock.QoLCvar then Nock.QoLCvar.SetNumber(Nock.QoLCvar.ZOOM, Nock.QoLCvar.ZOOM_FAR) end end,
           },
         },
       },
@@ -6908,6 +6956,8 @@ local function buildOptionsTable()
       reactAutoH = 14, reactMeleeH = 12, reactRangeH = 12, reactManaH = 12, reactCastH = 16,
       reactCornerIconSize = 42, reactCornerIconX = 30, reactCornerIconY = 50,
       reactBarTexture = "", reactFont = "", reactFontSize = 9,
+      reactFontStyle = "OUTLINE", reactFontShadow = false, reactTextOffsetY = 0, reactTextOffsetX = 0,
+      reactCdFontSize = 10, reactCdWholeSeconds = false,
       reactColorAutoFill      = { 1.00, 0.84, 0.00, 1.00 },
       reactColorMeleeReady    = { 0.15, 0.68, 0.38, 1.00 },
       reactColorMeleeAuto     = { 0.55, 0.75, 1.00, 1.00 },
@@ -6963,12 +7013,74 @@ local function buildOptionsTable()
     skinArgs.reactFontSize = {
       type = "range",
       name = "Font size",
-      desc = "Base size of the React text (reference is 9). Everything shifts together: the small labels stay 2 under this, buff-row and corner-icon text keeps scaling with icon size, and the cooldown grid text shifts by the same amount.",
+      desc = "Base size of the React text (reference is 9). The small labels stay 2 under this and the buff-row and corner-icon text keeps scaling with icon size. The cooldown grid has its own size below.",
       min = 6, max = 16, step = 1,
       order = 90.45,
       disabled = notReact,
       get = function() return Nock.db.profile.reactFontSize or 9 end,
       set = function(_, v) visualsSet(_, "reactFontSize", v) end,
+    }
+    skinArgs.reactCdFontSize = {
+      type = "range",
+      name = "Cooldown grid font size",
+      desc = "Size of the cooldown grid's countdown and count text (reference is 10). Same face, style and shadow as the rest of the React text.",
+      min = 6, max = 20, step = 1,
+      order = 90.452,
+      disabled = notReact,
+      get = function() return Nock.db.profile.reactCdFontSize or 10 end,
+      set = function(_, v) visualsSet(_, "reactCdFontSize", v) end,
+    }
+    skinArgs.reactCdWholeSeconds = {
+      type = "toggle",
+      name = "Whole-second cooldowns",
+      desc = "Cooldown grid countdowns under 10 s in whole seconds (3) instead of tenths (2.3).",
+      order = 90.454,
+      width = "full",
+      disabled = notReact,
+      get = function() return Nock.db.profile.reactCdWholeSeconds == true end,
+      set = function(_, v) visualsSet(_, "reactCdWholeSeconds", v and true or false) end,
+    }
+    skinArgs.reactFontStyle = {
+      type = "select",
+      name = "Font style",
+      desc = "The outline on every React text: none, the reference outline, or a thick one. Pair 'None' with the shadow below for a softer look.",
+      order = 90.46,
+      values = { NONE = "None", OUTLINE = "Outline", THICKOUTLINE = "Thick outline" },
+      sorting = { "NONE", "OUTLINE", "THICKOUTLINE" },
+      dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
+      disabled = notReact,
+      get = function() return Nock.db.profile.reactFontStyle or "OUTLINE" end,
+      set = function(_, v) visualsSet(_, "reactFontStyle", v) end,
+    }
+    skinArgs.reactFontShadow = {
+      type = "toggle",
+      name = "Text shadow",
+      desc = "A 1 px black drop shadow under every React text.",
+      order = 90.47,
+      width = "full",
+      disabled = notReact,
+      get = function() return Nock.db.profile.reactFontShadow == true end,
+      set = function(_, v) visualsSet(_, "reactFontShadow", v and true or false) end,
+    }
+    skinArgs.reactTextOffsetY = {
+      type = "range",
+      name = "Countdown vertical offset",
+      desc = "Nudge the buff row's countdown numbers up (+) or down (-) by this many pixels; 0 is centred. A display face's digits can sit high in their tile.",
+      min = -6, max = 6, step = 1,
+      order = 90.48,
+      disabled = notReact,
+      get = function() return Nock.db.profile.reactTextOffsetY or 0 end,
+      set = function(_, v) visualsSet(_, "reactTextOffsetY", v) end,
+    }
+    skinArgs.reactTextOffsetX = {
+      type = "range",
+      name = "Countdown horizontal offset",
+      desc = "Nudge the buff row's countdown numbers right (+) or left (-) by this many pixels; 0 is centred. A display face's digits can lean left in their tile.",
+      min = -6, max = 6, step = 1,
+      order = 90.485,
+      disabled = notReact,
+      get = function() return Nock.db.profile.reactTextOffsetX or 0 end,
+      set = function(_, v) visualsSet(_, "reactTextOffsetX", v) end,
     }
     local function skinRange(key, name, order)
       return {
@@ -7064,8 +7176,14 @@ local function buildOptionsTable()
       confirmText = "Reset all React skin overrides (texture, font, heights and colors) to the reference look?",
       disabled = notReact,
       func = function()
+        -- SKIN_REFERENCE names the keys; the value is the flavour's default
+        -- (Forever ships its own baseline for some of them), the literal the
+        -- fallback should Defaults not carry the key.
         local prof = Nock.db.profile
-        for k, v in pairs(SKIN_REFERENCE) do
+        local defaults = Nock.Defaults and Nock.Defaults.profile or {}
+        for k, ref in pairs(SKIN_REFERENCE) do
+          local v = defaults[k]
+          if v == nil then v = ref end
           if type(v) == "table" then
             prof[k] = { v[1], v[2], v[3], v[4] }
           else
@@ -8090,11 +8208,23 @@ local function buildOptionsTable()
           get = function() return Nock.db.profile.deadZoneSoundChannel or "Master" end,
           set = function(_, v) Nock.db.profile.deadZoneSoundChannel = v end,
         }, 2)
+        local GATE_VALUES = { solo = "Solo (always)", party = "Party", raid = "Raid" }
+        local GATE_ORDER  = { "solo", "party", "raid" }
         local function rcue(prefix, label, order, what)
           cue(prefix, label, order, what, ra)
           ra[prefix .. "Enabled"].disabled = function() return Nock.db.profile.soundCuesEnabled == false end
           ra[prefix .. "Sound"].disabled = function() return Nock.db.profile.soundCuesEnabled == false or not Nock.db.profile[prefix .. "Enabled"] end
           ra[prefix .. "Preview"].disabled = function() return (Nock.db.profile[prefix .. "Sound"] or "None") == "None" end
+          -- Where the cue may play: a ladder, so Party also covers raids.
+          ra[prefix .. "Gate"] = {
+            type = "select", name = label .. " gate", order = order + 3,
+            desc = "Where this cue plays. Solo (always): everywhere. Party: only while grouped, raids included. Raid: only in a raid.",
+            values = GATE_VALUES, sorting = GATE_ORDER,
+            dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
+            disabled = function() return Nock.db.profile.soundCuesEnabled == false or not Nock.db.profile[prefix .. "Enabled"] end,
+            get = function() return Nock.db.profile[prefix .. "Gate"] or "solo" end,
+            set = function(_, v) Nock.db.profile[prefix .. "Gate"] = v end,
+          }
         end
         ra.cueRepeatSeconds = {
           type = "range", name = "Quiet time between repeats", desc = "A zone's cue does not play again within this many seconds, so a mob dancing on a range edge does not talk your ear off. Any two cues keep 1.5 s apart regardless.",

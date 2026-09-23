@@ -17,7 +17,11 @@ _G.AuraContainerSortDirection = { Normal = 0, Reverse = 1 }
 -- Fakes: a container that records its configuration, a button that records
 -- the regions it is handed.
 local function region()
-  return { SetAllPoints = function() end, SetPoint = function() end, SetColorTexture = function() end, SetTexCoord = function() end }
+  local r = { points = {}, SetAllPoints = function() end, SetColorTexture = function() end, SetTexCoord = function() end }
+  function r:SetPoint(p) self.points[#self.points + 1] = p end
+  function r:SetJustifyH(j) self.jh = j end
+  function r:SetJustifyV(j) self.jv = j end
+  return r
 end
 local Btn = {}
 Btn.__index = Btn
@@ -25,7 +29,7 @@ function Btn:CreateTexture() return region() end
 function Btn:CreateFontString() return region() end
 function Btn:SetSize(w, h) self.w, self.h = w, h end
 function Btn:SetIcon(t) self.iconSet = t end
-function Btn:SetDurationText(fs) self.durationText = fs end
+function Btn:SetDurationText(fs, options) self.durationText = fs; self.durationOptions = options end
 function Btn:IsShown() error("secret boolean") end
 
 local Cont = {}
@@ -99,6 +103,43 @@ ok(R.Create(panel, 26, -1) == nil, "no template -> nil")
 _G.CreateFrame = function() local x = setmetatable({}, Cont); x.AddAuraGroup = function() error("nope") end; return x end
 local r = R.Create(panel, 26, -1)
 ok(r == nil, "refused configuration -> nil")
+
+
+-- The countdown is the bare number (user, 2026-09-23: "12 s" wastes the
+-- tile): a numeric rule formatter over the remaining duration, rounded up
+-- like the client's own, through the button's textFormat option. Without
+-- the formatter APIs the client's default text stands.
+do
+  local made = {}
+  _G.C_StringUtil = { CreateNumericRuleFormatter = function()
+    local f = { bps = {} }
+    function f:AddBreakpoint(bp) self.bps[#self.bps + 1] = bp end
+    made[#made + 1] = f
+    return f
+  end }
+  _G.Enum = _G.Enum or {}
+  Enum.DurationTextBindingProperty = { RemainingDuration = 0 }
+  Enum.NumericRuleFormatRounding = { Nearest = 0, Up = 1, Down = 2 }
+  R._durationFormat = nil  -- the earlier buttons were styled without the APIs
+  local b1 = setmetatable({}, Btn)
+  R.Style(b1, 24)
+  local o = b1.durationOptions
+  ok(o and o.textFormat and o.textFormat.formatString == "{}", "duration text: one placeholder, no unit")
+  local t = b1.durationText
+  ok(t.points[1] == "TOPLEFT" and t.points[2] == "BOTTOMRIGHT" and t.jh == "CENTER" and t.jv == "MIDDLE", "the countdown fills the tile, centred both ways")
+  ok(b1._timeBoxed == true, "the slot is marked boxed so the text nudge moves both corners")
+  local comp = o and o.textFormat.components and o.textFormat.components[1]
+  ok(comp and comp.property == 0 and comp.formatter == made[1], "the remaining duration through the rule formatter")
+  ok(#made == 1 and made[1].bps[1].threshold == 0 and made[1].bps[1].step == 1 and made[1].bps[1].rounding == 1 and made[1].bps[1].format == "%d", "one breakpoint: whole seconds, rounded up")
+  local b2 = setmetatable({}, Btn)
+  R.Style(b2, 24)
+  ok(#made == 1 and b2.durationOptions.textFormat.components[1].formatter == made[1], "the formatter is built once and shared")
+  _G.C_StringUtil = nil
+  R._durationFormat = nil
+  local b3 = setmetatable({}, Btn)
+  R.Style(b3, 24)
+  ok(b3.durationText and b3.durationOptions == nil, "no formatter API: the client's default text")
+end
 
 print(("forever_aura_row: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

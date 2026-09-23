@@ -29,7 +29,14 @@ F.Apply(opts)
 local top = {}
 for k, v in pairs(opts.args) do if type(v) == "table" and v.type == "group" then top[#top + 1] = k end end
 table.sort(top)
-ok(table.concat(top, ",") == "alerts,general,hud,profiles", "alerts/general/hud/profiles remain, got " .. table.concat(top, ","))
+ok(table.concat(top, ",") == "alerts,general,hud,profiles,utilities", "alerts/general/hud/profiles/utilities remain, got " .. table.concat(top, ","))
+-- Utilities keeps only Quality of life (Modules/QoL.lua runs on Forever).
+ok(nodeAt(opts, "utilities.qol") ~= nil and nodeAt(opts, "utilities.qol.qolFog") ~= nil, "utilities: the Quality of life page with the camera card")
+local upages = {}
+for k, v in pairs(nodeAt(opts, "utilities").args) do if type(v) == "table" and v.type == "group" then upages[#upages + 1] = k end end
+ok(#upages == 1 and upages[1] == "qol", "utilities: no other page, got " .. table.concat(upages, ","))
+local uintro = nodeAt(opts, "utilities.intro")
+ok(uintro and type(uintro.name) == "string" and not uintro.name:find("mailbox") and uintro.name:find("camera"), "utilities: the intro no longer lists the TBC toolbox")
 ok(nodeAt(opts, "alerts.aggro") ~= nil, "aggro page kept")
 for _, p in ipairs({ "alerts.helpers", "alerts.warnings.settings.noReleasePreview", "alerts.sounds.deadZone", "alerts.sounds.warnings", "alerts.sounds.weave", "alerts.sounds.other" }) do ok(nodeAt(opts, p) == nil, p .. " gone") end
 ok(nodeAt(opts, "alerts.sounds") ~= nil, "sounds page kept for the Range tab")
