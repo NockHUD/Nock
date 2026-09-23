@@ -4,6 +4,49 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 ## Unreleased
 
+## 2.0.0
+
+The 2.0 line is the release now, on Anniversary and on the WoW Forever
+beta from one file. Everything below is new since 1.1.10; the two alpha
+entries in CHANGELOG.md on GitHub carry the detail. The 1.1.x file stays
+on CurseForge for anyone who wants the old settings dialog back.
+
+### Anniversary
+
+- **A new settings window.** `/nock`, the minimap button and Interface →
+  AddOns → Nock open Nock's own window: pages grouped as General, HUD &
+  Bars, Alerts, Trackers and Utilities, tabs per page, every setting on a
+  titled card with a one-line explanation. Simple / Advanced pill, live
+  search across every page, preset strips on the warnings, HUD looks,
+  trackers and helpers, scrolling dropdowns, and the old dialog kept
+  behind a "Legacy dialog" button.
+- **Guided setup.** The first-run wizard reveals Nock one page at a time
+  and lets you drag only that page's frames; a replay highlights instead.
+  Edit focus singles out one frame while unlocked.
+- **Profiles you can share.** Profiles → Sharing exports your whole setup
+  as one string and imports another player's into a new profile; bundled
+  starter profiles apply the same way. `/nock share export | import |
+  apply <key>`.
+- **PvP mode** (Off / On / Auto for battlegrounds and arenas) puts the
+  raid furniture away and adds the escape-trinket nag and a PvP debuff
+  set; the **incoming CC alert** shows FD! with the cast counting down
+  when a Fear, Polymorph, Seduction, Mind Control or Roots is cast at you.
+- **Aggro warning** (on by default): a red starburst at screen centre
+  while a mob is on you, with a cue.
+- **Skin controls.** Font style (none / outline / thick), text shadow,
+  countdown offsets for the buff row's numbers, the cooldown grid's own
+  font size and a whole-second cooldown switch. Defaults keep the
+  reference look; "Reset skin to reference look" restores it.
+- **Utilities → General.** Auto repair, sell greys, the glow switch, and a
+  Camera & world card: fog on/off, the game's hidden camera following
+  style, and the max camera zoom with Near and Far presets, live on the
+  game's own settings.
+- **Also:** weave sound cues, the React position strip and the sapper
+  whisper (all experimental, off), buff tracker and Misdirection panel
+  show-when rules, clip ticks can be hidden, the Leviathan tranq entry,
+  shorter warning titles, and the legacy Shot Bars look and the V3
+  medallion removed.
+
 ### WoW Forever (beta)
 
 **Work in progress.** The Forever side of this release is unfinished and
