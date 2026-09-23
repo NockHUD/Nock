@@ -63,8 +63,8 @@ Spells.TRACKED = {
   { key = "Elune",    id = 1259799, name = "Elune's Light",   label = "Elune", racial = true },            -- night elf (Forever)
   { key = "Meld",     id = 20580,   name = "Shadowmeld",      label = "Meld",   cd = 120, racial = true }, -- night elf
   { key = "Stone",    name = "Stoneform",       label = "Stone",  cd = 180, racial = true },               -- dwarf
-  { key = "Percep",   name = "Perception",      label = "Percep", cd = 180, racial = true },               -- human
-  { key = "WillSurv", name = "Will to Survive", label = "Will",   cd = 180, racial = true },               -- human (Forever): removes stuns
+  { key = "Percep",   id = 20600,   name = "Perception",      label = "Percep", cd = 180, racial = true }, -- human (level-1 dump 2026-09-23)
+  { key = "WillSurv", id = 1259718, name = "Will to Survive", label = "Will",   cd = 180, racial = true }, -- human (Forever): removes stuns
   { key = "Fury",     name = "Blood Fury",      label = "Fury",   cd = 120, racial = true },               -- orc: +10% AP/SP 15 s
   { key = "Shatter",  name = "Shatter Curse",   label = "Shatter", cd = 120, racial = true },              -- orc (Forever): curse immunity 8 s
   { key = "Stomp",    name = "War Stomp",       label = "Stomp",  cd = 120, racial = true },               -- tauren

@@ -174,9 +174,12 @@ do
   ok(CD:IsEntryAvailable("Meld") == true and #sent == 1 and sent[1] == "NOCK_VISUALS_CHANGED", "a racial that appears: in, and the grids rebuild")
   CD:UpdateKnown()
   ok(#sent == 1, "no change: no rebuild")
-  for _, k in ipairs({ "Stone", "Percep", "WillSurv", "Fury", "Shatter", "Stomp", "Zerk", "FastRegen" }) do
+  for _, k in ipairs({ "Stone", "Fury", "Shatter", "Stomp", "Zerk", "FastRegen" }) do
     ok(CD:GetEntry(k) == nil and CD:IsEntryAvailable(k) == true, "a racial the spellbook does not name is untracked (GetEntry nil keeps it off the grid): " .. k)
   end
+  -- The human pair carries proven ids (level-1 dump): tracked, gated out on this book.
+  ok(CD:GetEntry("Percep").id == 20600 and CD:GetEntry("WillSurv").id == 1259718, "human racials: Perception 20600, Will to Survive 1259718")
+  ok(CD:IsEntryAvailable("Percep") == false and CD:IsEntryAvailable("WillSurv") == false, "and out while the spellbook lacks them")
   -- An orc: Blood Fury under a NEW id resolves by name and joins the grid.
   items[#items + 1] = { spellID = 1260001, name = "Blood Fury" }
   knownIds[1260001] = true
