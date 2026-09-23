@@ -4,6 +4,59 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 ## Unreleased
 
+### WoW Forever (beta)
+
+**Work in progress.** The Forever side of this release is unfinished and
+grows with the beta; it ships so early testers can run it, not because it
+is done.
+
+Nock now loads on the WoW Forever beta as the same addon: one download,
+one profile, one settings window. Forever is a different client under
+the hood (most combat numbers are hidden from addons while you fight), so
+this is a trimmed Nock, built from what the client still tells us. Expect
+rough edges; the Anniversary version is unchanged by any of this.
+
+- **One HUD.** The React look only, renamed "Nock HUD": Auto Shot bar
+  driven by the client's own swing events, melee bar, cast bar, mana bar
+  with the tick spark, a four-zone range strip (melee, dead zone, sweet
+  spot, out of range), the aggro row, aspect and Hunter's Mark corner
+  icons, and the cooldown grid with a Multi-Shot + Aimed Shot pair tile.
+  A spell-queue mark on the Auto Shot bar replaces the wind-up model:
+  there is no clip band to model on Forever, so no clip ticks, brackets
+  or delay readout.
+- **Buff row.** Your own short buffs and procs (Rapid Fire, Quick Shots,
+  Elune's Grace, ...) are drawn by the client itself, in combat too, with
+  a bare-second countdown; Mend Pet, Feed Pet and the pet's happiness face
+  sit on a smaller line above it.
+- **Warnings.** Ammo low, pet dead, no pet in combat, pet unhappy, pet HP
+  low (decided by the client and faded in on its own, so it has no sound
+  and sits last in the row), not attacking, not in range, pet not
+  attacking.
+- **Spoken range cues.** Short voice clips when your target changes zone:
+  dead zone, melee, in range, out of range, each with its own switch,
+  sound and gate (solo, party, raid). Off outside raids by default;
+  Alerts → Sounds → Range.
+- **Look.** A new display face, LEMON MILK (bundled with the author's
+  permission), as the Forever default for the HUD numbers and the warning
+  labels, with new Skin controls that also exist on Anniversary: font
+  style, text shadow, countdown offsets, a separate cooldown-grid font
+  size and whole-second cooldown countdowns. "Reset skin to reference
+  look" returns to the Forever baseline on Forever.
+- **Utilities → General.** Auto repair, sell greys, the glow switch, and a
+  new Camera & world card: fog on/off, the game's hidden camera following
+  style, and the max camera zoom with Near and Far presets.
+- **Not on Forever (yet or ever).** Rotation coaching and the practice
+  mode, weave binds and the garment autopilot, the helpers row, the
+  buff/debuff/Misdirection trackers, the mailbox and shopping tools, the
+  Steam Tonk guard, PvP mode, the Auto Shot cast bar and the Blizzard
+  cast-bar hide. Some of these will follow as the character levels and
+  the client shows what it allows; others have no subject on Forever.
+- **Known.** Saved settings do not always survive a full client
+  restart on the beta (a client bug, not Nock's); `/reload` is fine.
+  Mend Pet cast in combat does not stamp its tile (the cast bar shows
+  it). For anything else, `/nock probe` opens a report you can paste
+  into an issue.
+
 ## 2.0.0-alpha.2
 
 - **Alpha of the 2.0 line.** Everything below is new since 1.1.x and not all

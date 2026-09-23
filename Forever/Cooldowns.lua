@@ -40,17 +40,25 @@ local function baseSpell(id)
   return id
 end
 
--- Every spell id behind an entry (a pair tile carries two).
+-- Ids resolved from the spellbook by NAME for entries that carry none
+-- (the racials: Forever gave reworked ones new ids). Filled by UpdateKnown.
+local RESOLVED = {}
+local EMPTY = {}
+
+-- Every spell id behind an entry (a pair tile carries two); empty while a
+-- name-only entry is unresolved.
 local scratchIds = {}
 local function entryIds(e)
   if e.ids then return e.ids end
-  scratchIds[1] = e.id
+  local id = e.id or RESOLVED[e.key]
+  if not id then return EMPTY end
+  scratchIds[1] = id
   return scratchIds
 end
 
 -- The id the ledger is asked for: any member of a linked group answers.
 local function ledgerId(e)
-  return e.id or e.ids[1]
+  return e.id or (e.ids and e.ids[1]) or RESOLVED[e.key]
 end
 
 -- Learned durations outlive the session: per character, keyed by spell id.
@@ -108,7 +116,7 @@ function Cooldowns:RebuildLists()
   self.ledger = self.ledger or Engine.New()
   local groups = {}
   for _, e in ipairs(C.TRACKED_COOLDOWNS) do
-    if e.type == "spell" and (e.id or e.ids) then
+    if e.type == "spell" and #entryIds(e) > 0 then
       self._tracked[#self._tracked + 1] = e
       self._byKey[e.key] = e
       ensureStateSlot(e.key)
@@ -148,8 +156,84 @@ end
 
 function Cooldowns:GetTracked() return lists(self) end
 function Cooldowns:GetEntry(key) lists(self); return self._byKey[key] end
-function Cooldowns:IsEntryAvailable() return true end
 function Cooldowns:OnConfigChanged() self:RebuildLists() end
+
+-- The known-spell gate: a RACIAL entry (e.racial) is available only while
+-- the character HAS one of its spells (a human hunter saw the night elf
+-- racials, 2026-09-23); the class spells always show, learned or not, so
+-- a level-1 grid keeps its shape. Known by id through C_SpellBook.IsSpellKnown, or
+-- by NAME in the spellbook: ranks are separate spells here and the base
+-- id may stop reading as known once a higher rank is trained. Without the
+-- spellbook API the answer is "cannot tell": keep showing.
+-- name -> spellID for every spell in the character's spellbook; nil
+-- without the API.
+local function spellbookNames()
+  local SB, E = _G.C_SpellBook, _G.Enum
+  if not (SB and SB.GetNumSpellBookSkillLines and SB.GetSpellBookItemInfo and E and E.SpellBookSpellBank) then return nil end
+  local names = {}
+  local bank = E.SpellBookSpellBank.Player
+  local okn, lines = pcall(SB.GetNumSpellBookSkillLines)
+  if not okn or type(lines) ~= "number" then return names end
+  for line = 1, lines do
+    local oki, info = pcall(SB.GetSpellBookSkillLineInfo, line)
+    if oki and type(info) == "table" and info.itemIndexOffset and info.numSpellBookItems then
+      for slot = info.itemIndexOffset + 1, info.itemIndexOffset + info.numSpellBookItems do
+        local okb, item = pcall(SB.GetSpellBookItemInfo, slot, bank)
+        local n = okb and type(item) == "table" and Nock.Flavor.Plain(item.name) or nil
+        local id = okb and type(item) == "table" and Nock.Flavor.Plain(item.spellID) or nil
+        if type(n) == "string" then names[n] = (type(id) == "number" and id) or names[n] or true end
+      end
+    end
+  end
+  return names
+end
+
+local function entryKnown(e, names)
+  local SB = _G.C_SpellBook
+  local ids = entryIds(e)
+  for i = 1, #ids do
+    if SB and SB.IsSpellKnown then
+      local okk, known = pcall(SB.IsSpellKnown, ids[i])
+      if okk and known == true then return true end
+    end
+    local n = nameOf(ids[i])
+    if n and names[n] then return true end
+  end
+  return false
+end
+
+function Cooldowns:UpdateKnown()
+  local names = spellbookNames()
+  local old = self._known
+  if not names then self._known = nil; return end
+  -- Name-keyed entries (the racials) take their id from the spellbook the
+  -- first time it lists them; the lists are rebuilt so the ledger indexes it.
+  local resolved = false
+  for _, e in ipairs(C.TRACKED_COOLDOWNS) do
+    if e.type == "spell" and e.name and not e.id and not e.ids and not RESOLVED[e.key] then
+      local id = names[e.name]
+      if type(id) == "number" then RESOLVED[e.key] = id; resolved = true end
+    end
+  end
+  if resolved then self:RebuildLists() end
+  local known = {}
+  for _, e in ipairs(lists(self)) do
+    if e.racial then known[e.key] = entryKnown(e, names) end
+  end
+  self._known = known
+  if not old then return end
+  for k, v in pairs(known) do
+    if old[k] ~= v then self:SendMessage("NOCK_VISUALS_CHANGED"); return end
+  end
+end
+
+function Cooldowns:IsEntryAvailable(key)
+  local known = self._known
+  if not known then return true end
+  local v = known[key]
+  if v == nil then return true end
+  return v
+end
 
 -- View helpers, same contracts as the TBC module (profile + constants only).
 function Cooldowns:GetOrderedGridKeys()
@@ -185,6 +269,7 @@ function Cooldowns:OnEnable()
   lists(self)
   self:RegisterEvent("PLAYER_LOGIN", "Rescan")
   self:RegisterEvent("PLAYER_ENTERING_WORLD", "Rescan")
+  self:RegisterEvent("SPELLS_CHANGED", "UpdateKnown")
   self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
   self:RegisterEvent("SPELL_UPDATE_COOLDOWN")
   self:RegisterMessage("NOCK_SNAPSHOT", "Seed")
@@ -232,6 +317,7 @@ end
 
 -- Out of combat: the API is the truth; the ledger is reconciled to it.
 function Cooldowns:Rescan()
+  self:UpdateKnown()
   if Nock.Restricted("cooldowns") then return end
   for _, e in ipairs(self._tracked) do
     local id = ledgerId(e)

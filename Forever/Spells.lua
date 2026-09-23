@@ -48,8 +48,28 @@ Spells.TRACKED = {
   { key = "Conc",     id = 5116,  label = "Conc",   cd = 12 },                                 -- Concussive Shot
   { key = "RF",       id = 3045,  label = "RF",     cd = 300 },                                -- Rapid Fire
   { key = "FD",       id = 5384,  label = "FD",     cd = 30 },                                 -- Feign Death
-  { key = "Elune",    id = 1259799, label = "Elune" },                                         -- Elune's Light (Forever racial; cooldown unmeasured)
-  { key = "Meld",     id = 20580, label = "Meld",   cd = 120 },                                -- Shadowmeld
+  -- Racials of the races that can be hunters on Forever (human, dwarf,
+  -- night elf, orc, tauren, troll; the Skyborne actives are glides and
+  -- regen buffs, not combat cooldowns). Forever reworked the racial kits
+  -- (every race: two actives, two passives) and gave reworked ones NEW
+  -- spell ids (Elune's Light is 1259799), so a racial is keyed by its
+  -- NAME and resolved from the character's spellbook at login
+  -- (Forever/Cooldowns.lua UpdateKnown); an id here is only a known one.
+  -- `racial` marks the tile as gated on the spellbook: it shows only
+  -- while the character HAS the spell, so a human never sees the night
+  -- elf pair (2026-09-23). The class spells above always show, learned
+  -- or not, so a level-1 grid keeps its shape (user, 2026-09-23).
+  -- Seeds are guesses; the live reading replaces them on the first use.
+  { key = "Elune",    id = 1259799, name = "Elune's Light",   label = "Elune", racial = true },            -- night elf (Forever)
+  { key = "Meld",     id = 20580,   name = "Shadowmeld",      label = "Meld",   cd = 120, racial = true }, -- night elf
+  { key = "Stone",    name = "Stoneform",       label = "Stone",  cd = 180, racial = true },               -- dwarf
+  { key = "Percep",   name = "Perception",      label = "Percep", cd = 180, racial = true },               -- human
+  { key = "WillSurv", name = "Will to Survive", label = "Will",   cd = 180, racial = true },               -- human (Forever): removes stuns
+  { key = "Fury",     name = "Blood Fury",      label = "Fury",   cd = 120, racial = true },               -- orc: +10% AP/SP 15 s
+  { key = "Shatter",  name = "Shatter Curse",   label = "Shatter", cd = 120, racial = true },              -- orc (Forever): curse immunity 8 s
+  { key = "Stomp",    name = "War Stomp",       label = "Stomp",  cd = 120, racial = true },               -- tauren
+  { key = "Zerk",     name = "Berserking",      label = "Zerk",   cd = 180, racial = true },               -- troll: +10% haste 10 s
+  { key = "FastRegen", name = "Fast Regeneration", label = "Regen", cd = 180, racial = true },             -- troll (Forever): 50% health
 }
 
 -- Ledger buffs for the React buff row (Forever/Buffs.lua): base id, key and
@@ -70,7 +90,7 @@ Spells.BUFFS = {
 
 -- Cooldown-row layout (same shape as Constants.REACT_CD_ROWS).
 Spells.ROWS = {
-  { h = 32, stretch = true, keys = { "Arc", "AimMulti", "Raptor", "RF", "Elune", "Meld" } },
+  { h = 32, stretch = true, keys = { "Arc", "AimMulti", "Raptor", "RF", "Elune", "Meld", "Stone", "Percep", "WillSurv", "Fury", "Shatter", "Stomp", "Zerk", "FastRegen" } },
   { h = 24, w = 32,          keys = { "Conc", "FD" } },
 }
 
@@ -80,7 +100,7 @@ if Nock.Flavor and Nock.Flavor.forever then
   local C = Nock.Constants
   local tracked = {}
   for i, e in ipairs(Spells.TRACKED) do
-    tracked[i] = { key = e.key, type = "spell", id = e.id, ids = e.ids, label = e.label, shared = e.shared, cd = e.cd }
+    tracked[i] = { key = e.key, type = "spell", id = e.id, ids = e.ids, label = e.label, shared = e.shared, cd = e.cd, name = e.name, racial = e.racial }
   end
   C.TRACKED_COOLDOWNS = tracked
   C.REACT_CD_ROWS = Spells.ROWS

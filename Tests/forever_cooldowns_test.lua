@@ -57,7 +57,8 @@ local pair = CD:GetEntry("AimMulti")
 ok(pair and pair.ids and pair.ids[1] == 2643 and pair.ids[2] == 19434, "Multi+Aimed is one pair entry")
 ok(st.cooldowns.AimMulti.spellId == 19434, "pair tile's range tint follows Aimed")
 ok(st.cooldowns.AimMulti.icon == 100000 + 2643 and st.cooldowns.AimMulti.icon2 == 100000 + 19434, "pair tile carries both icons")
-ok(CD:GetEntry("Elune") and CD:GetEntry("Elune").id == 1259799 and CD:GetEntry("Meld").id == 20580, "racials tracked")
+ok(CD:GetEntry("Elune") and CD:GetEntry("Elune").id == 1259799 and CD:GetEntry("Meld").id == 20580, "racials with a known id tracked")
+ok(CD:GetEntry("Fury") == nil, "a name-only racial is not tracked until the spellbook names it")
 
 local function fire(ev, ...) local h = CD.events[ev]; CD[type(h) == "string" and h or ev](CD, ev, ...) end
 local function msg(m, ...) local h = CD.msgs[m]; CD[type(h) == "string" and h or m](CD, m, ...) end
@@ -140,6 +141,60 @@ for _, fn in ipairs({ "GetTracked", "GetEntry", "GetOrderedGridKeys", "GetDims",
   ok(type(CD[fn]) == "function", "view helper " .. fn)
 end
 ok(CD:IsEntryAvailable("Raptor") == true, "every catalog entry is available")
+
+
+-- Known-spell gate: a tile whose spell the character does not have is out
+-- of the grid (a human hunter saw the night elf racials, 2026-09-23).
+-- Known by id, or by NAME in the spellbook (ranks are separate spells).
+do
+  local book = {}   -- name -> true
+  local knownIds = {}
+  _G.Enum.SpellBookSpellBank = { Player = 0 }
+  local items = {}
+  _G.C_SpellBook = {
+    IsSpellKnown = function(id) return knownIds[id] == true end,
+    GetNumSpellBookSkillLines = function() return 1 end,
+    GetSpellBookSkillLineInfo = function() return { name = "Hunter", itemIndexOffset = 0, numSpellBookItems = #items } end,
+    GetSpellBookItemInfo = function(slot) return items[slot] end,
+  }
+  local sent = {}
+  CD.SendMessage = function(_, msg) sent[#sent + 1] = msg end
+  -- a human: Arcane Shot rank 2 only (its own id), Raptor, no Meld, no Elune
+  items = { { spellID = 14281, name = "Arcane Shot" }, { spellID = 2973, name = "Raptor Strike" } }
+  knownIds = { [14281] = true, [2973] = true }
+  CD:UpdateKnown()
+  ok(CD:IsEntryAvailable("Meld") == false and CD:IsEntryAvailable("Elune") == false, "human: the night elf racials are out")
+  ok(CD:IsEntryAvailable("Raptor") == true, "known by id: in")
+  ok(CD:IsEntryAvailable("Arc") == true, "rank 2 only: the base entry is in by name")
+  ok(CD:IsEntryAvailable("Conc") == true and CD:IsEntryAvailable("RF") == true and CD:IsEntryAvailable("AimMulti") == true, "class spells not yet trained: still in (the level-1 grid keeps its shape)")
+  ok(#sent == 0, "the first scan sends nothing (the grid builds from it)")
+  items[#items + 1] = { spellID = 20580, name = "Shadowmeld" }
+  knownIds[20580] = true
+  CD:UpdateKnown()
+  ok(CD:IsEntryAvailable("Meld") == true and #sent == 1 and sent[1] == "NOCK_VISUALS_CHANGED", "a racial that appears: in, and the grids rebuild")
+  CD:UpdateKnown()
+  ok(#sent == 1, "no change: no rebuild")
+  for _, k in ipairs({ "Stone", "Percep", "WillSurv", "Fury", "Shatter", "Stomp", "Zerk", "FastRegen" }) do
+    ok(CD:GetEntry(k) == nil and CD:IsEntryAvailable(k) == true, "a racial the spellbook does not name is untracked (GetEntry nil keeps it off the grid): " .. k)
+  end
+  -- An orc: Blood Fury under a NEW id resolves by name and joins the grid.
+  items[#items + 1] = { spellID = 1260001, name = "Blood Fury" }
+  knownIds[1260001] = true
+  CD:UpdateKnown()
+  local fury = CD:GetEntry("Fury")
+  ok(fury ~= nil and CD:IsEntryAvailable("Fury") == true and Nock.state.cooldowns.Fury.spellId == 1260001 and Nock.state.cooldowns.Fury.icon == 100000 + 1260001, "Blood Fury resolved from the spellbook: tracked, available, the client's id and icon")
+  ok(#sent == 2, "the resolution rebuilds the grid")
+  ok(CD.ledger.learned[1260001] == 120, "the seed cooldown applies to the resolved id")
+  now = 500
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 1260001)
+  CD:Refresh()
+  ok(Nock.state.cooldowns.Fury.startTime == 500 and Nock.state.cooldowns.Fury.duration == 120, "a Blood Fury cast stamps the resolved tile")
+  ok(CD:GetEntry("Shatter") == nil, "the orc's other racial stays untracked until named")
+  ok(CD.events["SPELLS_CHANGED"] ~= nil, "the spellbook event refreshes the gate")
+  _G.C_SpellBook = nil
+  CD:UpdateKnown()
+  ok(CD:IsEntryAvailable("Meld") == true, "no spellbook API: cannot tell, keep showing")
+end
 
 print(("forever_cooldowns: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
