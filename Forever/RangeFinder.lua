@@ -192,6 +192,11 @@ function RangeFinder:Refresh(state)
       wipeSpellOut(t.spellOut)
     end
   end
+  -- Hunter's Mark castable from here (the corner icon's range tint), by name
+  -- so the highest known rank answers.
+  local hmIn = nil
+  if live then hmIn = spellInRange(Nock.Spells.HUNTERS_MARK) end
+  if hmIn == nil then t.markOut = nil else t.markOut = not hmIn end
   -- The auto bar's "can a shot fire" gate (Nock.AutoSwingLive): the raw
   -- Auto Shot reading, unsettled (the bar should blank the moment a shot
   -- cannot fire); nil while there is no live hostile target.

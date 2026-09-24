@@ -12,7 +12,8 @@ local cache, reads = {}, 0
 local Nock = {
   Flavor = { forever = true, Plain = function(v) return v end }, Constants = {},
   API = { SpellName = function(id) return "spell" .. id end, SpellIcon = function(id) return 1000 + id end },
-  AuraCache = { BySpell = function(unit, id) reads = reads + 1; return cache[unit .. id] end },
+  AuraCache = { BySpell = function(unit, id) reads = reads + 1; return cache[unit .. id] end,
+                ByName = function(unit, n) reads = reads + 1; return cache[unit .. n] end },
   Restricted = function(kind) return secretAuras end,
 }
 local module
@@ -66,5 +67,20 @@ secretAuras = false
 cache = {}
 A:Refresh()
 ok(p.aspect == nil and t.huntersMark == nil, "empty cache clears both")
+-- 9. ranks are separate spells on Forever: a higher rank's cast and aura
+-- carry their own ids and are matched by name (Hawk r2 14318, HM r2 14323).
+local rankOf = { [14318] = 13165, [14323] = 1130 }
+Nock.API.SpellName = function(id) return "spell" .. (rankOf[id] or id) end
+secretAuras = true
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 14318)
+ok(p.aspect and p.aspect.spellId == 13165 and p.aspect.icon == 1000 + 13165, "Hawk rank 2 cast -> the Hawk aspect")
+now = 500
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 14323)
+ok(t.huntersMark and t.huntersMark.expirationTime == 620, "Hunter's Mark rank 2 cast -> the mark")
+secretAuras = false
+cache = { ["playerspell13165"] = { spellId = 14318 }, ["targetspell1130"] = { spellId = 14323, duration = 120, expirationTime = 610 } }
+A:Refresh()
+ok(p.aspect and p.aspect.spellId == 13165, "Hawk rank 2 aura found by name out of combat")
+ok(t.huntersMark and t.huntersMark.expirationTime == 610, "Hunter's Mark rank 2 aura found by name")
 print(("forever_auras: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

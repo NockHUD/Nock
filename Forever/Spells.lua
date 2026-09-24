@@ -12,8 +12,11 @@ local Spells = {
   RAPTOR_STRIKE = 2973, -- rank 1; the melee range probe (IsSpellInRange)
   HUNTERS_MARK = 1130,  -- rank 1 (ranks map to it through C_Spell.GetBaseSpell)
   HUNTERS_MARK_DURATION = 120,
-  -- Aspects by base id (vanilla ids; Forever/Auras.lua). A cast of any rank
-  -- resolves to the base id before the lookup.
+  -- Aspects by base id (vanilla ids; Forever/Auras.lua). A cast or aura of
+  -- a higher rank resolves to the base id by name.
+  ASPECT_HAWK = 13165,  -- the corner icon's "no aspect" face
+  -- Pet Growl (rank 1): its localized name finds the pet-bar slot.
+  GROWL = 2649,
   ASPECTS = {
     [13163] = "monkey", [13165] = "hawk", [5118] = "cheetah",
     [13159] = "pack",   [13161] = "beast", [20043] = "wild",

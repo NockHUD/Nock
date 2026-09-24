@@ -6,7 +6,9 @@
 -- The mark icon captions itself with the name of the hunter whose mark is up
 -- (Modules/Auras.lua resolves it from the aura's caster unit).
 --
--- Deliberately inert: no glow, no pulse, no alert state. Nock's Aspect warning
+-- The mark icon also tints red while the target is out of Hunter's Mark range.
+--
+-- Otherwise inert: no glow, no pulse, no alert state. Nock's Aspect warning
 -- already nags about a missing Hawk, in combat only and at center screen, so
 -- duplicating it here would be noise. Both icons ship OFF and the wizard marks
 -- them NOT RECOMMENDED.
@@ -26,6 +28,9 @@ local ASPECT_FALLBACK = 136116
 -- a leveling hunter has no rank 5, so the ladder is walked until one resolves.
 local HM_RANKS = { 27322, 14325, 14324, 14323, 1130 }
 local HM_FALLBACK = 132212
+-- Out-of-range tint: the React grid's red (UI/Frame_ReactCooldowns.lua TINT).
+local MARK_OUT_TINT = { 0.77, 0.12, 0.23, 1 }
+local MARK_IN_TINT  = { 1, 1, 1, 1 }
 
 -- One resolver for both clients (Core/API.lua).
 local function spellIcon(id)
@@ -152,7 +157,10 @@ end
 -- forever. Re-queried until one lands.
 function ReactCorners:HawkIcon()
   if not self._hawkIcon then
-    self._hawkIcon = spellIcon(C.SpellID.ASPECT_HAWK) or ASPECT_FALLBACK
+    -- Forever has its own (vanilla) Hawk id; the TBC one does not resolve there.
+    local S = Nock.Flavor and Nock.Flavor.forever and Nock.Spells
+    local id = (S and S.ASPECT_HAWK) or C.SpellID.ASPECT_HAWK
+    self._hawkIcon = spellIcon(id) or ASPECT_FALLBACK
   end
   return self._hawkIcon
 end
@@ -254,6 +262,15 @@ function ReactCorners:Refresh(state)
     it.desat = (mk == nil)
     it.sub   = mk and shortName(mk.sourceName) or nil
     Nock.UI.PaintReactSlot(self.mark, it, GetTime())
+    -- Out of Hunter's Mark range (Modules/ and Forever/RangeFinder publish
+    -- markOut): the grid's red range tint, so the icon says "can't cast it
+    -- from here" whether the mark is up or not.
+    local out = state.target.markOut == true
+    if out ~= self.mark._markOut then
+      local c = out and MARK_OUT_TINT or MARK_IN_TINT
+      self.mark.icon:SetVertexColor(c[1], c[2], c[3], c[4])
+      self.mark._markOut = out
+    end
     if not self.mark:IsShown() then self.mark:Show() end
   elseif self.mark:IsShown() then
     self.mark:Hide()

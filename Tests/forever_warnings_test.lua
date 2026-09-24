@@ -22,7 +22,7 @@ dofile("Forever/Spells.lua")
 dofile("Forever/Warnings.lua")
 local W = module
 ok(W and W.name == "Warnings" and W.refreshInterval == 0.1, "registers as Warnings on the slow lane")
-ok(#W.Catalog == 8 and W.Catalog[6].key == "notAttacking" and W.Catalog[7].key == "notInRange" and W.Catalog[7].category == "combat" and W.Catalog[8].key == "petAttack" and W.Catalog[8].category == "pet" and W.Catalog[1].key == "ammo" and W.Catalog[2].key == "petDead" and W.Catalog[3].key == "petMissing" and W.Catalog[4].key == "petUnhappy", "eight catalog entries")
+ok(#W.Catalog == 9 and W.Catalog[9].key == "petGrowl" and W.Catalog[6].key == "notAttacking" and W.Catalog[7].key == "notInRange" and W.Catalog[7].category == "combat" and W.Catalog[8].key == "petAttack" and W.Catalog[8].category == "pet" and W.Catalog[1].key == "ammo" and W.Catalog[2].key == "petDead" and W.Catalog[3].key == "petMissing" and W.Catalog[4].key == "petUnhappy", "eight catalog entries")
 for _, e in ipairs(W.Catalog) do
   ok(e.category and e.name and e.severity and e.enabledKey and e.iconFn and e.description and e.logic, "catalog entry complete: " .. e.key)
   ok(type(e.iconFn()) == "number", "catalog icon resolves: " .. e.key)
@@ -208,6 +208,36 @@ do
   _G.UnitExists = function(u) return true end
   ok(W:Reads(st).petTarget == true, "reads: pet on a target reads true")
   _G.UnitExists = saved
+end
+
+-- Pet Growl on autocast: dungeon or raid only, by Growl's name.
+ok(C.petGrowl(with({ inInstance = true, growlAutocast = false })) == nil, "Growl off: quiet")
+local g = C.petGrowl(with({ inInstance = true, growlAutocast = true }))
+ok(g and g.id == "petGrowl" and g.severity == "amber" and g.text == "GROWL" and g.icon == 1000 + 2649, "Growl on in an instance: amber GROWL")
+ok(C.petGrowl(with({ inInstance = false, growlAutocast = true })) == nil, "open world: quiet")
+ok(C.petGrowl(with({ inInstance = true, growlAutocast = true, inCombat = false })) ~= nil, "out of combat too (before the pull)")
+ok(C.petGrowl(with({ inInstance = true, growlAutocast = true, petDead = true })) == nil, "dead pet: quiet")
+ok(C.petGrowl(with({ inInstance = true, growlAutocast = nil })) == nil, "unknown: quiet")
+Nock.db.profile.warnPetGrowlEnabled = false
+ok(C.petGrowl(with({ inInstance = true, growlAutocast = true })) == nil, "disabled: quiet")
+Nock.db.profile.warnPetGrowlEnabled = nil
+do
+  local kind, slots = "party", {}
+  _G.IsInInstance = function() return true, kind end
+  Nock.API.SpellName = function(id) if id == 2649 then return "Growl" end end
+  _G.GetPetActionInfo = function(i) local s = slots[i]; if s then return s[1], 1, false, false, true, s[2] end end
+  slots[4] = { "Growl", true }
+  ok(W:InInstance() == true and W:GrowlAutocast() == true, "reads: dungeon, Growl slot autocast on")
+  kind = "raid"; ok(W:InInstance() == true, "reads: raid counts")
+  kind = "none"; ok(W:InInstance() == false, "reads: open world does not")
+  kind = "pvp";  ok(W:InInstance() == false, "reads: a battleground does not")
+  slots[4] = { "Growl", false }
+  ok(W:GrowlAutocast() == false, "reads: autocast off")
+  slots[4] = { "Growl", "SECRET" }
+  ok(W:GrowlAutocast() == nil, "reads: a secret flag is unknown")
+  slots[4] = nil
+  ok(W:GrowlAutocast() == nil, "reads: no Growl on the bar")
+  _G.IsInInstance, _G.GetPetActionInfo, Nock.API.SpellName = nil, nil, nil
 end
 
 -- Call Pet knowledge falls back to the level.

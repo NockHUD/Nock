@@ -161,5 +161,20 @@ do
   ok(next(t.spellOut) == nil, "friendly target: no per-tile probe, tints cleared")
   canAttack = true
 end
+-- Hunter's Mark cast range for the corner icon (state.target.markOut).
+do
+  local hmIn = true
+  _G.C_Spell.IsSpellInRange = function(q) if q == 75 then return shoot end if q == 2974 then return wing end if q == "Hunter's Mark" or q == 1130 then return hmIn end return true end
+  Nock.API = { SpellName = function(id) return ({ [1130] = "Hunter's Mark" })[id] end }
+  RF:Refresh(st)
+  ok(t.markOut == false, "in mark range: markOut false (asked by name)")
+  hmIn = false; RF:Refresh(st)
+  ok(t.markOut == true, "out of mark range: markOut true")
+  hmIn = nil; RF:Refresh(st)
+  ok(t.markOut == nil, "no answer: unknown")
+  hmIn = false; canAttack = false; RF:Refresh(st)
+  ok(t.markOut == nil, "friendly target: unknown, no probe")
+  canAttack = true
+end
 print(("forever_range: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

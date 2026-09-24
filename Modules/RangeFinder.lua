@@ -317,6 +317,7 @@ end
 local function wipeSpellOut(t)
   local so = t.spellOut
   if so then for k in pairs(so) do so[k] = nil end end
+  t.markOut = nil
 end
 
 function RangeFinder:ScanLadder(now, shoot, melee)
@@ -540,6 +541,11 @@ function RangeFinder:Refresh(state)
   local near  = withGrace(self, "_near",  nearProbe(self),  now)
   local shoot = withGrace(self, "_shoot", shootProbe(self), now)
   local close = withGrace(self, "_close", closeProbe(self), now)
+
+  -- Hunter's Mark castable from here (the corner icon's range tint).
+  local hmIn = nil
+  if self.hmName and IsSpellInRange then hmIn = tri(IsSpellInRange(self.hmName, "target")) end
+  if hmIn == nil then t.markOut = nil else t.markOut = not hmIn end
 
   local zone, target, inMelee
 

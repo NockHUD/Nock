@@ -20,6 +20,34 @@ local function baseSpell(id)
   return id
 end
 
+-- Ranks are separate spells on Forever and GetBaseSpell does not link them
+-- (Cooldowns ruling, 2026-09-23), so a rank's cast and aura are matched by
+-- NAME to the base id. The map fills lazily: a name the client has not
+-- resolved yet is asked for again on the next lookup.
+local byName, byNameDone = {}, false
+local function nameMap()
+  if byNameDone then return byName end
+  local S, API = Nock.Spells, Nock.API
+  local done = true
+  local function add(id)
+    local n = Nock.Flavor.Plain(API.SpellName(id))
+    if type(n) == "string" then byName[n] = id else done = false end
+  end
+  for id in pairs(S.ASPECTS) do add(id) end
+  add(S.HUNTERS_MARK)
+  byNameDone = done
+  return byName
+end
+
+-- A cast's spell id -> the tracked base id (an aspect or the mark), or nil.
+local function resolve(spellID)
+  local id = baseSpell(spellID)
+  local S = Nock.Spells
+  if S.ASPECTS[id] or id == S.HUNTERS_MARK then return id end
+  local n = Nock.Flavor.Plain(Nock.API.SpellName(spellID))
+  return type(n) == "string" and nameMap()[n] or nil
+end
+
 local function setAspect(id)
   local p = Nock.state.player
   if not id then p.aspect = nil; return end
@@ -48,7 +76,8 @@ end
 
 function Auras:UNIT_SPELLCAST_SUCCEEDED(event, unit, castGUID, spellID)
   if unit ~= "player" or type(spellID) ~= "number" then return end
-  local id = baseSpell(spellID)
+  local id = resolve(spellID)
+  if not id then return end
   local S = Nock.Spells
   if S.ASPECTS[id] then
     setAspect(id)
@@ -67,11 +96,22 @@ function Auras:Refresh()
   if Nock.Restricted("auras") then return end
   local AC = Nock.AuraCache
   if not AC then return end
+  local S = Nock.Spells
   local found
-  for id in pairs(Nock.Spells.ASPECTS) do
+  for id in pairs(S.ASPECTS) do
     if AC.BySpell("player", id) then found = id; break end
   end
+  -- A higher rank's aura carries its own id: find it by name.
+  if not found then
+    for n, id in pairs(nameMap()) do
+      if id ~= S.HUNTERS_MARK and AC.ByName("player", n) then found = id; break end
+    end
+  end
   setAspect(found)
-  local m = AC.BySpell("target", Nock.Spells.HUNTERS_MARK)
+  local m = AC.BySpell("target", S.HUNTERS_MARK)
+  if not m then
+    local hmName = Nock.Flavor.Plain(Nock.API.SpellName(S.HUNTERS_MARK))
+    if type(hmName) == "string" then m = AC.ByName("target", hmName) end
+  end
   if m then setMark(m.expirationTime or 0, m.duration or 0) else setMark(nil) end
 end

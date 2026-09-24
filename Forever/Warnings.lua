@@ -138,7 +138,16 @@ function Checks.petAttack(reads)
   return warn("petAttack", "amber", PET_ATTACK_ICON, "PET IDLE", nil)
 end
 
-Warnings.ORDER = { Checks.ammo, Checks.petDead, Checks.petMissing, Checks.petUnhappy, Checks.notAttacking, Checks.notInRange, Checks.petAttack }
+-- Growl on autocast inside a dungeon or raid: the pet taunts mobs off the
+-- tank. Open world stays quiet (solo, Growl autocast is what you want).
+function Checks.petGrowl(reads)
+  if not isEnabled("warnPetGrowlEnabled") then return nil end
+  if reads.inInstance ~= true or reads.petExists ~= true or reads.petDead == true then return nil end
+  if reads.growlAutocast ~= true then return nil end
+  return warn("petGrowl", "amber", spellIcon(Nock.Spells.GROWL) or 132270, "GROWL", nil)
+end
+
+Warnings.ORDER = { Checks.ammo, Checks.petDead, Checks.petMissing, Checks.petUnhappy, Checks.notAttacking, Checks.notInRange, Checks.petAttack, Checks.petGrowl }
 
 -- The live reads, every one secret-guarded: a secret answer is a nil read
 -- and the check stays quiet.
@@ -169,8 +178,37 @@ function Warnings:Reads(state)
   local t = state.target
   r.targetHostile = t and t.exists == true and t.alive == true and t.friendly == false
   r.zone = t and t.rangeState or nil
+  r.inInstance = self:InInstance()
+  r.growlAutocast = nil
+  if r.inInstance and r.petExists then r.growlAutocast = self:GrowlAutocast() end
   r.now = GetTime()
   return r
+end
+
+-- A dungeon or raid instance (instance-based, not group-based: the same rule
+-- as Nock.IsInInstance on TBC).
+function Warnings:InInstance()
+  if not _G.IsInInstance then return false end
+  local _, kind = IsInInstance()
+  kind = P(kind)
+  return kind == "party" or kind == "raid"
+end
+
+-- Growl's pet-bar slot, found by its localized NAME (every rank shares it),
+-- and that slot's autocast flag (6th return). nil when unknown or secret.
+function Warnings:GrowlAutocast()
+  if not _G.GetPetActionInfo then return nil end
+  local growl = P(Nock.API.SpellName and Nock.API.SpellName(Nock.Spells.GROWL))
+  if type(growl) ~= "string" then return nil end
+  for i = 1, (_G.NUM_PET_ACTION_SLOTS or 10) do
+    local name, _, _, _, _, autoCastEnabled = GetPetActionInfo(i)
+    if P(name) == growl then
+      local on = P(autoCastEnabled)
+      if on == nil then return nil end
+      return on and true or false
+    end
+  end
+  return nil
 end
 
 -- Call Pet is learned at 10; the spellbook says so on this client, the
@@ -338,5 +376,15 @@ Warnings.Catalog = {
     iconFn      = function() return PET_ATTACK_ICON end,
     description = "Your pet is standing idle in combat.",
     logic       = "Fires when:\n• You are in combat\n• A living pet is out\n• It has no target\n• That has held for 1.5 s\n\nSend it in with the pet Attack command or a /petattack macro; the square clears the moment it has a target.",
+  },
+  {
+    key         = "petGrowl",
+    category    = "pet",
+    name        = "Pet Growl on in a dungeon or raid",
+    severity    = "amber",
+    enabledKey  = "warnPetGrowlEnabled",
+    iconFn      = function() return spellIcon(Nock.Spells.GROWL) or 132270 end,
+    description = "Your pet's Growl is on autocast inside a dungeon or raid: turn it off so the pet does not taunt mobs off the tank.",
+    logic       = "Fires when:\n• You are inside a dungeon or raid instance\n• A living pet is out\n• Growl is on the pet bar with autocast on\n\nIn and out of combat, so it shows before the pull. Quiet in the open world, where Growl on autocast is what you want solo. Matched by Growl's name, so every rank counts.",
   },
 }
