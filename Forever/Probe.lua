@@ -54,6 +54,13 @@ function Probe:OnEnable()
   self:RegisterEvent("UNIT_SPELLCAST_START", "OnCast")
   self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", "OnCast")
   self:RegisterEvent("UNIT_SPELLCAST_STOP", "OnCast")
+  -- Press-side edges: Multi-Shot fires no START here, only SUCCEEDED, so
+  -- these say when the press lands and whether SUCCEEDED is the release.
+  self:RegisterEvent("UNIT_SPELLCAST_SENT", "OnCastSent")
+  self:RegisterEvent("UNIT_SPELLCAST_FAILED", "OnCast")
+  self:RegisterEvent("UNIT_SPELLCAST_FAILED_QUIET", "OnCast")
+  self:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED", "OnCast")
+  self:RegisterEvent("CURRENT_SPELL_CAST_CHANGED", "OnAttackToggle")
   -- The melee auto-attack toggle pair (the "not attacking" warning's feed):
   -- logged with the casts so one report shows whether they fire here.
   self:RegisterEvent("PLAYER_ENTER_COMBAT", "OnAttackToggle")
@@ -75,6 +82,10 @@ function Probe:OnCast(event, unit, castGUID, spellID, castBarID)
   local C = self._casts
   C[#C + 1] = { t = GetTime(), ev = event, spellID = spellID, castBarID = castBarID }
   if #C > CAST_MAX then table.remove(C, 1) end
+end
+
+function Probe:OnCastSent(event, unit, target, castGUID, spellID)
+  self:OnCast(event, unit, castGUID, spellID)
 end
 
 function Probe:Casts()

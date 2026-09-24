@@ -28,7 +28,7 @@ dofile("Forever/CastBar.lua")
 ok(module and module.name == "CastBar", "module CastBar")
 module:OnEnable()
 local st = Nock.state.player
-local function fire(ev, unit, ...) local h = module.events[ev]; module[type(h) == "string" and h or ev](module, ev, unit, ...) end
+local function fire(ev, unit, ...) local h = module.events[ev]; if not h then return end; module[type(h) == "string" and h or ev](module, ev, unit, ...) end
 
 -- Aimed Shot 2 s cast: name, text, texture, startMs, endMs, isTradeSkill, castID, notInterruptible, spellId
 casting = { "Aimed Shot", "", 135130, 100000, 102000, false, "cast-1", false, 19434 }
@@ -76,6 +76,79 @@ fire("UNIT_SPELLCAST_START", "player", "c5", 19434)
 casting = nil
 fire("UNIT_SPELLCAST_INTERRUPTED", "player", "c5", 19434)
 ok(st.casting == nil, "interrupted clears")
+
+-- Multi-Shot: START fires but UnitCastingInfo reports nothing (ranged shots
+-- never enter it) -> the bar is raised from the spell's own cast time.
+Nock.API = { SpellInfo = function(id)
+  if id == 2643 then return "Multi-Shot", 132330, 500 end
+  if id == 999 then return "Instant", 1, 0 end
+end }
+casting = nil
+now = 400
+fire("UNIT_SPELLCAST_START", "player", "ms-1", 2643)
+ok(st.casting and st.casting.spellId == 2643 and st.casting.name == "Multi-Shot", "Multi-Shot published without UnitCastingInfo")
+ok(st.casting and st.casting.startTime == 400 and st.casting.endTime == 400.5, "Multi-Shot spans its cast time")
+ok(st.casting and st.casting.icon == 132330, "Multi-Shot icon")
+
+-- A STOP for some other cast (a failed re-press) must not end it early...
+fire("UNIT_SPELLCAST_STOP", "player", "other", 2643)
+ok(st.casting and st.casting.spellId == 2643, "foreign STOP keeps the fallback bar")
+-- ...its own STOP does.
+fire("UNIT_SPELLCAST_STOP", "player", "ms-1", 2643)
+ok(st.casting == nil, "own STOP clears the fallback bar")
+
+-- Interrupt of the fallback cast clears too.
+fire("UNIT_SPELLCAST_START", "player", "ms-2", 2643)
+fire("UNIT_SPELLCAST_INTERRUPTED", "player", "ms-2", 2643)
+ok(st.casting == nil, "interrupt clears the fallback bar")
+
+-- A zero cast time never raises a bar.
+fire("UNIT_SPELLCAST_START", "player", "i-1", 999)
+ok(st.casting == nil, "instant spell raises no bar")
+
+-- The Forever reality (probed): Multi-Shot fires SENT on the press and then
+-- only SUCCEEDED -- no START, no STOP. The bar starts on SENT and expires.
+local timers = {}
+_G.C_Timer = { After = function(d, fn) timers[#timers + 1] = { at = now + d, fn = fn } end }
+local function runTimers()
+  for i = #timers, 1, -1 do
+    if now >= timers[i].at then local t = table.remove(timers, i); t.fn() end
+  end
+end
+now = 500
+fire("UNIT_SPELLCAST_SENT", "player", "", "ms-3", 2643)
+ok(st.casting and st.casting.spellId == 2643 and st.casting.endTime == 500.5, "SENT raises the Multi-Shot bar")
+fire("UNIT_SPELLCAST_SENT", "player", "", "i-2", 999)
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "i-2", 999)
+ok(st.casting and st.casting.spellId == 2643, "an instant's SENT/SUCCEEDED leave the bar alone")
+now = 500.3; runTimers()
+ok(st.casting and st.casting.spellId == 2643, "bar still up mid-cast")
+now = 500.503
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "ms-3", 2643)
+ok(st.casting == nil, "own SUCCEEDED (the release) ends the bar")
+
+-- Backstop: a lost SUCCEEDED still expires the bar.
+now = 550
+fire("UNIT_SPELLCAST_SENT", "player", "", "ms-6", 2643)
+now = 550.6; runTimers()
+ok(st.casting == nil, "bar expires at its end without SUCCEEDED")
+
+-- A failed press (out of range) drops its bar at once.
+now = 600
+fire("UNIT_SPELLCAST_SENT", "player", "", "ms-4", 2643)
+fire("UNIT_SPELLCAST_FAILED", "player", "other", 2643)
+ok(st.casting and st.casting.spellId == 2643, "foreign FAILED keeps the bar")
+fire("UNIT_SPELLCAST_FAILED_QUIET", "player", "ms-4", 2643)
+ok(st.casting == nil, "own FAILED clears the bar")
+
+-- A real cast's START takes the bar over from a SENT-raised one.
+now = 700
+fire("UNIT_SPELLCAST_SENT", "player", "", "ms-5", 2643)
+casting = { "Aimed Shot", "", 135130, 700000, 702000, false, "a-1", false, 19434 }
+fire("UNIT_SPELLCAST_START", "player", "a-1", 19434)
+ok(st.casting and st.casting.spellId == 19434, "real cast takes over")
+now = 701; runTimers()
+ok(st.casting and st.casting.spellId == 19434, "stale expiry leaves the real cast alone")
 
 print(("forever_castbar: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
