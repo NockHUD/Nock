@@ -66,7 +66,8 @@ local function msg(m, ...) local h = CD.msgs[m]; CD[type(h) == "string" and h or
 -- Cold start: the catalog seed is known before any reading, so the first
 -- fight has a countdown (Raptor 6 s); a remembered per-character value wins.
 ok(Nock.LedgerEngine.Known(CD.ledger, 2973) and CD.ledger.learned[2973] == 6, "catalog seed learned at build")
-ok(CD.ledger.learned[1259799] == nil, "no seed -> nothing known for Elune yet")
+ok(CD.ledger.learned[1259799] == 180, "Elune's Light seeded at 3 min")
+ok(CD.ledger.learned[1259718] == 180 and CD:GetEntry("Meld").untilBroken == true and CD:GetEntry("Elune").buff == 15, "buff fields reach the constants")
 Nock.db.char = { foreverLearned = { [5116] = 11 } }
 CD:RebuildLists()
 ok(CD.ledger.learned[5116] == 11, "remembered duration overrides the seed")
@@ -197,6 +198,102 @@ do
   _G.C_SpellBook = nil
   CD:UpdateKnown()
   ok(CD:IsEntryAvailable("Meld") == true, "no spellbook API: cannot tell, keep showing")
+end
+
+-- Racial buffs: the tile lights while the racial's own buff is up. In combat
+-- (auras secret) the cast stamps it; out of combat the aura cache is the
+-- truth; Shadowmeld is held until a move, cast or swing breaks it.
+do
+  local secretAuras = false
+  _G.C_Secrets.ShouldAurasBeSecret = function() return secretAuras end
+  local auras = {}   -- spellId -> record
+  Nock.AuraCache = {
+    BySpell = function(_, id) return auras[id] end,
+    ByName = function(_, n) for _, a in pairs(auras) do if a.name == n then return a end end end,
+  }
+  local procMsgs = {}
+  CD.SendMessage = function(_, m, key, on) if m == "NOCK_PROC_ACTIVE" then procMsgs[#procMsgs + 1] = key .. "=" .. tostring(on) end end
+  local cds = Nock.state.cooldowns
+  local function derive(key)  -- the tick's buffRemaining, as Core.lua derives it
+    local c = cds[key]
+    c.buffRemaining = (c.buffStartTime > 0 and c.buffDuration > 0) and math.max(0, c.buffStartTime + c.buffDuration - now) or 0
+  end
+
+  -- Elune's Light in combat: stamped for the 15 s seed, counts down, ends.
+  secretAuras = true; now = 1000
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 1259799)
+  CD:Refresh(); derive("Elune")
+  ok(cds.Elune.procActive == true and cds.Elune.buffDuration == 15 and cds.Elune.buffStartTime == 1000, "Elune cast in combat: active for the seeded 15 s")
+  ok(cds.Elune.buffIcon == 100000 + 1259799 and cds.Elune.buffPermanent == false, "the buff pivots to the spell icon, timed")
+  -- (Fury=false rides along: the Blood Fury cast at 500 above has expired)
+  ok(table.concat(procMsgs, ",") == "Elune=true,Fury=false", "the edges are announced")
+  now = 1010; CD:Refresh(); derive("Elune")
+  ok(cds.Elune.procActive == true and math.abs(cds.Elune.buffRemaining - 5) < 1e-9, "5 s left at +10")
+  now = 1016; CD:Refresh()
+  ok(cds.Elune.procActive == false and cds.Elune.buffIcon == nil, "expired: the tile goes back to the cooldown")
+
+  -- Out of combat the aura teaches the length and corrects the expiry.
+  secretAuras = false; now = 2000
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 1259799)
+  CD:Refresh()
+  ok(cds.Elune.procActive == true, "a fresh stamp survives a cache that has not caught up yet")
+  auras[1259799] = { spellId = 1259799, name = "Elune's Light", duration = 12, expirationTime = 2012, icon = 777 }
+  CD:Refresh()
+  ok(cds.Elune.buffDuration == 12 and cds.Elune.buffStartTime == 2000 and cds.Elune.buffIcon == 777, "the aura is the truth out of combat")
+  ok(Nock.db.char.foreverRacialBuff.Elune == 12, "the learned buff length is remembered")
+  auras[1259799] = nil; now = 2003
+  CD:Refresh()
+  ok(cds.Elune.procActive == false, "aura gone out of combat (cancelled): the tile drops at once")
+
+  -- Shadowmeld in combat: held with no timer until a move / cast / swing.
+  secretAuras = true; now = 3000
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 20580)
+  CD:Refresh()
+  ok(cds.Meld.procActive == true and cds.Meld.buffPermanent == true and cds.Meld.buffDuration == 0, "Shadowmeld: active, no timer")
+  ok(cds.Meld.startTime == 0, "no cooldown while melded: it starts at the break")
+  now = 3300; CD:Refresh()
+  ok(cds.Meld.procActive == true and cds.Meld.startTime == 0, "still up minutes later (no expiry, no cooldown)")
+  fire("PLAYER_STARTED_MOVING")
+  CD:Refresh()
+  ok(cds.Meld.procActive == false and cds.Meld.buffPermanent == false, "moving breaks it")
+  ok(cds.Meld.startTime == 3300 and cds.Meld.duration == 10, "the break starts the 10 s cooldown")
+  now = 3311; CD:Refresh()
+  ok(cds.Meld.duration == 0 or cds.Meld.startTime + cds.Meld.duration <= now, "and it is ready 10 s after the break")
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 20580); CD:Refresh()
+  fire("PLAYER_SWING", 2.5, 2); CD:Refresh()
+  ok(cds.Meld.procActive == false, "a swing breaks it")
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 20580); CD:Refresh()
+  fire("UNIT_SPELLCAST_START", "target", "g", 1); CD:Refresh()
+  ok(cds.Meld.procActive == true, "someone else's cast does not")
+  fire("UNIT_SPELLCAST_START", "player", "g", 19434); CD:Refresh()
+  ok(cds.Meld.procActive == false, "starting a cast breaks it")
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 20580); CD:Refresh()
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 2973); CD:Refresh()
+  ok(cds.Meld.procActive == false, "an instant breaks it")
+
+  -- Out of combat a permanent aura holds it; its absence clears it.
+  secretAuras = false; now = 4000
+  auras[20580] = { spellId = 20580, name = "Shadowmeld", duration = 0, expirationTime = 0, icon = 888 }
+  CD:Refresh()
+  ok(cds.Meld.procActive == true and cds.Meld.buffPermanent == true and cds.Meld.buffIcon == 888, "the aura cache finds a permanent Shadowmeld")
+  auras[20580] = nil; CD:Refresh()
+  ok(cds.Meld.procActive == false, "and drops it when the aura goes")
+  ok(cds.Meld.startTime == 4000 and cds.Meld.duration == 10, "an unseen break (cancelled out of combat) starts the cooldown when the aura goes")
+  -- A guessed break that did not break it (still up out of combat): the stamp is taken back.
+  now = 4100
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 20580); CD:Refresh()
+  fire("PLAYER_STARTED_MOVING"); CD:Refresh()
+  ok(cds.Meld.startTime == 4100, "a move stamps the break")
+  auras[20580] = { spellId = 20580, name = "Shadowmeld", duration = 0, expirationTime = 0, icon = 888 }
+  CD:Refresh()
+  ok(cds.Meld.procActive == true and cds.Meld.startTime == 0, "the aura says it held: active again, cooldown withdrawn")
+  auras[20580] = nil
+
+  -- A racial with no buff never lights.
+  secretAuras = true
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 1259718); CD:Refresh()
+  ok(cds.WillSurv.procActive == false, "Will to Survive has no buff: never active")
+  Nock.AuraCache = nil
 end
 
 print(("forever_cooldowns: %d passed, %d failed"):format(pass, fail))

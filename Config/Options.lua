@@ -360,12 +360,18 @@ local function fillActiveHighlightArgs(args, keyPrefix, baseOrder, disabledFn)
     if disabledFn and disabledFn() then return true end
     return (Nock.db.profile[key("Style")] or "border") ~= "border"
   end
+  -- Colour and thickness also drive the inset glow (its band's colour and depth).
+  local function colorOff()
+    if disabledFn and disabledFn() then return true end
+    local st = Nock.db.profile[key("Style")] or "border"
+    return st ~= "border" and st ~= "inset"
+  end
   args.activeHeader = { type = "header", name = "Active highlight", order = baseOrder }
   args[key("Style")] = {
     type = "select", name = "Style", order = baseOrder + 0.1, width = 1.2,
-    desc = "How a tile announces its active state (a proc up, a consumable's buff running): the highlight border, the animated action-button glow, or nothing. The Kill Command tile's own proc-glow toggle overrides this on that one slot.",
-    values = { border = "Highlight border", glow = "Action-button glow", none = "None" },
-    sorting = { "border", "glow", "none" },
+    desc = "How a tile announces its active state (a proc up, a consumable's buff running): the highlight border, a soft glow fading in from the tile's edges, the animated action-button glow, or nothing. The Kill Command tile's own proc-glow toggle overrides this on that one slot.",
+    values = { border = "Highlight border", inset = "Inset glow", glow = "Action-button glow", none = "None" },
+    sorting = { "border", "inset", "glow", "none" },
     dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
     disabled = disabledFn,
     get = function() return Nock.db.profile[key("Style")] or "border" end,
@@ -373,8 +379,8 @@ local function fillActiveHighlightArgs(args, keyPrefix, baseOrder, disabledFn)
   }
   args[key("Color")] = {
     type = "color", name = "Border color", order = baseOrder + 0.2, hasAlpha = true,
-    desc = "Color of the highlight border. The action-button glow keeps its own gold.",
-    disabled = borderOff,
+    desc = "Color of the highlight border or the inset glow. The action-button glow keeps its own gold.",
+    disabled = colorOff,
     get = function()
       local c = Nock.db.profile[key("Color")] or { 0, 0.9, 0.9, 1 }
       return c[1] or 0, c[2] or 0, c[3] or 0, c[4] or 1
@@ -386,9 +392,9 @@ local function fillActiveHighlightArgs(args, keyPrefix, baseOrder, disabledFn)
   }
   args[key("Size")] = {
     type = "range", name = "Border thickness", order = baseOrder + 0.3,
-    desc = "Thickness of the highlight border (px).",
+    desc = "Thickness of the highlight border (px); for the inset glow, how deep it reaches into the tile.",
     min = 1, max = 5, step = 1,
-    disabled = borderOff,
+    disabled = colorOff,
     get = function() return Nock.db.profile[key("Size")] or 3 end,
     set = function(_, v) visualsSet(_, key("Size"), v) end,
   }

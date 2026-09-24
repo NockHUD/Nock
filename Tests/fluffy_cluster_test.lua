@@ -607,6 +607,7 @@ Nock.UI.CreateIconSlot = function(parent, name)
   return s
 end
 Nock.UI.SetIconProcGlow  = function() end
+Nock.UI.SetIconInsetGlow = function() end
 Nock.UI.SetIconHighlight = function() end
 Nock.UI.ApplyGlowStyle   = function() end
 Nock.UI.ReactSlotLook    = function(cd, out, opts, res) res = res or {}; res.alpha = 1; return res end

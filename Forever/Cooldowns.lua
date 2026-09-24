@@ -130,6 +130,7 @@ function Cooldowns:RebuildLists()
       -- Range tint follows the last id (the ranged one of a pair); the pair
       -- tile draws ids[1] on the left half and ids[2] on the right.
       s.spellId = ids[#ids]
+      s.melee = e.melee or nil   -- the out-of-range tint follows the melee probe (Forever/RangeFinder.lua)
       s.icon = Nock.API.SpellIcon(ids[1])
       s.icon2 = e.ids and Nock.API.SpellIcon(ids[2]) or nil
       seedLearned(self.ledger, e)
@@ -265,6 +266,125 @@ end
 
 function Cooldowns:GetGridEntries() return lists(self) end
 
+-- Racial buffs: the tile lights while the racial's own buff is up (Elune's
+-- Light, Blood Fury, Berserking ...) and pivots to its countdown. Own auras
+-- throw in combat here, so the buff is a ledger too: the cast stamps it with
+-- the learned (or seeded) length, and out of combat the aura cache is the
+-- truth both ways and teaches the length. An `untilBroken` buff (Shadowmeld)
+-- has no expiry and does NOT drop combat on Forever: it is held from the cast
+-- until the hunter moves, casts or swings, which is what breaks it.
+local BUFF_GRACE = 0.5   -- a fresh stamp outlives an aura cache that has not caught up
+
+local function buffMemory()
+  local db = Nock.db and Nock.db.char
+  if not db then return nil end
+  db.foreverRacialBuff = db.foreverRacialBuff or {}
+  return db.foreverRacialBuff
+end
+
+local function buffOf(self, e)
+  self._buffs = self._buffs or {}
+  local b = self._buffs[e.key]
+  if not b then
+    local mem = buffMemory()
+    b = { exp = 0, held = false, stamp = -math.huge, dur = (mem and mem[e.key]) or e.buff }
+    self._buffs[e.key] = b
+  end
+  return b
+end
+
+-- A held buff's cooldown starts when it BREAKS, not at the cast (Shadowmeld:
+-- 10 s from the break, user 2026-09-24): the break stamps the ledger, and
+-- while cooldowns are readable the next SPELL_UPDATE_COOLDOWN corrects it.
+local function breakBuff(self, e, b, now)
+  b.held, b.brokeAt = false, now
+  local id = ledgerId(e)
+  if not id then return end
+  Engine.OnCast(self.ledger, id, now)
+  if not Nock.Restricted("cooldowns") then self._learnPending, self._learnRead = id, id end
+end
+
+-- Any own action breaks a held buff (Shadowmeld). `except` is the entry
+-- whose cast is being handled: casting Shadowmeld does not break Shadowmeld.
+function Cooldowns:BreakHeld(except)
+  if not self._buffs then return end
+  local now = GetTime()
+  for key, b in pairs(self._buffs) do
+    if b.held and key ~= except then
+      local e = self._byKey and self._byKey[key]
+      if e then breakBuff(self, e, b, now) else b.held = false end
+    end
+  end
+end
+
+function Cooldowns:OnMoveOrSwing() self:BreakHeld(nil) end
+
+function Cooldowns:UNIT_SPELLCAST_START(event, unit)
+  if unit == "player" then self:BreakHeld(nil) end
+end
+
+local function stampBuff(self, e, now)
+  if not e.racial then return end
+  local b = buffOf(self, e)
+  if e.untilBroken then
+    b.held, b.stamp = true, now
+  elseif b.dur then
+    b.exp, b.stamp = now + b.dur, now
+  end
+end
+
+-- Out of combat: the aura (by the entry's id, else its name) is the truth.
+local function readBuffTruth(self, e, now)
+  local AC = Nock.AuraCache
+  if not AC or Nock.Restricted("auras") then return end
+  local b = buffOf(self, e)
+  local id = ledgerId(e)
+  local a = (id and AC.BySpell("player", id)) or AC.ByName("player", e.name or (id and nameOf(id)) or false)
+  if a then
+    local P = Nock.Flavor.Plain
+    local dur, exp = P(a.duration), P(a.expirationTime)
+    b.icon = P(a.icon) or b.icon
+    if type(dur) == "number" and dur > 0 and type(exp) == "number" and exp > 0 then
+      if dur ~= b.dur then
+        b.dur = dur
+        local mem = buffMemory()
+        if mem then mem[e.key] = dur end
+      end
+      b.exp, b.held = exp, false
+    else
+      -- Still up after a guessed break (a move or cast that did not break
+      -- it): the break's cooldown stamp was wrong, take it back.
+      if not b.held and b.brokeAt and e.untilBroken and id then
+        Engine.Reconcile(self.ledger, id, 0, 0)
+      end
+      b.exp, b.held, b.brokeAt = 0, true, nil
+    end
+  elseif now - b.stamp > BUFF_GRACE then
+    -- Gone out of combat without a seen break (cancelled): the break is now.
+    if b.held and e.untilBroken then breakBuff(self, e, b, now) end
+    b.exp, b.held = 0, false
+  end
+end
+
+-- The one writer of procActive on Forever, same edge message as TBC's.
+local function publishBuff(self, e, s, now)
+  local b = buffOf(self, e)
+  local timed = b.exp > now and b.dur and b.dur > 0
+  local active = (b.held or timed) and true or false
+  if (s.procActive == true) ~= active then
+    s.procActive = active
+    self:SendMessage("NOCK_PROC_ACTIVE", e.key, active)
+  end
+  s.buffPermanent = b.held and not timed or false
+  if timed then
+    s.buffIcon, s.buffDuration, s.buffStartTime = b.icon or s.icon, b.dur, b.exp - b.dur
+  elseif b.held then
+    s.buffIcon, s.buffDuration, s.buffStartTime = b.icon or s.icon, 0, 0
+  else
+    s.buffIcon, s.buffDuration, s.buffStartTime = nil, 0, 0
+  end
+end
+
 function Cooldowns:OnEnable()
   lists(self)
   self:RegisterEvent("PLAYER_LOGIN", "Rescan")
@@ -272,6 +392,10 @@ function Cooldowns:OnEnable()
   self:RegisterEvent("SPELLS_CHANGED", "UpdateKnown")
   self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
   self:RegisterEvent("SPELL_UPDATE_COOLDOWN")
+  -- what breaks a held buff (Shadowmeld): moving, starting a cast, a swing
+  self:RegisterEvent("UNIT_SPELLCAST_START")
+  self:RegisterEvent("PLAYER_STARTED_MOVING", "OnMoveOrSwing")
+  self:RegisterEvent("PLAYER_SWING", "OnMoveOrSwing")
   self:RegisterMessage("NOCK_SNAPSHOT", "Seed")
   self:RegisterMessage("NOCK_RESCAN", "Rescan")
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "OnConfigChanged")
@@ -282,7 +406,11 @@ end
 function Cooldowns:UNIT_SPELLCAST_SUCCEEDED(event, unit, castGUID, spellID)
   if unit ~= "player" or type(spellID) ~= "number" then return end
   local e, id = self:Resolve(spellID)
+  self:BreakHeld(e and e.key)
   if not e then return end
+  stampBuff(self, e, GetTime())
+  -- a held buff's cooldown starts at its break (breakBuff), not here
+  if e.untilBroken then return end
   Engine.OnCast(self.ledger, id, GetTime())
   -- the learn read uses the cast's own rank (that is the spell on cooldown);
   -- the ledger is keyed by the catalog id
@@ -338,6 +466,11 @@ function Cooldowns:Refresh()
   local now = GetTime()
   for _, e in ipairs(self._tracked) do
     local s = Nock.state.cooldowns[e.key]
+    -- buff first: a break seen here stamps the cooldown read below
+    if e.racial then
+      readBuffTruth(self, e, now)
+      publishBuff(self, e, s, now)
+    end
     local start, duration = Engine.Cooldown(self.ledger, ledgerId(e), now)
     s.startTime, s.duration = start, duration
   end

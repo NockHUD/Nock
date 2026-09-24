@@ -233,6 +233,7 @@ function ReactCooldownsView:Rebuild()
       slot.countText:SetText("")
       slot.topText:SetText("")
       Nock.UI.SetIconHighlight(slot, nil)
+      Nock.UI.SetIconInsetGlow(slot, nil)
       slot:Show()
     end
   end
@@ -321,12 +322,15 @@ function ReactCooldownsView:Refresh(state)
         -- Buff pivot (same as the classic grid): while the tracked buff is up
         -- the slot shows the buff icon + remaining + matching swipe — this is
         -- what makes row 3 show active consumable time (e.g. Haste Potion).
+        -- A buff with no expiry (Forever's Shadowmeld, buffPermanent) pivots
+        -- too: lit, no countdown, no swipe.
         local showBuff  = cd.procActive and cd.buffIcon
-                        and cd.buffRemaining and cd.buffRemaining > 0
+                        and ((cd.buffRemaining or 0) > 0 or cd.buffPermanent == true)
         local dispIcon  = showBuff and cd.buffIcon      or cd.icon
         local dispStart = showBuff and cd.buffStartTime or cd.startTime
         local dispDur   = showBuff and cd.buffDuration  or cd.duration
-        local dispRem   = showBuff and cd.buffRemaining or cd.remaining
+        local dispRem
+        if showBuff then dispRem = cd.buffRemaining or 0 else dispRem = cd.remaining end
 
         if dispIcon and dispIcon ~= slot._lastIcon then
           slot.icon:SetTexture(dispIcon)
@@ -371,6 +375,8 @@ function ReactCooldownsView:Refresh(state)
           -- Uncoloured: the same gold overlay as the action bar (user, 2026-08-29:
           -- the PROC_GLOW-tinted one read blue).
           Nock.UI.SetIconProcGlow(slot, r.glow == "overlay", nil)
+          Nock.UI.SetIconInsetGlow(slot, (r.glow == "inset")
+            and (p.reactActiveColor or C.COLORS.PROC_GLOW) or nil, (p.reactActiveSize or 3) * 3)
           slot._lastLook = lk
         end
 
@@ -387,7 +393,8 @@ function ReactCooldownsView:Refresh(state)
         -- ledger's start edge so the animation does not restart every tick.
         if dispDur and dispDur > 0 and dispRem and dispRem > 0 then
           if dispStart ~= slot._lastCdStart or dispDur ~= slot._lastCdDuration then
-            local durObj = (Nock.Flavor and Nock.Flavor.forever and cd.spellId)
+            -- (not while the buff is shown: its swipe is the buff's own)
+            local durObj = (Nock.Flavor and Nock.Flavor.forever and cd.spellId and not showBuff)
                            and Nock.API.SpellCooldownDuration(cd.spellId) or nil
             if durObj and slot.cooldown.SetCooldownFromDurationObject then
               slot.cooldown:SetCooldownFromDurationObject(durObj)

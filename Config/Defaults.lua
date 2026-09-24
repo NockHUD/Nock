@@ -1298,6 +1298,10 @@ if Nock.Flavor and Nock.Flavor.forever then
   p.reactCdFontSize     = 14       -- the grid digits read at 14 (user, 2026-09-23)
   p.reactCdWholeSeconds = true
   p.reactTickWindupWidth = 2      -- the spell-queue mark (Forever's name for the wind-up mark) at 2 px
+  -- The cooldown grid (user, 2026-09-24): an active tile glows inward
+  -- instead of TBC's border, and a spell out of range greys out.
+  p.reactActiveStyle    = "inset"
+  p.reactRangeTint      = "grey"
   -- Spoken range cues (Forever/RangeCues.lua): one master switch, the dead
   -- zone on, the rest off; each with Nock's own clip preselected.
   p.soundCuesEnabled     = true

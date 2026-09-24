@@ -68,6 +68,8 @@ ok(Look(proc, nil, {}).glow == "border", "proc with no style opts -> border (tod
 ok(Look(proc, nil, { activeStyle = "border" }).glow == "border", "activeStyle border -> border")
 ok(Look(proc, nil, { activeStyle = "glow" }).glow == "overlay", "activeStyle glow -> overlay")
 ok(Look(proc, nil, { activeStyle = "none" }).glow == nil, "activeStyle none -> no glow")
+ok(Look(proc, nil, { activeStyle = "inset" }).glow == "inset", "activeStyle inset -> inset glow (Forever's baseline)")
+ok(Look(proc, true, { activeStyle = "inset", tint = "grey" }).desat == true, "an active tile out of range still greys")
 ok(Look(proc, nil, { activeStyle = "none", procGlow = true }).glow == "overlay",
    "KC override wins over activeStyle none")
 ok(Look(proc, nil, { activeStyle = "border", procGlow = true }).glow == "overlay",

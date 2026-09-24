@@ -42,7 +42,7 @@ Nock.Spells = Spells
 -- countdown before the client has been read once; the live reading replaces
 -- it and is remembered per character (Forever/Cooldowns.lua).
 Spells.TRACKED = {
-  { key = "Raptor",   id = 2973,  label = "Raptor", cd = 6 },                                  -- Raptor Strike
+  { key = "Raptor",   id = 2973,  label = "Raptor", cd = 6, melee = true },                    -- Raptor Strike (range = the melee probe)
   { key = "Arc",      id = 3044,  label = "Arc",    cd = 6 },                                  -- Arcane Shot
   { key = "AimMulti", ids = { 2643, 19434 }, label = "Multi + Aimed", shared = "aimedMulti", cd = 6 }, -- one shared cooldown
   { key = "Conc",     id = 5116,  label = "Conc",   cd = 12 },                                 -- Concussive Shot
@@ -60,15 +60,20 @@ Spells.TRACKED = {
   -- elf pair (2026-09-23). The class spells above always show, learned
   -- or not, so a level-1 grid keeps its shape (user, 2026-09-23).
   -- Seeds are guesses; the live reading replaces them on the first use.
-  { key = "Elune",    id = 1259799, name = "Elune's Light",   label = "Elune", racial = true },            -- night elf (Forever)
-  { key = "Meld",     id = 20580,   name = "Shadowmeld",      label = "Meld",   cd = 120, racial = true }, -- night elf
-  { key = "Stone",    name = "Stoneform",       label = "Stone",  cd = 180, racial = true },               -- dwarf
-  { key = "Percep",   id = 20600,   name = "Perception",      label = "Percep", cd = 180, racial = true }, -- human (level-1 dump 2026-09-23)
+  -- `buff` seeds the length of the racial's own buff: the tile lights and
+  -- counts it down while it is up, and the aura read out of combat teaches
+  -- the real length. `untilBroken` is a buff with no expiry (Shadowmeld: up
+  -- until the hunter moves or acts). A racial with neither still lights
+  -- while the aura cache finds a buff of its name out of combat.
+  { key = "Elune",    id = 1259799, name = "Elune's Light",   label = "Elune",  cd = 180, buff = 15, racial = true }, -- night elf (Forever): +10% crit 15 s
+  { key = "Meld",     id = 20580,   name = "Shadowmeld",      label = "Meld",   cd = 10, untilBroken = true, racial = true },  -- night elf: 10 s from the break
+  { key = "Stone",    name = "Stoneform",       label = "Stone",  cd = 180, buff = 8, racial = true },     -- dwarf
+  { key = "Percep",   id = 20600,   name = "Perception",      label = "Percep", cd = 180, buff = 20, racial = true }, -- human (level-1 dump 2026-09-23)
   { key = "WillSurv", id = 1259718, name = "Will to Survive", label = "Will",   cd = 180, racial = true }, -- human (Forever): removes stuns
-  { key = "Fury",     name = "Blood Fury",      label = "Fury",   cd = 120, racial = true },               -- orc: +10% AP/SP 15 s
-  { key = "Shatter",  name = "Shatter Curse",   label = "Shatter", cd = 120, racial = true },              -- orc (Forever): curse immunity 8 s
+  { key = "Fury",     name = "Blood Fury",      label = "Fury",   cd = 120, buff = 15, racial = true },    -- orc: +10% AP/SP 15 s
+  { key = "Shatter",  name = "Shatter Curse",   label = "Shatter", cd = 120, buff = 8, racial = true },    -- orc (Forever): curse immunity 8 s
   { key = "Stomp",    name = "War Stomp",       label = "Stomp",  cd = 120, racial = true },               -- tauren
-  { key = "Zerk",     name = "Berserking",      label = "Zerk",   cd = 180, racial = true },               -- troll: +10% haste 10 s
+  { key = "Zerk",     name = "Berserking",      label = "Zerk",   cd = 180, buff = 10, racial = true },    -- troll: +10% haste 10 s
   { key = "FastRegen", name = "Fast Regeneration", label = "Regen", cd = 180, racial = true },             -- troll (Forever): 50% health
 }
 
@@ -100,7 +105,8 @@ if Nock.Flavor and Nock.Flavor.forever then
   local C = Nock.Constants
   local tracked = {}
   for i, e in ipairs(Spells.TRACKED) do
-    tracked[i] = { key = e.key, type = "spell", id = e.id, ids = e.ids, label = e.label, shared = e.shared, cd = e.cd, name = e.name, racial = e.racial }
+    tracked[i] = { key = e.key, type = "spell", id = e.id, ids = e.ids, label = e.label, shared = e.shared, cd = e.cd, name = e.name, racial = e.racial,
+                   buff = e.buff, untilBroken = e.untilBroken, melee = e.melee }
   end
   C.TRACKED_COOLDOWNS = tracked
   C.REACT_CD_ROWS = Spells.ROWS

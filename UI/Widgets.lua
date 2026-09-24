@@ -1066,6 +1066,55 @@ function Nock.UI.ApplyGlowStyle(slot, size, contained)
   -- Caller must re-apply border color via SetIconHighlight after this.
 end
 
+-- The inset glow: four additive gradients on the slot's text layer (above the
+-- swipe, under the numbers), each fading from `color` at the icon's edge to
+-- nothing `depth` units in. Built on first use; `color` nil hides it. Diffed
+-- on the slot, so the painter may call it on every look change.
+local function edgeGradient(t, orient, inner, r, g, b, a)
+  local CC = _G.CreateColor
+  if t.SetGradient and CC then
+    local full, none = CC(r, g, b, a), CC(r, g, b, 0)
+    -- HORIZONTAL runs left -> right, VERTICAL bottom -> top
+    if inner then t:SetGradient(orient, none, full) else t:SetGradient(orient, full, none) end
+  else
+    t:SetVertexColor(r, g, b, a * 0.5)
+  end
+end
+
+function Nock.UI.SetIconInsetGlow(slot, color, depth)
+  local key = color and (color[1] .. "," .. color[2] .. "," .. color[3] .. "," .. (color[4] or 1) .. "," .. depth) or nil
+  if slot._insetKey == key then return end
+  slot._insetKey = key
+  local e = slot._inset
+  if not color then
+    if e then for i = 1, 4 do e[i]:Hide() end end
+    return
+  end
+  local icon = slot.icon
+  if not e then
+    local host = slot.cdText and slot.cdText:GetParent() or slot
+    e = {}
+    for i = 1, 4 do
+      local t = host:CreateTexture(nil, "ARTWORK")
+      t:SetTexture(SOLID_TEX)
+      t:SetBlendMode("ADD")
+      e[i] = t
+    end
+    -- left, right, top, bottom
+    e[1]:SetPoint("TOPLEFT", icon, "TOPLEFT");      e[1]:SetPoint("BOTTOMLEFT", icon, "BOTTOMLEFT")
+    e[2]:SetPoint("TOPRIGHT", icon, "TOPRIGHT");    e[2]:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT")
+    e[3]:SetPoint("TOPLEFT", icon, "TOPLEFT");      e[3]:SetPoint("TOPRIGHT", icon, "TOPRIGHT")
+    e[4]:SetPoint("BOTTOMLEFT", icon, "BOTTOMLEFT"); e[4]:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT")
+    slot._inset = e
+  end
+  local r, g, b, a = color[1], color[2], color[3], color[4] or 1
+  e[1]:SetWidth(depth);  edgeGradient(e[1], "HORIZONTAL", false, r, g, b, a)
+  e[2]:SetWidth(depth);  edgeGradient(e[2], "HORIZONTAL", true,  r, g, b, a)
+  e[3]:SetHeight(depth); edgeGradient(e[3], "VERTICAL",   true,  r, g, b, a)
+  e[4]:SetHeight(depth); edgeGradient(e[4], "VERTICAL",   false, r, g, b, a)
+  for i = 1, 4 do e[i]:Show() end
+end
+
 function Nock.UI.SetGlowBorderSize(slot, size)
   Nock.UI.ApplyGlowStyle(slot, size, false)
 end
@@ -1893,6 +1942,7 @@ function Nock.UI.ReactSlotLook(cd, out, opts, res)
     else
       local st = opts.activeStyle
       if st == "glow" then res.glow = "overlay"
+      elseif st == "inset" then res.glow = "inset"
       elseif st == "none" then res.glow = nil
       else res.glow = "border" end
     end

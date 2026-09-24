@@ -169,6 +169,7 @@ function FluffyCooldownsView:Rebuild()
       slot.countText:SetText("")
       slot.topText:SetText("")
       Nock.UI.SetIconHighlight(slot, nil)
+      Nock.UI.SetIconInsetGlow(slot, nil)
       slot:Show()
     end
   end
@@ -257,6 +258,8 @@ function FluffyCooldownsView:Refresh(state)
           Nock.UI.SetIconHighlight(slot, (r.glow == "border")
             and (p.fluffyActiveColor or C.COLORS.PROC_GLOW) or nil)
           Nock.UI.SetIconProcGlow(slot, r.glow == "overlay", nil)
+          Nock.UI.SetIconInsetGlow(slot, (r.glow == "inset")
+            and (p.fluffyActiveColor or C.COLORS.PROC_GLOW) or nil, (p.fluffyActiveSize or 3) * 3)
           slot._lastLook = lk
         end
 
