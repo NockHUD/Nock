@@ -84,6 +84,13 @@ for _, p in ipairs({
   ok(nodeAt(opts, p) ~= nil, p .. " kept")
 end
 
+-- The Range Finder ladder (2026-09-24): the range-bar row reads as the ladder,
+-- the segment-labels row survives the prune.
+local rb = nodeAt(opts, "hud.react.tabSize.reactShowRangeBar")
+ok(rb and rb.name == "Range Finder" and (rb.desc or ""):find("bracket"), "range bar row renamed to Range Finder")
+ok(nodeAt(opts, "hud.react.tabSize.reactRangeLabels") ~= nil, "segment labels row kept on Forever")
+ok(nodeAt(opts, "hud.react.tabSize.reactRangeStyle") ~= nil, "Range Finder style row kept on Forever")
+
 -- Idempotent: a second Apply (RebuildOptionsArgs re-applies) changes nothing.
 local before = 0
 local function count(n) local c = 0; for _, v in pairs(n.args or {}) do if type(v) == "table" then c = c + 1 + count(v) end end; return c end

@@ -6253,6 +6253,34 @@ local function buildOptionsTable()
       end,
     }
     sizeArgs.reactShowRangeBar = reactToggle("reactShowRangeBar", "Range bar",       "Finding ladder + predictive weave fill.", 23)
+    -- Forever only: the Range Finder ladder's style (Forever/RangeLadder.lua
+    -- Layout). Built on both flavours (the layout data names it), hidden on TBC.
+    sizeArgs.reactRangeStyle = {
+      type = "select",
+      name = "Range Finder style",
+      desc = "Compact: five segments (melee, dead zone, 8-20, 20-40, out of range); past 20 yd the one far block shows the real bracket (25-28, 30-35 ...) in its colour. Detailed: every bracket its own segment.",
+      order = 23.05,
+      values = { compact = "Compact (5 segments)", detailed = "Detailed (9 segments)" },
+      sorting = { "compact", "detailed" },
+      dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
+      hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end,
+      disabled = function() return notReact() or Nock.db.profile.reactShowRangeBar == false end,
+      get = function() return Nock.db.profile.reactRangeStyle or "compact" end,
+      set = function(_, v) visualsSet(_, "reactRangeStyle", v) end,
+    }
+    -- Forever only: the Range Finder ladder's in-segment labels. Built on both
+    -- flavours (the layout data names it) and hidden on TBC.
+    sizeArgs.reactRangeLabels = {
+      type = "toggle",
+      name = "Label every Range Finder segment",
+      desc = "Each distance bracket shows its yards inside its own segment, dimmed until the target is in it. Off: only the target's segment is labelled.",
+      order = 23.1,
+      width = "full",
+      hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end,
+      disabled = function() return notReact() or Nock.db.profile.reactShowRangeBar == false end,
+      get = function() return Nock.db.profile.reactRangeLabels ~= false end,
+      set = function(_, v) visualsSet(_, "reactRangeLabels", v and true or false) end,
+    }
     sizeArgs.reactShowManaBar  = reactToggle("reactShowManaBar",  "Mana bar",        "Thin mana bar with the percent readout.", 24)
     sizeArgs.reactManaText = {
       type = "select",

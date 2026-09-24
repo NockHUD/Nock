@@ -56,6 +56,7 @@ UI\HUD.lua
 Forever\LedgerEngine.lua
 Forever\Snapshot.lua
 Forever\SwingTimer.lua
+Forever\RangeLadder.lua
 Forever\RangeFinder.lua
 Forever\CastBar.lua
 Forever\Auras.lua
@@ -71,6 +72,7 @@ Modules\ProfileShare.lua
 Modules\QoL.lua
 Modules\AggroWarning.lua
 
+UI\ReactRangeLadder.lua
 UI\Frame_ReactCluster.lua
 UI\Frame_ReactCastBar.lua
 UI\Frame_ReactCooldowns.lua

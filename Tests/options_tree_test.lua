@@ -628,10 +628,16 @@ onlyKeys(classicChild("rotation").args,
 onlyKeys(ra, { "intro", "hudMode", "useLook", "tabSize", "tabBars", "tabRange", "tabGrid", "tabBuff", "tabSkin" },
   "react root")
 onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "elementsNote",
-  "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview", "reactShowRangeBar", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
+  "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview", "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
   "reactShowCastBar", "reactShowAutoShotCast", "reactShowGrid", "reactShowAspectIcon", "reactShowMarkIcon",
   "orderHeader", "order_reset", "castBarNonCombatCasts" }, "react tabSize",
   { "order_lbl_", "order_up_", "order_dn_" })
+ok(raSize.reactRangeLabels and raSize.reactRangeLabels.type == "toggle"
+   and type(raSize.reactRangeLabels.hidden) == "function" and raSize.reactRangeLabels.hidden() == true,
+   "react tabSize: the ladder's label row exists and is hidden on TBC")
+ok(raSize.reactRangeStyle and raSize.reactRangeStyle.type == "select" and raSize.reactRangeStyle.dialogControl ~= nil
+   and raSize.reactRangeStyle.hidden() == true and raSize.reactRangeStyle.get() == "compact",
+   "react tabSize: Range Finder style select (compact default, LSM leak guard, hidden on TBC)")
 onlyKeys(raBars, { "autoHeader", "reactAutoLegend", "reactShowNotation", "reactShowClipTicks", "showWindupMark", "reactShowDelay",
   "reactShowBrackets", "reactShowGcdDivider", "dirHeader", "reactDirAuto", "reactDirMelee",
   "grpEngine" }, "react tabBars")

@@ -181,6 +181,11 @@ Nock.state = {
     rangeProg   = -1,   -- clamp-and-snap glide estimate, -1..+1, 0 = melee boundary
     rangeBracket = nil, -- finding-ladder bracket key (RangeEngine.BRACKETS) | nil
     rangeEstimateStale = false, -- RESYNC: estimate knowably degraded
+    -- Forever Range Finder ladder (Forever/RangeLadder.lua, Forever/RangeFinder.lua)
+    ladderKey    = nil,   -- the segment the target is in | nil (no live hostile target)
+    ladderShoot  = false, -- Auto Shot reaches the target (settled with ladderKey)
+    ladderLayout = nil,   -- the segment list the Range Finder draws
+    ladderRev    = 0,     -- moves whenever ladderLayout is rebuilt (spell / talent change)
     huntersMark = nil,  -- { name, spellId, icon, remaining, duration, fromPlayer,
                         --   sourceName } or nil. sourceName is the casting
                         --   hunter's display name, or nil when the client

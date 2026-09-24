@@ -286,6 +286,14 @@ function ReactCluster:OnInitialize()
   strip.ranged.label:SetText("RANGED"); strip.melee.label:SetText("MELEE")
   strip:Hide()
   self.strip = strip
+  -- Forever: the range row is the Range Finder ladder (UI/ReactRangeLadder.lua,
+  -- spec 2026-09-24); the strip above stays TBC's opt-in extra.
+  if Nock.Flavor and Nock.Flavor.forever and Nock.UI.RangeLadder then
+    self.ladder = Nock.UI.RangeLadder.Create(container, {
+      makeText = makeText, bg = REACT.BAR_BG, border = REACT.BORDER, fontSize = REACT.FONT_SMALL,
+    })
+    self.ladder:Hide()
+  end
 
   -- Mana bar: thin fill + centered percent.
   local mana = createReactBar(container, "NockReactMana", REACT.MANA_H)
@@ -359,18 +367,16 @@ function ReactCluster:Geometry()
   }
 
   -- TBC: the position strip rides under the range bar, sharing its border
-  -- seam (experimental, reactRangeStrip). Forever: the strip IS the range
-  -- row (design pick A2, 2026-09-22) -- four stepped zones, no distance
-  -- estimate to glide -- at the range row's own height, and the fill bar
-  -- is not drawn.
+  -- seam (experimental, reactRangeStrip). Forever: the range row is the
+  -- Range Finder ladder (spec 2026-09-24) at the range row's height, each
+  -- segment labelled inside itself (reactRangeLabels), and neither the fill
+  -- bar nor the strip is drawn.
   local forever = Nock.Flavor and Nock.Flavor.forever
-  local showStrip = show.range and (forever or p.reactRangeStrip == true)
-  local hStrip
-  if forever then
-    hStrip = showStrip and h.range or 0
-  else
-    hStrip = showStrip and math.max(2, math.min(14, tonumber(p.reactRangeStripH) or REACT.STRIP_H)) or 0
-  end
+  local showStrip = show.range and not forever and p.reactRangeStrip == true
+  local hStrip = showStrip and math.max(2, math.min(14, tonumber(p.reactRangeStripH) or REACT.STRIP_H)) or 0
+  local showLadder = (show.range and forever and self.ladder ~= nil) and true or false
+  local ladderLabels = p.reactRangeLabels ~= false
+  local hLadder = showLadder and h.range or 0
   local showRangeBar = show.range and not forever
 
   local order = Nock.UI.ResolveReactBarOrder(p.reactBarOrder)
@@ -381,8 +387,8 @@ function ReactCluster:Geometry()
     if show[k] then
       if y > 0 then y = y + REACT.GAP end
       if k == "range" and forever then
-        ys.strip = y
-        y = y + hStrip
+        ys.ladder = y
+        y = y + hLadder
       else
         ys[k] = y
         y = y + h[k]
@@ -401,6 +407,7 @@ function ReactCluster:Geometry()
     showRange = showRangeBar, showMana = show.mana, showStrip = showStrip,
     yAuto = ys.auto, yMelee = ys.melee, yRange = ys.range, yMana = ys.mana, yStrip = ys.strip,
     hAuto = h.auto, hMelee = h.melee, hRange = h.range, hMana = h.mana, hStrip = hStrip,
+    showLadder = showLadder, yLadder = ys.ladder, hLadder = hLadder, ladderLabels = ladderLabels,
     total = math.max(y, 1),
   }
 end
@@ -493,6 +500,14 @@ function ReactCluster:ApplyLayout()
   local labels = p.reactRangeStripLabels == true and g.hStrip >= REACT.STRIP_LABEL_MIN
   self.strip.ranged.label:SetShown(labels); self.strip.melee.label:SetShown(labels)
   self._lastStripLook = nil
+  -- Forever ladder: placed like a bar; its segments and labels are laid out
+  -- by RefreshLadder against the finder's current segment list (_ladderRev
+  -- = nil forces that on the next refresh, e.g. after a font or width change).
+  if self.ladder then
+    placeBar(self.ladder, g.yLadder or 0, math.max(1, g.hLadder), g.showLadder)
+    self._ladderGeo = { w = w, hBar = Nock.UI.DeviceRound(math.max(1, g.hLadder), dev), labels = g.ladderLabels, dev = dev, e = e }
+    self._ladderRev = nil
+  end
 
   self._halfW  = innerW / 2
   self._innerW = innerW
@@ -1216,6 +1231,26 @@ end
 -- A linear 0..1 -> 0..100 curve the client evaluates for the percent text on
 -- Forever (built once; nil where the curve API is absent, which falls the
 -- caller back to the raw fraction).
+-- Forever Range Finder: lay the ladder out when the finder's segment list
+-- (or the geometry) changed, then light the target's segment. Diffed inside
+-- Nock.UI.RangeLadder.Paint.
+function ReactCluster:RefreshLadder(state)
+  local t = state.target
+  local layout = t.ladderLayout
+  if not layout then
+    self._ladderDefault = self._ladderDefault or Nock.RangeLadder.Layout()
+    layout = self._ladderDefault
+  end
+  local rev = t.ladderRev or 0
+  if self._ladderRev ~= rev or self._ladderLayout ~= layout then
+    local g = self._ladderGeo
+    if not g then return end
+    Nock.UI.RangeLadder.Layout(self.ladder, layout, g.w, g.hBar, g.labels, g.dev, g.e)
+    self._ladderRev, self._ladderLayout = rev, layout
+  end
+  Nock.UI.RangeLadder.Paint(self.ladder, t.ladderKey, t.ladderShoot)
+end
+
 function ReactCluster:PercentCurve()
   if self._pctCurve ~= nil then return self._pctCurve or nil end
   local CU, E = _G.C_CurveUtil, _G.Enum and _G.Enum.LuaCurveType
@@ -1327,5 +1362,6 @@ function ReactCluster:Refresh(state)
   if self.melee:IsShown() then self:RefreshMelee(state) end
   if self.range:IsShown() then self:RefreshRange(state) end
   if self.strip:IsShown() then self:RefreshStrip(state) end
+  if self.ladder and self.ladder:IsShown() then self:RefreshLadder(state) end
   if self.mana:IsShown()  then self:RefreshMana(state)  end
 end

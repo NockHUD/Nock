@@ -60,6 +60,10 @@ F.RENAME = {
     desc = "The neutral mark on the Auto Shot bar where the client's spell-queue window opens before the next shot (SpellQueueWindow, 400 ms by default). Past it a press is queued behind the shot and comes out right after it; before it, a cast started now would push the shot back.",
   },
   ["hud.react.tabSkin.autoMarksHeader"] = "Spell-queue mark",
+  ["hud.react.tabSize.reactShowRangeBar"] = {
+    name = "Range Finder",
+    desc = "The range ladder: every distance bracket from melee to out of range, the target's bracket lit.",
+  },
   ["hud.react.tabSkin.reactTickWindupWidth"] = {
     name = "Spell-queue mark width",
     desc = "Width of the spell-queue mark on the Auto Shot bar, in real screen pixels (independent of your UI scale).",

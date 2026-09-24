@@ -57,7 +57,7 @@ for _, must in ipairs({ "embeds.xml", "Core/Core.lua", "Core/Constants.lua", "Co
   "UI/Frame_ReactCastBar.lua", "UI/Frame_ReactCooldowns.lua",
   "Modules/AggroWarning.lua", "UI/Frame_AggroWarning.lua", "Forever/RangeFinder.lua",
   "Forever/Auras.lua", "UI/Frame_ReactCorners.lua", "Forever/Buffs.lua", "UI/Frame_ReactBuffs.lua",
-  "Forever/ManaTick.lua", "Modules/ManaTickEngine.lua" }) do
+  "Forever/ManaTick.lua", "Modules/ManaTickEngine.lua", "Forever/RangeLadder.lua", "UI/ReactRangeLadder.lua" }) do
   ok(listed[must], "camelot lists " .. must)
 end
 -- Flavor and API load before anything that calls them.
@@ -72,6 +72,8 @@ ok(pos["Forever/LedgerEngine.lua"] and pos["Forever/Cooldowns.lua"] and pos["For
 ok(pos["Forever/Snapshot.lua"] and pos["Forever/Snapshot.lua"] < pos["Forever/Cooldowns.lua"], "Snapshot before Cooldowns (Nock.Restricted)")
 ok(pos["UI/Frame_ReactCluster.lua"] and pos["UI/Frame_ReactCastBar.lua"] and pos["UI/Frame_ReactCluster.lua"] < pos["UI/Frame_ReactCastBar.lua"], "cluster before its glued cast bar")
 ok(pos["Modules/ManaTickEngine.lua"] and pos["Forever/ManaTick.lua"] and pos["Modules/ManaTickEngine.lua"] < pos["Forever/ManaTick.lua"], "engine before the Forever mana tick")
+ok(pos["Forever/RangeLadder.lua"] and pos["Forever/RangeFinder.lua"] and pos["Forever/RangeLadder.lua"] < pos["Forever/RangeFinder.lua"], "ladder engine before the Forever range finder")
+ok(pos["UI/ReactRangeLadder.lua"] and pos["UI/Frame_ReactCluster.lua"] and pos["UI/ReactRangeLadder.lua"] < pos["UI/Frame_ReactCluster.lua"], "ladder widget before the React cluster")
 
 print(("toc_flavour: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

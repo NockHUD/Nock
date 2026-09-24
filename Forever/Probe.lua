@@ -458,8 +458,214 @@ function Probe:ContainerSpike()
   return table.concat(L, "\n")
 end
 
+-- The range-ladder probe (Range Finder ladder, 2026-09-24): which range
+-- checks answer on Forever, whether they stay plain in combat, and in which
+-- order they flip as the hunter walks away from a target. Records a row every
+-- time any reading changes, until stopped. TBC's ladder items first (yards
+-- from the reference WA), then other LibRangeCheck candidates, the four
+-- interact distances, and the hunter's spells. Throwaway evidence tooling.
+local RANGE_ITEMS = {
+  { 8149, "~5 melee" }, { 34368, "~8" }, { 32321, "~10" }, { 33069, "~15" },
+  { 10645, "~20" }, { 24268, "~25" }, { 13289, "~25" }, { 835, "~30" },
+  { 7734, "~30" }, { 18904, "~35" }, { 4945, "~40" }, { 28767, "~40" },
+}
+local RANGE_SPELLS = {
+  { 75, "Auto Shot" }, { 2973, "Raptor Strike" }, { 2974, "Wing Clip" }, { 1495, "Mongoose Bite" },
+  { 19503, "Scatter Shot" }, { 5116, "Concussive Shot" }, { 3044, "Arcane Shot" }, { 1978, "Serpent Sting" },
+  { 19434, "Aimed Shot" }, { 2643, "Multi-Shot" }, { 1130, "Hunter's Mark" },
+}
+local RANGE_MAX_ROWS = 500
+
+-- One reading as a short token: T / F / nil / S (secret) / E (the call threw).
+local function rangeToken(okc, v)
+  if not okc then return "E" end
+  if v == nil then return "-" end
+  local isSecret = _G.issecretvalue
+  if isSecret and isSecret(v) then return "S" end
+  if v == true or v == 1 then return "T" end
+  if v == false or v == 0 then return "F" end
+  return tostring(v)
+end
+
+-- Every reading for the current target, in a fixed column order. Probed only
+-- for a live hostile target: in combat the item and interact checks are
+-- protected on a unit you cannot attack.
+function Probe:RangeReadings(out)
+  local P = Nock.Flavor.Plain
+  local okx, can = pcall(function()
+    return P(UnitExists("target")) == true and P(UnitIsDeadOrGhost("target")) == false
+       and P(UnitCanAttack("player", "target")) == true
+  end)
+  if not (okx and can) then return false end
+  local CI, CS = _G.C_Item, _G.C_Spell
+  local n = 0
+  for _, it in ipairs(RANGE_ITEMS) do
+    n = n + 1
+    if CI and CI.IsItemInRange then out[n] = rangeToken(pcall(CI.IsItemInRange, it[1], "target")) else out[n] = "E" end
+  end
+  for i = 1, 4 do
+    n = n + 1
+    if _G.CheckInteractDistance then out[n] = rangeToken(pcall(CheckInteractDistance, "target", i)) else out[n] = "E" end
+  end
+  for _, sp in ipairs(RANGE_SPELLS) do
+    n = n + 1
+    -- by name first (ranks are separate spells here), then by id
+    local tok = "E"
+    if CS and CS.IsSpellInRange then
+      local nm = P(Nock.API and Nock.API.SpellName and Nock.API.SpellName(sp[1]))
+      if type(nm) == "string" then tok = rangeToken(pcall(CS.IsSpellInRange, nm, "target")) end
+      if tok == "-" or tok == "E" then
+        local t2 = rangeToken(pcall(CS.IsSpellInRange, sp[1], "target"))
+        if t2 ~= "-" and t2 ~= "E" then tok = t2 .. "#" end   -- '#': only the id answered
+      end
+    end
+    out[n] = tok
+  end
+  return true
+end
+
+local function rangeHeader()
+  local L = {}
+  L[#L + 1] = "Nock probe range  (T in range, F out, - no answer, S secret, E error; # = id answered, name did not)"
+  L[#L + 1] = "columns:"
+  local c = 0
+  for _, it in ipairs(RANGE_ITEMS) do c = c + 1; L[#L + 1] = ("  %2d item %d %s"):format(c, it[1], it[2]) end
+  for i = 1, 4 do c = c + 1; L[#L + 1] = ("  %2d CheckInteractDistance %d"):format(c, i) end
+  for _, sp in ipairs(RANGE_SPELLS) do c = c + 1; L[#L + 1] = ("  %2d spell %d %s"):format(c, sp[1], sp[2]) end
+  L[#L + 1] = "rows (seconds since start, C = in combat, then columns 1..n; a row only when something changed):"
+  return L
+end
+
+function Probe:RangeRecord(rest)
+  rest = rest or ""
+  local r = self._range
+  local note = rest:match("^mark%s*(.*)$")
+  if note then
+    if not r then Nock:Print("Range probe is not running: /nock probe range"); return end
+    r.rows[#r.rows + 1] = ("  %7.2f  -- mark: %s"):format(GetTime() - r.t0, note ~= "" and note or "(mark)")
+    Nock:Print("Range probe: marked.")
+    return
+  end
+  if r then
+    -- stop: open the log
+    r.ticker:Cancel()
+    self._range = nil
+    local L = rangeHeader()
+    for i = 1, #r.rows do L[#L + 1] = r.rows[i] end
+    if r.capped then L[#L + 1] = "  (row cap reached; later changes not recorded)" end
+    local text = table.concat(L, "\n")
+    if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
+    return
+  end
+  local T = _G.C_Timer
+  if not (T and T.NewTicker) then Nock:Print("No ticker on this client."); return end
+  r = { t0 = GetTime(), rows = {}, last = nil, cur = {} }
+  self._range = r
+  r.ticker = T.NewTicker(0.1, function()
+    local cur = r.cur
+    local okr, live = pcall(self.RangeReadings, self, cur)
+    local line
+    if not okr then line = "probe error: " .. tostring(live)
+    elseif not live then line = "no live hostile target"
+    else line = table.concat(cur, " ") end
+    local inCombat = Nock.Flavor.Plain(_G.InCombatLockdown and InCombatLockdown()) == true
+    local key = (inCombat and "C " or "  ") .. line
+    if key == r.last then return end
+    r.last = key
+    if #r.rows >= RANGE_MAX_ROWS then r.capped = true; return end
+    r.rows[#r.rows + 1] = ("  %7.2f  %s"):format(GetTime() - r.t0, key)
+  end)
+  Nock:Print("Range probe running. Walk slowly from melee straight out past 41 yd and back; /nock probe range mark <note> to mark a spot, /nock probe range again to stop and open the log.")
+end
+
+-- The Range Finder font preview (2026-09-24): one numbered row per font,
+-- each with two real ladders in that font (compact with 25-28 lit, detailed
+-- with the dead zone lit), so the label face can be picked by eye.
+-- Candidates: Nock's bundled faces, the client's own, then every font other
+-- addons registered with LibSharedMedia. `/nock probe fonts [size]` toggles.
+-- Throwaway evidence tooling.
+local FONT_ROWS_MAX = 24
+local FONT_CANDIDATES = {
+  { "Saira Extra Condensed Medium", [[Interface\AddOns\Nock\Media\SairaExtraCondensed-Medium.ttf]] },
+  { "Saira Extra Condensed Bold",             [[Interface\AddOns\Nock\Media\SairaExtraCondensed-Bold.ttf]] },
+  { "IBM Plex Sans Regular",                  [[Interface\AddOns\Nock\Media\IBMPlexSans-Regular.ttf]] },
+  { "IBM Plex Sans Medium",                   [[Interface\AddOns\Nock\Media\IBMPlexSans-Medium.ttf]] },
+  { "IBM Plex Sans SemiBold",                 [[Interface\AddOns\Nock\Media\IBMPlexSans-SemiBold.ttf]] },
+  { "IBM Plex Mono Regular",                  [[Interface\AddOns\Nock\Media\IBMPlexMono-Regular.ttf]] },
+  { "IBM Plex Mono Medium (current)",         [[Interface\AddOns\Nock\Media\IBMPlexMono-Medium.ttf]] },
+  { "Lemon Milk Regular",                     [[Interface\AddOns\Nock\Media\LemonMilk-Regular.otf]] },
+  { "Arial Narrow (client)",                  [[Fonts\ARIALN.TTF]] },
+  { "Friz Quadrata (client)",                 [[Fonts\FRIZQT__.TTF]] },
+}
+
+function Probe:FontPreview(rest)
+  if self._fontPreview then
+    self._fontPreview:Hide()
+    self._fontPreview = nil
+    Nock:Print("Font preview closed.")
+    return
+  end
+  local size = tonumber((rest or ""):match("%d+")) or 10
+  local list, seen = {}, {}
+  for _, c in ipairs(FONT_CANDIDATES) do list[#list + 1] = c; seen[c[2]:lower()] = true end
+  local LSM = LibStub("LibSharedMedia-3.0", true)
+  if LSM and LSM.HashTable then
+    local names = {}
+    for name, path in pairs(LSM:HashTable("font")) do
+      if type(path) == "string" and not seen[path:lower()] then names[#names + 1] = name; seen[path:lower()] = true end
+    end
+    table.sort(names)
+    local ht = LSM:HashTable("font")
+    for _, name in ipairs(names) do list[#list + 1] = { name .. " (LSM)", ht[name] } end
+  end
+  local RL, L = Nock.UI.RangeLadder, Nock.RangeLadder
+  local W, ROW_H, BAR_H = 220, 22, 14
+  local rows = math.min(#list, FONT_ROWS_MAX)
+  local f = CreateFrame("Frame", "NockFontPreview", UIParent, "BackdropTemplate")
+  f:SetFrameStrata("DIALOG")
+  f:SetSize(250 + 2 * (W + 12), 34 + rows * ROW_H)
+  f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+  Nock.UI.ApplyBackdrop(f, { 0.05, 0.05, 0.06, 0.95 }, { 0, 0, 0, 1 })
+  f:EnableMouse(true)
+  f:SetMovable(true)
+  f:RegisterForDrag("LeftButton")
+  f:SetScript("OnDragStart", f.StartMoving)
+  f:SetScript("OnDragStop", f.StopMovingOrSizing)
+  local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  title:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
+  title:SetText(("Range Finder label fonts at %d pt. Tell Claude the row number. /nock probe fonts [size] closes."):format(size))
+  local dev = Nock.UI.PixelScale(f)
+  local e = Nock.UI.DeviceWidth(1, dev)
+  local compact, detailed = L.Layout(8, 35, true), L.Layout(8, 35, false)
+  for i = 1, rows do
+    local c = list[i]
+    local y = -(28 + (i - 1) * ROW_H)
+    local name = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    name:SetPoint("TOPLEFT", f, "TOPLEFT", 10, y - 3)
+    name:SetText(("%d. %s"):format(i, c[1]))
+    local opts = { bg = { 0.08, 0.08, 0.08, 0.9 }, border = { 0, 0, 0, 1 }, face = c[2], size = size }
+    for j, spec in ipairs({ { compact, "25_28" }, { detailed, "DEAD" } }) do
+      local okc, lad = pcall(RL.Create, f, opts)
+      if okc and lad then
+        lad:SetSize(W, BAR_H)
+        lad:SetPoint("TOPLEFT", f, "TOPLEFT", 250 + (j - 1) * (W + 12), y)
+        RL.Layout(lad, spec[1], W, BAR_H, true, dev, e)
+        RL.Paint(lad, spec[2], true)
+        lad:Show()
+      end
+    end
+  end
+  if #list > rows then
+    Nock:Print(("Font preview: showing %d of %d fonts."):format(rows, #list))
+  end
+  f:Show()
+  self._fontPreview = f
+end
+
 function Probe:Show(which, rest)
   local text
+  if which == "range" then self:RangeRecord(rest); return end
+  if which == "fonts" then self:FontPreview(rest); return end
   if which == "spells" then text = self:SpellbookReport()
   elseif which == "frames" then text = self:FramesReport()
   elseif which == "container" then
