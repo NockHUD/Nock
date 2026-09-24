@@ -8,6 +8,7 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 - **Aspect ring**: bind "Aspect ring (hold)" (Key Bindings → Nock). Out of combat, hold it for a ring of your aspects at the cursor: flick toward one and let go to cast it, or click it. In combat the key casts Aspect of the Hawk. Set the key and arrange which aspect sits in each direction under Settings → Utilities → Aspect ring.
 - **Multi-Shot cast bar**: Multi-Shot now shows on the cast bar, from the press until the arrow leaves.
+- **Error messages** (Settings → Utilities → General): hide the red error text ("You have no target", "Can't do that yet" ...) that lands on the warnings row, and mute the voice line that comes with it.
 
 ## 2.0.0
 

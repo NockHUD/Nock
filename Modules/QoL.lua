@@ -12,6 +12,7 @@ local QoLCvar = {
   FOG    = "volumeFog",                    -- 1 on, 0 off
   CAMERA = "cameraSmoothStyle",            -- Blizzard's "Camera Following Style"
   ZOOM   = "cameraDistanceMaxZoomFactor",  -- 1.0 .. the client's cap (2.6 on this client, 4 on old ones)
+  SPEECH = "Sound_EnableErrorSpeech",      -- the spoken "I can't do that yet"; 1 on, 0 off
   CAMERA_STYLES = {
     ["0"] = "Never adjust camera",
     ["1"] = "Adjust camera only horizontally when moving",
@@ -219,9 +220,44 @@ function QoL.SetNoGlow(on)
   if SetCVar then SetCVar("ffxGlow", on and "0" or "1") end
 end
 
+-- ---------------------------------------------------------------------------
+-- Error text (Forever only; the profile is shared with Anniversary, so the
+-- flag is ignored there). The red "You have no target" text lands on the
+-- warnings row: UIErrorsFrame stops listening to UI_ERROR_MESSAGE while
+-- qolHideErrors is on. Off hands the event back only if Nock took it, so an
+-- error addon that owns the frame is never undone. Yellow info text stays.
+-- (First version hides every error; a curated list is planned.)
+-- ---------------------------------------------------------------------------
+function QoL:ApplyErrors()
+  local f = _G.UIErrorsFrame
+  if not (f and f.UnregisterEvent) then return end
+  local p = profile()
+  local forever = Nock.Flavor and Nock.Flavor.forever
+  local want = (forever and p and p.qolHideErrors) and true or false
+  if want and not self._errorsTaken then
+    if f.IsEventRegistered and not f:IsEventRegistered("UI_ERROR_MESSAGE") then return end
+    f:UnregisterEvent("UI_ERROR_MESSAGE")
+    self._errorsTaken = true
+  elseif not want and self._errorsTaken then
+    f:RegisterEvent("UI_ERROR_MESSAGE")
+    self._errorsTaken = false
+  end
+end
+
+function QoL.SetHideErrors(on)
+  local p = profile()
+  if p then p.qolHideErrors = on and true or false end
+  QoL:ApplyErrors()
+end
+
+function QoL:ApplyProfile()
+  self:ApplyGlow()
+  self:ApplyErrors()
+end
+
 function QoL:OnEnable()
   self:RegisterEvent("MERCHANT_SHOW")
   self:RegisterEvent("MERCHANT_CLOSED")
-  self:RegisterMessage("NOCK_VISUALS_CHANGED", "ApplyGlow")
-  self:ApplyGlow()
+  self:RegisterMessage("NOCK_VISUALS_CHANGED", "ApplyProfile")
+  self:ApplyProfile()
 end

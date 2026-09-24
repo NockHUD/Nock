@@ -3141,6 +3141,31 @@ local function buildOptionsTable()
               if m and m.SetNoGlow then m.SetNoGlow(v) else Nock.db.profile.qolNoGlow = v and true or false end
             end,
           },
+          -- Error messages (Forever only; built on both flavours, hidden on TBC).
+          errorsHeader = { type = "header", name = "Error messages", order = 25 },
+          qolHideErrors = {
+            type = "toggle",
+            name = "Hide red error text",
+            desc = "The red text in the middle of the screen (\"You have no target\", \"Can't do that yet\", out of range ...) stops showing. Every error is hidden, including bags full. Yellow quest and info text still shows.",
+            order = 26,
+            width = "full",
+            hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end,
+            get = function() return Nock.db.profile.qolHideErrors == true end,
+            set = function(_, v)
+              local m = Nock:GetModule("QoL", true)
+              if m and m.SetHideErrors then m.SetHideErrors(v) else Nock.db.profile.qolHideErrors = v and true or false end
+            end,
+          },
+          qolMuteErrorSpeech = {
+            type = "toggle",
+            name = "Mute error speech",
+            desc = "Your character stops saying \"I can't do that yet\" and the like (the Sound_EnableErrorSpeech CVar, kept by the game).",
+            order = 27,
+            width = "full",
+            hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end,
+            get = function() return Nock.QoLCvar and not Nock.QoLCvar.GetBool(Nock.QoLCvar.SPEECH) end,
+            set = function(_, v) if Nock.QoLCvar then Nock.QoLCvar.SetBool(Nock.QoLCvar.SPEECH, not v) end end,
+          },
           -- Camera & world: the client's own CVars, live (Nock.QoLCvar in
           -- Modules/QoL.lua); the client keeps them per character.
           cameraHeader = { type = "header", name = "Camera & world", order = 30 },

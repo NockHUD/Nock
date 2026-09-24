@@ -36,6 +36,17 @@ table.sort(top)
 ok(table.concat(top, ",") == "alerts,general,hud,profiles,utilities", "alerts/general/hud/profiles/utilities remain, got " .. table.concat(top, ","))
 -- Utilities keeps only Quality of life (Modules/QoL.lua runs on Forever).
 ok(nodeAt(opts, "utilities.qol") ~= nil and nodeAt(opts, "utilities.qol.qolFog") ~= nil, "utilities: the Quality of life page with the camera card")
+-- The Error messages card: both rows kept, shown on Forever, hidden on TBC.
+do
+  local he, ms = nodeAt(opts, "utilities.qol.qolHideErrors"), nodeAt(opts, "utilities.qol.qolMuteErrorSpeech")
+  ok(he and ms and he.type == "toggle" and ms.type == "toggle", "qol: error text + speech toggles kept")
+  local was = Nock.Flavor
+  Nock.Flavor = { forever = true }
+  ok(he and he.hidden() == false and ms.hidden() == false, "qol: error rows shown on Forever")
+  Nock.Flavor = { forever = false }
+  ok(he and he.hidden() == true and ms.hidden() == true, "qol: error rows hidden on TBC")
+  Nock.Flavor = was
+end
 local upages = {}
 for k, v in pairs(nodeAt(opts, "utilities").args) do if type(v) == "table" and v.type == "group" then upages[#upages + 1] = k end end
 table.sort(upages)

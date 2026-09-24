@@ -27,7 +27,10 @@ local function applyTab(W, node, tab)
     local o = CARD_BASE + i * CARD_STEP
     local hdr = node.args[card.key]
     if not hdr then hdr = { type = "header" }; node.args[card.key] = hdr end
-    hdr.type, hdr.name, hdr.order, hdr.desc, hdr.hidden = "header", card.name, o, card.desc, nil
+    -- A card flagged `forever` shows on WoW Forever alone (its rows carry
+    -- their own `hidden` for TBC); the header hides with them.
+    local foreverOnly = card.forever and not (Nock.Flavor and Nock.Flavor.forever)
+    hdr.type, hdr.name, hdr.order, hdr.desc, hdr.hidden = "header", card.name, o, card.desc, foreverOnly or nil
     cardKeys[card.key] = true
     setMeta(W, hdr, "icon", card.icon)
     setMeta(W, hdr, "actions", card.actions)

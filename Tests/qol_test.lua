@@ -178,5 +178,47 @@ ok(cvars.ffxGlow == "1" and Nock.db.profile.qolNoGlow == false, "glow: switching
 QoL.SetNoGlow(true)
 ok(cvars.ffxGlow == "0" and Nock.db.profile.qolNoGlow == true, "glow: switching on writes 0 at once")
 
+--------------------------------------------------------------------------------
+-- 5. Error text (Forever only): the red UIErrorsFrame text off while
+--    qolHideErrors is on; handed back only if Nock took it. Speech is a CVar.
+--------------------------------------------------------------------------------
+do
+  local registered = { UI_ERROR_MESSAGE = true, UI_INFO_MESSAGE = true }
+  _G.UIErrorsFrame = {
+    RegisterEvent = function(_, ev) registered[ev] = true end,
+    UnregisterEvent = function(_, ev) registered[ev] = nil end,
+    IsEventRegistered = function(_, ev) return registered[ev] == true end,
+  }
+  Nock.Flavor = { forever = false }
+  Nock.db.profile = { qolHideErrors = true }
+  QoL:ApplyErrors()
+  ok(registered.UI_ERROR_MESSAGE, "errors: TBC leaves the frame alone even with the flag on")
+  Nock.Flavor.forever = true
+  QoL:ApplyErrors()
+  ok(not registered.UI_ERROR_MESSAGE and registered.UI_INFO_MESSAGE, "errors: on hides the red text, keeps the yellow info text")
+  QoL:ApplyErrors()
+  ok(not registered.UI_ERROR_MESSAGE, "errors: applying twice is harmless")
+  QoL.SetHideErrors(false)
+  ok(registered.UI_ERROR_MESSAGE and Nock.db.profile.qolHideErrors == false, "errors: off hands the event back")
+  -- Someone else took the event: off must not re-register it behind their back.
+  registered.UI_ERROR_MESSAGE = nil
+  QoL:ApplyErrors()
+  ok(not registered.UI_ERROR_MESSAGE, "errors: off never re-registers an event Nock did not take")
+  registered.UI_ERROR_MESSAGE = true
+  QoL.SetHideErrors(true)
+  ok(not registered.UI_ERROR_MESSAGE and Nock.db.profile.qolHideErrors == true, "errors: switching on hides at once")
+  QoL.SetHideErrors(false)
+  local Q = Nock.QoLCvar
+  ok(Q.SPEECH == "Sound_EnableErrorSpeech", "speech cvar by name")
+  cvars.Sound_EnableErrorSpeech = "1"
+  Q.SetBool(Q.SPEECH, false)
+  ok(cvars.Sound_EnableErrorSpeech == "0", "speech: mute writes 0")
+  _G.UIErrorsFrame = nil
+  Nock.db.profile.qolHideErrors = true
+  QoL:ApplyErrors()
+  ok(true, "errors: no UIErrorsFrame is not an error")
+  Nock.Flavor = nil
+end
+
 print(("qol_test: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

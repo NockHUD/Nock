@@ -232,6 +232,7 @@ L.TABS = {
     cards = {
       { key = "atAVendorCard", name = "At a vendor", icon = { glyph = "cart" }, desc = "Both run the moment a merchant window opens; chat gets one line with the cost or the total.", rows = { "qolAutoRepair", "qolSellGreys" } },
       { key = "screenCard", name = "Screen", icon = { glyph = "eyeoff" }, desc = "The full-screen glow and drunk blur, off for good.", rows = { "qolNoGlow" } },
+      { key = "errorMessagesCard", name = "Error messages", icon = { glyph = "bell" }, forever = true, desc = "The red error text that lands on the warnings row, and the voice line that comes with it.", rows = { "qolHideErrors", "qolMuteErrorSpeech" } },
       { key = "cameraWorldCard", name = "Camera & world", icon = { glyph = "expand" }, desc = "Three switches the game keeps but hides, live on its own settings: nothing here is saved by Nock.", rows = { "qolFog", "qolCameraStyle", "qolMaxZoom", "qolZoomNear", "qolZoomFar" } },
     },
     rename = { qolAutoRepair = "Auto repair", qolSellGreys = "Sell grey items", qolNoGlow = "Full-screen glow off", qolFog = "Fog", qolCameraStyle = "Camera following style", qolMaxZoom = "Max camera zoom" },

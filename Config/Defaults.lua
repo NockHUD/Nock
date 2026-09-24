@@ -1047,6 +1047,7 @@ Nock.Defaults = {
     aggroPosition    = false,     -- false = screen centre, 15 px up; a table once dragged
     -- Baseline conveniences (Modules/QoL.lua; Utilities -> General). All off.
     qolNoGlow     = false,  -- ffxGlow 0 at login (the full-screen glow / drunk blur)
+    qolHideErrors = false,  -- Forever: the red UIErrorsFrame text off (Modules/QoL.lua ApplyErrors)
     qolAutoRepair = false,  -- repair everything at a repair vendor, own money only
     qolSellGreys  = false,  -- sell every poor-quality item at any vendor
     -- PvP mode (Modules/PvPMode.lua; sidebar PvP). The mode itself is off;
