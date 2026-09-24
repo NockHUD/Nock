@@ -653,7 +653,8 @@ local function describe(key)
       nm, e.type, e.id, e.procBuff and (", proc " .. e.procBuff) or "")
   end
   local what
-  if e.type == "spell"     then what = "spell " .. tostring(e.id)
+  if e.type == "spell" and not e.id and e.ids then what = "spells " .. table.concat(e.ids, " + ")
+  elseif e.type == "spell" then what = "spell " .. tostring(e.id)
   elseif e.type == "item"  then what = "item " .. tostring(e.id)
   elseif e.type == "inventory" then what = "trinket slot " .. tostring(e.slot)
   elseif e.type == "specSpell" then what = "spec-aware spell"
@@ -6591,6 +6592,29 @@ local function buildOptionsTable()
       return p.reactCdRows
     end
 
+    -- Forever: a row entry the character cannot use is left out of the list
+    -- (a racial of another race, or one the spellbook never named, so it is
+    -- untracked). Asked live: the known-racial answer arrives after login,
+    -- later than this table is built. The saved rows keep every key, so an
+    -- alt of another race on the same profile sees its own. TBC lists all.
+    local function gridListed(key)
+      if not (Nock.Flavor and Nock.Flavor.forever) then return true end
+      local CDMOD = Nock:GetModule("Cooldowns", true)
+      if not CDMOD then return true end
+      if not CDMOD:GetEntry(key) then return false end
+      if CDMOD.IsEntryAvailable and not CDMOD:IsEntryAvailable(key) then return false end
+      return true
+    end
+    -- The nearest listed position from idx in dir (-1 up, 1 down), or nil:
+    -- Up/Down never swap with a row the list does not show.
+    local function listedNeighbour(ri, idx, dir)
+      local r = effectiveRows()[ri] or {}
+      local j = idx + dir
+      while r[j] ~= nil and not gridListed(r[j]) do j = j + dir end
+      if r[j] == nil then return nil end
+      return j
+    end
+
     local rebuildGridArgs
     local function gridChanged()
       Nock:SendMessage("NOCK_VISUALS_CHANGED")
@@ -6617,13 +6641,14 @@ local function buildOptionsTable()
           type = "description", fontSize = "medium", order = nextO(),
           name = ROW_TITLES[rowIndex] or ("Row " .. rowIndex),
         }
-        local rowLen = #keys
         for i, rkey in ipairs(keys) do
           local key, idx, ri = rkey, i, rowIndex
+          local unlisted = function() return not gridListed(key) end
           gridArgs["rcd_en_" .. ri .. "_" .. idx] = {
             type = "toggle", order = nextO(), width = 1.4,
             name = describe(key),
             desc = "Untick to hide the slot without removing it from the row.",
+            hidden = unlisted,
             disabled = notReact,
             get = function()
               local d = Nock.db.profile.reactCooldownDisabled
@@ -6638,25 +6663,32 @@ local function buildOptionsTable()
           }
           gridArgs["rcd_up_" .. ri .. "_" .. idx] = {
             type = "execute", name = "Up", order = nextO(), width = 0.4,
-            disabled = function() return notReact() or idx == 1 end,
+            hidden = unlisted,
+            disabled = function() return notReact() or listedNeighbour(ri, idx, -1) == nil end,
             func = function()
+              local j = listedNeighbour(ri, idx, -1)
+              if not j then return end
               local r = materializedRows()[ri]
-              r[idx], r[idx - 1] = r[idx - 1], r[idx]
+              r[idx], r[j] = r[j], r[idx]
               gridChanged()
             end,
           }
           gridArgs["rcd_dn_" .. ri .. "_" .. idx] = {
             type = "execute", name = "Down", order = nextO(), width = 0.5,
-            disabled = function() return notReact() or idx == rowLen end,
+            hidden = unlisted,
+            disabled = function() return notReact() or listedNeighbour(ri, idx, 1) == nil end,
             func = function()
+              local j = listedNeighbour(ri, idx, 1)
+              if not j then return end
               local r = materializedRows()[ri]
-              r[idx], r[idx + 1] = r[idx + 1], r[idx]
+              r[idx], r[j] = r[j], r[idx]
               gridChanged()
             end,
           }
           gridArgs["rcd_rm_" .. ri .. "_" .. idx] = {
             type = "execute", name = "X", order = nextO(), width = 0.3,
             desc = "Remove from the row (re-add it with the row's Add dropdown).",
+            hidden = unlisted,
             disabled = notReact,
             func = function()
               table.remove(materializedRows()[ri], idx)
@@ -6675,7 +6707,7 @@ local function buildOptionsTable()
             local out = {}
             if CDMOD then
               for _, e in ipairs(CDMOD:GetTracked()) do
-                if not placed[e.key] then out[e.key] = describe(e.key) end
+                if not placed[e.key] and gridListed(e.key) then out[e.key] = describe(e.key) end
               end
             end
             return out
