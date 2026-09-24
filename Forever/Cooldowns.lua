@@ -127,9 +127,10 @@ function Cooldowns:RebuildLists()
         local n = nameOf(ids[i])
         if n then self._byName[n] = { e = e, id = ids[i] } end
       end
-      -- Range tint follows the last id (the ranged one of a pair); the pair
-      -- tile draws ids[1] on the left half and ids[2] on the right.
+      -- The pair tile draws ids[1] on the left half and ids[2] on the right;
+      -- its range tint asks every member (rangeIds, Forever/RangeFinder.lua).
       s.spellId = ids[#ids]
+      s.rangeIds = e.ids
       s.melee = e.melee or nil   -- the out-of-range tint follows the melee probe (Forever/RangeFinder.lua)
       s.icon = Nock.API.SpellIcon(ids[1])
       s.icon2 = e.ids and Nock.API.SpellIcon(ids[2]) or nil

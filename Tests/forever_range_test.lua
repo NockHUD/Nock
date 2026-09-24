@@ -161,6 +161,25 @@ do
   ok(next(t.spellOut) == nil, "friendly target: no per-tile probe, tints cleared")
   canAttack = true
 end
+-- The Multi + Aimed pair tile: Aimed Shot not trained yet (below 20) answers
+-- nil; Multi-Shot decides. Any member that answers wins.
+do
+  local multiIn, aimedIn = true, nil
+  _G.C_Spell.IsSpellInRange = function(q) if q == 75 then return shoot end if q == 2974 then return wing end
+    if q == "Multi-Shot" or q == 2643 then return multiIn end
+    if q == "Aimed Shot" or q == 19434 then return aimedIn end
+    return nil end
+  Nock.API = { SpellName = function(id) return ({ [2643] = "Multi-Shot", [19434] = "Aimed Shot" })[id] end }
+  st.cooldowns = { AimMulti = { spellId = 19434, rangeIds = { 2643, 19434 } } }
+  RF:Refresh(st)
+  ok(t.spellOut.AimMulti == false, "pair: Aimed unknown, Multi in range -> in")
+  multiIn = false; RF:Refresh(st)
+  ok(t.spellOut.AimMulti == true, "pair: Aimed unknown, Multi out of range -> out")
+  multiIn, aimedIn = nil, true; RF:Refresh(st)
+  ok(t.spellOut.AimMulti == false, "pair: Multi silent, Aimed answers")
+  multiIn, aimedIn = nil, nil; RF:Refresh(st)
+  ok(t.spellOut.AimMulti == nil, "pair: nobody answers -> unknown")
+end
 -- Hunter's Mark cast range for the corner icon (state.target.markOut).
 do
   local hmIn = true

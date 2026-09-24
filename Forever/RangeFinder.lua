@@ -70,11 +70,23 @@ local function spellInRange(id)
   return v
 end
 
+-- A pair tile (Multi + Aimed) asks each member until one answers: a spell
+-- not trained yet (Aimed Shot below 20) answers nil, and the other decides.
 local function scanSpellOut(so, meleeIn)
   for key, s in pairs(Nock.state.cooldowns) do
     local id = s.spellId
     local v = nil
-    if id and not s.melee then v = spellInRange(id) end
+    if not s.melee then
+      local ids = s.rangeIds
+      if ids then
+        for i = 1, #ids do
+          v = spellInRange(ids[i])
+          if v ~= nil then break end
+        end
+      elseif id then
+        v = spellInRange(id)
+      end
+    end
     so[key] = Nock.ForeverSlotOut(s.melee, v, meleeIn)
   end
 end
