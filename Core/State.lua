@@ -261,6 +261,7 @@ Nock.state = {
     hover = nil,                   -- slot index 1..6 under the flick, nil = cancel / unlearned
     known = {},                    -- [slot] = localized aspect name, nil = not learned
     short = {},                    -- [slot] = label name ("Cheetah"), every slot
+    order = {},                    -- [slot] = aspect key, the dial layout (profile aspectRingOrder, cleaned)
     knownRev = 0,                  -- bumps when `known` changes (the view re-applies attributes)
   },
   warnings = {

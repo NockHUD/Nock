@@ -11,8 +11,9 @@ Nock.OptionsForever = F
 F.FAMILIES = { general = true, hud = true, profiles = true, alerts = true, utilities = true }
 -- Families that keep only the listed pages (every other group inside goes):
 -- Utilities is the TBC toolbox (practice, mailbox, weave binds, ...); only
--- the Quality of life page has a feed on Forever (Modules/QoL.lua).
-F.KEEP_PAGES = { utilities = { qol = true } }
+-- the Quality of life page has a feed on Forever (Modules/QoL.lua), plus the
+-- Forever-only Aspect ring page added below (F.AspectRingPage).
+F.KEEP_PAGES = { utilities = { qol = true, aspectRing = true } }
 
 -- Dotted args paths removed inside the surviving families. A trailing `*`
 -- matches every key with that prefix (same convention as OptionsLayout rows).
@@ -54,7 +55,7 @@ F.DROP = {
 F.RENAME = {
   ["hud.react"] = "Nock HUD",
   -- The family intro is a description node; only the QoL page survives.
-  ["utilities.intro"] = { name = "Quality-of-life helpers: what happens at a vendor, the full-screen glow, and the camera and world switches the game hides." },
+  ["utilities.intro"] = { name = "Quality-of-life helpers (what happens at a vendor, the full-screen glow, the camera and world switches the game hides) and the aspect ring." },
   ["hud.react.tabBars.showWindupMark"] = {
     name = "Spell-queue mark",
     desc = "The neutral mark on the Auto Shot bar where the client's spell-queue window opens before the next shot (SpellQueueWindow, 400 ms by default). Past it a press is queued behind the shot and comes out right after it; before it, a cast started now would push the shot back.",
@@ -109,8 +110,80 @@ local function dropPath(root, path)
   end
 end
 
+-- Utilities -> Aspect ring (Forever/AspectRing.lua): the key and the dial.
+-- Forever-only, so it is built here rather than in the shared Options.lua.
+-- The cards split at the two headers. Every change is saved to the profile
+-- and announced with NOCK_ASPECT_RING_CONFIG; the ring does the rest.
+local DIRECTIONS = { "Up", "Up-right", "Down-right", "Down", "Down-left", "Up-left" }
+
+local function ringProfile() return Nock.db.profile end
+local function ringChanged() Nock:SendMessage("NOCK_ASPECT_RING_CONFIG") end
+
+-- aspect key -> the name shown in the dropdown: the localized spell name
+-- without the prefix every aspect shares ("Cheetah"); the key itself while
+-- the client has not resolved the names.
+local function aspectLabels()
+  local S = Nock.Spells
+  local byKey = Nock.AspectRingIdByKey()
+  local full = {}
+  for i, key in ipairs(S.ASPECT_RING) do
+    local n = Nock.API and Nock.API.SpellName and Nock.Flavor.Plain(Nock.API.SpellName(byKey[key]))
+    full[i] = type(n) == "string" and n or nil
+  end
+  local short = Nock.AspectRingShortNames(full)
+  local out = {}
+  for i, key in ipairs(S.ASPECT_RING) do
+    out[key] = short[i] or (key:sub(1, 1):upper() .. key:sub(2))
+  end
+  return out
+end
+
+function F.AspectRingPage()
+  local args = {
+    intro = {
+      type = "description", order = 1, fontSize = "medium",
+      name = "Hold the key out of combat for a ring of your aspects at the cursor: flick toward one and let go to cast it. In combat the key casts Aspect of the Hawk.\n",
+    },
+    keyHeader = { type = "header", name = "Key", desc = "The key that opens the ring.", order = 10 },
+    aspectRingKey = {
+      type = "keybinding", name = "Aspect ring key", order = 11,
+      desc = "The key to hold for the ring. It can also be set in the game's Key Bindings window under Nock; when both are set, this one wins. A change made in combat applies when combat ends.",
+      get = function() return ringProfile().aspectRingKey or "" end,
+      set = function(_, v)
+        ringProfile().aspectRingKey = (type(v) == "string" and v ~= "") and v or nil
+        ringChanged()
+      end,
+    },
+    dialHeader = { type = "header", name = "Dial", desc = "Which aspect sits in each direction; picking one that is already placed swaps the two.", order = 20 },
+    aspectRingDefault = {
+      type = "execute", name = "Default layout", order = 21,
+      desc = "Hawk up, Cheetah down, the rest clockwise: Monkey, Wild, Pack, Beast.",
+      func = function() ringProfile().aspectRingOrder = nil; ringChanged() end,
+    },
+  }
+  for i, dir in ipairs(DIRECTIONS) do
+    args["aspectRingDir" .. i] = {
+      type = "select", name = dir, order = 21 + i,
+      desc = ("The aspect a flick %s casts."):format(dir == "Up" and "up" or dir == "Down" and "down" or ("to the " .. dir:lower())),
+      values = aspectLabels,
+      sorting = Nock.Spells.ASPECT_RING,
+      get = function() return Nock.AspectRingOrder(ringProfile().aspectRingOrder)[i] end,
+      set = function(_, key)
+        ringProfile().aspectRingOrder = Nock.AspectRingSwap(Nock.AspectRingOrder(ringProfile().aspectRingOrder), i, key)
+        ringChanged()
+      end,
+    }
+  end
+  return { type = "group", name = "Aspect ring", order = 12, args = args }
+end
+
 function F.Apply(root)
   if type(root) ~= "table" or type(root.args) ~= "table" then return end
+  -- Built once; the prune below keeps it (KEEP_PAGES), a re-Apply finds it.
+  local util = root.args.utilities
+  if type(util) == "table" and type(util.args) == "table" and not util.args.aspectRing and Nock.AspectRingOrder then
+    util.args.aspectRing = F.AspectRingPage()
+  end
   for k, v in pairs(root.args) do
     if type(v) == "table" and v.type == "group" and not F.FAMILIES[k] then root.args[k] = nil end
   end

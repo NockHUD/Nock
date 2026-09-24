@@ -137,10 +137,12 @@ function View:Refresh(state)
   local glow = p.reactActiveColor or C.COLORS.PROC_GLOW
   local depth = (p.reactActiveSize or 3) * 3
   local now = GetTime()
-  for i, key in ipairs(Nock.Spells.ASPECT_RING) do
-    local b, it = self.slots[i], self.items[i]
+  local order = st.order
+  for i, b in ipairs(self.slots) do
+    local key = order[i]
+    local it = self.items[i]
     local learned = st.known[i] ~= nil
-    it.icon = learned and Nock.API.SpellIcon(self.idByKey[key]) or nil
+    it.icon = learned and key and Nock.API.SpellIcon(self.idByKey[key]) or nil
     it.desat = not learned
     Nock.UI.PaintReactSlot(b.tile, it, now)
     Nock.UI.SetIconInsetGlow(b.tile, (learned and key == activeKey) and glow or nil, depth)

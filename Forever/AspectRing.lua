@@ -57,6 +57,37 @@ function Nock.AspectRingShortNames(names)
   return out
 end
 
+-- Pure. The dial layout from the profile (aspectRingOrder, a list of aspect
+-- keys by direction, clockwise from up): unknown keys and repeats dropped,
+-- the missing appended in default order, so every aspect sits exactly once.
+-- Always a fresh table; nil or junk is the default layout.
+function Nock.AspectRingOrder(stored)
+  local def = Nock.Spells.ASPECT_RING
+  local valid = {}
+  for _, k in ipairs(def) do valid[k] = true end
+  local out, seen = {}, {}
+  if type(stored) == "table" then
+    for i = 1, #def do
+      local k = stored[i]
+      if valid[k] and not seen[k] then out[#out + 1] = k; seen[k] = true end
+    end
+  end
+  for _, k in ipairs(def) do
+    if not seen[k] then out[#out + 1] = k; seen[k] = true end
+  end
+  return out
+end
+
+-- Pure. `key` placed at direction `dir`; the aspect that was there takes
+-- key's old direction (a swap). An unknown key changes nothing.
+function Nock.AspectRingSwap(order, dir, key)
+  local from
+  for i, k in ipairs(order) do if k == key then from = i end end
+  if not from or not order[dir] then return order end
+  order[from], order[dir] = order[dir], key
+  return order
+end
+
 -- key ("hawk") -> base spell id, from Nock.Spells.ASPECTS (id -> key).
 function Nock.AspectRingIdByKey()
   local out = {}
@@ -93,11 +124,38 @@ function AspectRing:OnEnable()
   self.button = b
   self:RegisterEvent("PLAYER_REGEN_DISABLED")
   self:RegisterEvent("PLAYER_REGEN_ENABLED")
-  self:RegisterEvent("PLAYER_LOGIN", "UpdateKnown")
   self:RegisterEvent("SPELLS_CHANGED", "UpdateKnown")
   self:RegisterMessage("NOCK_ASPECT_RING_CLOSE", "Close")
+  -- The settings page (the key, the dial) and a profile switch.
+  self:RegisterMessage("NOCK_ASPECT_RING_CONFIG", "OnConfig")
+  self:RegisterMessage("NOCK_VISUALS_CHANGED", "OnConfig")
   self:UpdateKnown()
   if not InCombatLockdown() then self:ArmRing() end
+  self:ApplyBinding()
+end
+
+function AspectRing:OnConfig()
+  self:UpdateKnown()
+  self:ApplyBinding()
+end
+
+local function profile()
+  return (Nock.db and Nock.db.profile) or {}
+end
+
+-- The key from Nock's settings (aspectRingKey): a priority override on the
+-- key button, like the weave key. Binding calls are protected in combat, so
+-- a change made there lands when combat ends.
+function AspectRing:ApplyBinding()
+  if InCombatLockdown() then self._bindPending = true; return end
+  self._bindPending = nil
+  local b = self.button
+  if not b then return end
+  ClearOverrideBindings(b)
+  local key = profile().aspectRingKey
+  if type(key) == "string" and key ~= "" then
+    SetOverrideBindingClick(b, true, key, "NockAspectRingButton")
+  end
 end
 
 -- Ring mode: nothing armed, and the release edge is the one that casts
@@ -123,9 +181,10 @@ end
 function AspectRing:ArmHawk()
   local b = self.button
   takeClicks(b)
+  local st = Nock.state.aspectRing
   local slot
-  for i, key in ipairs(Nock.Spells.ASPECT_RING) do if key == "hawk" then slot = i end end
-  local macro = Nock.AspectRingMacro(Nock.state.aspectRing.known[slot])
+  for i, key in ipairs(st.order) do if key == "hawk" then slot = i end end
+  local macro = Nock.AspectRingMacro(slot and st.known[slot])
   b:SetAttribute("useOnKeyDown", nil)
   if macro then
     b:SetAttribute("type", "macro")
@@ -143,6 +202,7 @@ end
 
 function AspectRing:PLAYER_REGEN_ENABLED()
   self:ArmRing()
+  if self._bindPending then self:ApplyBinding() end
 end
 
 -- The key's two edges, out of combat only (in combat the attributes are
@@ -201,21 +261,25 @@ function AspectRing:UpdateHover()
   st.hover = i
 end
 
--- Learned aspects by NAME (ranks are separate spells on Forever). Without the
--- spellbook API every slot is offered.
+-- Learned aspects by NAME (ranks are separate spells on Forever), slot by
+-- slot in the dial layout from the profile. Without the spellbook API every
+-- slot is offered.
 function AspectRing:UpdateKnown()
   if not ID_BY_KEY then ID_BY_KEY = Nock.AspectRingIdByKey() end
   local st = Nock.state.aspectRing
+  local order = Nock.AspectRingOrder(profile().aspectRingOrder)
   local names = Nock.ForeverSpellbookNames()
   local changed = false
   local all = {}
-  for i, key in ipairs(Nock.Spells.ASPECT_RING) do
+  for i, key in ipairs(order) do
+    if st.order[i] ~= key then changed = true end
     local n = nameOf(ID_BY_KEY[key])
     all[i] = n
     local v = nil
     if n and (names == nil or names[n]) then v = n end
     if st.known[i] ~= v then st.known[i] = v; changed = true end
   end
+  st.order = order
   if changed then st.knownRev = st.knownRev + 1 end
   -- The label names, from all six (learned or not) so the shared prefix is
   -- the same whatever the character knows.

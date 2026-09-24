@@ -105,6 +105,7 @@ ok(s1.tile.allPoints ~= true and s1.tile.point and s1.tile.point[1] == "CENTER",
 local st = Nock.state.aspectRing
 st.known[1], st.known[4] = "Aspect of the Hawk", "Aspect of the Cheetah"
 st.short = { "Hawk", "Monkey", "Wild", "Cheetah", "Pack", "Beast" }
+st.order = Nock.AspectRingOrder(nil)   -- the module publishes the layout before any open
 st.knownRev = 1
 Nock.state.player.aspect = { spellId = 13165 }
 -- Open.
@@ -146,6 +147,13 @@ st.known[3] = "Aspect of the Wild"; st.knownRev = 2
 st.open = true
 V:Refresh(Nock.state)
 ok(frames.NockAspectRingSlot3.attrs.macrotext == "/cast !Aspect of the Wild", "newly learned aspect casts from its slot")
+-- A rearranged dial: slot 1 paints the aspect the layout puts there.
+st.order = { "cheetah", "monkey", "wild", "hawk", "pack", "beast" }
+st.known[1], st.known[4] = "Aspect of the Cheetah", "Aspect of the Hawk"; st.knownRev = 5
+V:Refresh(Nock.state)
+ok(painted[s1.tile].icon == 1000 + 5118 and s1.attrs.macrotext == "/cast !Aspect of the Cheetah", "slot 1 shows and casts Cheetah")
+ok(s4.tile.inset ~= nil and s1.tile.inset == nil, "the active glow follows Hawk to its new slot")
+
 -- Combat starts with the ring open: hidden before the lockdown, never touched after.
 V:PLAYER_REGEN_DISABLED()
 ok(layer.shown == false, "combat start hides the ring")

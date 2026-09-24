@@ -80,6 +80,26 @@ ok(S[1] == "Hawk" and S[2] == nil and S[3] == "Pack", "a missing name stays miss
 S = Nock.AspectRingShortNames({ "Aspect of the Hawk" })
 ok(S[1] == "Aspect of the Hawk", "one name alone: no prefix to learn, the full name")
 
+-- The dial layout: a profile list of keys, cleaned on read.
+local O = Nock.AspectRingOrder
+local function j(t) return table.concat(t, ",") end
+ok(j(O(nil)) == "hawk,monkey,wild,cheetah,pack,beast", "no stored layout: the default")
+ok(j(O({ "cheetah", "monkey", "wild", "hawk", "pack", "beast" })) == "cheetah,monkey,wild,hawk,pack,beast", "a valid layout is kept")
+ok(j(O({ "cheetah", "cheetah", "bogus", 7 })) == "cheetah,hawk,monkey,wild,pack,beast", "duplicates and junk dropped, the missing appended in default order")
+ok(j(O("hawk")) == "hawk,monkey,wild,cheetah,pack,beast", "a non-table: the default")
+local def = O(nil); def[1] = "pack"
+ok(O(nil)[1] == "hawk", "the default is never handed out mutable")
+local Sw = Nock.AspectRingSwap
+ok(j(Sw(O(nil), 1, "cheetah")) == "cheetah,monkey,wild,hawk,pack,beast", "Cheetah picked for Up: Hawk swaps down")
+ok(j(Sw(O(nil), 2, "monkey")) == "hawk,monkey,wild,cheetah,pack,beast", "picking the aspect already there: unchanged")
+ok(j(Sw(O(nil), 3, "bogus")) == "hawk,monkey,wild,cheetah,pack,beast", "an unknown aspect: unchanged")
+
+-- Key binding calls, recorded.
+local binds = {}
+_G.ClearOverrideBindings = function(owner) binds.cleared = (binds.cleared or 0) + 1; binds.key = nil end
+_G.SetOverrideBindingClick = function(owner, prio, key, name) binds.key, binds.prio, binds.name = key, prio, name end
+Nock.db = { profile = {} }
+
 -- The module.
 local A = module
 ok(A and A.name == "AspectRing" and A.refreshInterval == nil, "module AspectRing on the fast lane (it tracks the cursor)")
@@ -168,13 +188,52 @@ Nock.ForeverSpellbookNames = function() return nil end
 A:UpdateKnown()
 ok(st.known[3] == "Aspect of the Wild" and st.known[5] == "Aspect of the Pack", "no spellbook API: all six offered")
 
+-- The dial layout from the profile: slots, names and the combat Hawk follow it.
+Nock.ForeverSpellbookNames = function() return { ["Aspect of the Hawk"] = 1, ["Aspect of the Cheetah"] = 2 } end
+A:UpdateKnown()
+Nock.db.profile.aspectRingOrder = { "cheetah", "monkey", "wild", "hawk", "pack", "beast" }
+local revBefore = st.knownRev
+A:OnConfig()
+ok(st.order[1] == "cheetah" and st.order[4] == "hawk", "layout published on state")
+ok(st.known[1] == "Aspect of the Cheetah" and st.known[4] == "Aspect of the Hawk" and st.short[1] == "Cheetah", "slots follow the layout")
+ok(st.knownRev > revBefore, "a layout change moves the rev (the view re-applies slot spells)")
+cursorX, cursorY = 500, 400
+pre(b, "LeftButton", true)
+cursorX, cursorY = 500, 460
+pre(b, "LeftButton", false)
+ok(b.attrs.macrotext == "/cast !Aspect of the Cheetah", "flick up now casts Cheetah")
+A:PLAYER_REGEN_DISABLED()
+ok(b.attrs.macrotext == "/cast !Aspect of the Hawk", "combat key still casts Hawk from its moved slot")
+A:PLAYER_REGEN_ENABLED()
+ok(A.msgs.NOCK_ASPECT_RING_CONFIG == "OnConfig" and A.msgs.NOCK_VISUALS_CHANGED == "OnConfig", "settings and profile switches reach the ring")
+
+-- The key from Nock's settings: a priority override on the key button.
+Nock.db.profile.aspectRingKey = "SHIFT-Q"
+A:OnConfig()
+ok(binds.key == "SHIFT-Q" and binds.prio == true and binds.name == "NockAspectRingButton", "key bound to the ring button, priority")
+Nock.db.profile.aspectRingKey = ""
+A:OnConfig()
+ok(binds.key == nil and binds.cleared >= 1, "cleared key: the override goes")
+combat = true
+Nock.db.profile.aspectRingKey = "F"
+A:OnConfig()
+ok(binds.key == nil, "in combat the binding waits")
+combat = false
+A:PLAYER_REGEN_ENABLED()
+ok(binds.key == "F", "and lands when combat ends")
+Nock.db.profile.aspectRingOrder = nil
+Nock.db.profile.aspectRingKey = nil
+A:OnConfig()
+
 -- /reload inside combat: enable touches no attribute until combat ends.
 frames.NockAspectRingButton = nil; _G.NockAspectRingButton = nil
 combat = true
-A:OnEnable()   -- would raise ADDON_ACTION_BLOCKED from the mock on any SetAttribute
+_G.ClearOverrideBindings = function() error("ADDON_ACTION_BLOCKED ClearOverrideBindings") end
+A:OnEnable()   -- would raise ADDON_ACTION_BLOCKED from the mock on any SetAttribute or binding call
 local b2 = frames.NockAspectRingButton
 ok(b2 and next(b2.attrs) == nil, "enabled in combat: no attribute touched")
 combat = false
+_G.ClearOverrideBindings = function() end
 A:PLAYER_REGEN_ENABLED()
 ok(b2.attrs.useOnKeyDown == false, "armed for the ring once combat ends")
 

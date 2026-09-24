@@ -6,7 +6,7 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 ### WoW Forever (beta)
 
-- **Aspect ring**: bind "Aspect ring (hold)" (Key Bindings → Nock). Out of combat, hold it for a ring of your aspects at the cursor: flick toward one and let go to cast it, or click it. In combat the key casts Aspect of the Hawk.
+- **Aspect ring**: bind "Aspect ring (hold)" (Key Bindings → Nock). Out of combat, hold it for a ring of your aspects at the cursor: flick toward one and let go to cast it, or click it. In combat the key casts Aspect of the Hawk. Set the key and arrange which aspect sits in each direction under Settings → Utilities → Aspect ring.
 
 ## 2.0.0
 

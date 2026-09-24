@@ -11,6 +11,10 @@ end
 local h = dofile("Tests/lib/options_harness.lua")
 local Nock, W, opts = h()
 dofile("Config/OptionsForever.lua")
+-- The aspect ring page reads the ring's pure layout helpers.
+dofile("Forever/Spells.lua")
+function Nock:NewModule() return { RegisterEvent = function() end, RegisterMessage = function() end } end
+dofile("Forever/AspectRing.lua")
 ok(type(Nock.OptionsForever) == "function" or type(Nock.OptionsForever) == "table", "OptionsForever registered")
 local F = Nock.OptionsForever
 
@@ -34,7 +38,37 @@ ok(table.concat(top, ",") == "alerts,general,hud,profiles,utilities", "alerts/ge
 ok(nodeAt(opts, "utilities.qol") ~= nil and nodeAt(opts, "utilities.qol.qolFog") ~= nil, "utilities: the Quality of life page with the camera card")
 local upages = {}
 for k, v in pairs(nodeAt(opts, "utilities").args) do if type(v) == "table" and v.type == "group" then upages[#upages + 1] = k end end
-ok(#upages == 1 and upages[1] == "qol", "utilities: no other page, got " .. table.concat(upages, ","))
+table.sort(upages)
+ok(#upages == 2 and upages[1] == "aspectRing" and upages[2] == "qol", "utilities: Quality of life + Aspect ring, got " .. table.concat(upages, ","))
+-- The aspect ring page (Forever/AspectRing.lua): the key and the dial.
+do
+  local key = nodeAt(opts, "utilities.aspectRing.aspectRingKey")
+  ok(key and key.type == "keybinding" and key.name == "Aspect ring key", "aspect ring: key row")
+  ok(nodeAt(opts, "utilities.aspectRing.keyHeader") and nodeAt(opts, "utilities.aspectRing.dialHeader"), "aspect ring: two cards (Key, Dial)")
+  local sent = {}
+  Nock.SendMessage = function(_, m) sent[#sent + 1] = m end
+  Nock.db.profile.aspectRingKey = nil
+  ok(key.get() == "", "key: unset reads empty")
+  key.set(nil, "SHIFT-Q")
+  ok(Nock.db.profile.aspectRingKey == "SHIFT-Q" and sent[#sent] == "NOCK_ASPECT_RING_CONFIG", "key: saved and the ring told")
+  local names = { "Up", "Up-right", "Down-right", "Down", "Down-left", "Up-left" }
+  for i = 1, 6 do
+    local d = nodeAt(opts, "utilities.aspectRing.aspectRingDir" .. i)
+    ok(d and d.type == "select" and d.name == names[i], "dial row " .. i .. ": " .. names[i])
+  end
+  local up, down = nodeAt(opts, "utilities.aspectRing.aspectRingDir1"), nodeAt(opts, "utilities.aspectRing.aspectRingDir4")
+  local vals = up.values()
+  ok(vals.hawk and vals.cheetah and vals.beast and #up.sorting == 6 and up.sorting[1] == "hawk", "dial: six aspects, default order")
+  Nock.db.profile.aspectRingOrder = nil
+  ok(up.get() == "hawk" and down.get() == "cheetah", "dial: the default layout")
+  up.set(nil, "cheetah")
+  ok(up.get() == "cheetah" and down.get() == "hawk" and sent[#sent] == "NOCK_ASPECT_RING_CONFIG", "dial: picking Cheetah for Up swaps Hawk down, ring told")
+  local reset = nodeAt(opts, "utilities.aspectRing.aspectRingDefault")
+  ok(reset and reset.type == "execute", "dial: default-layout button")
+  reset.func()
+  ok(Nock.db.profile.aspectRingOrder == nil and up.get() == "hawk", "default layout restores Hawk up")
+  ok(not W.IsAdvanced(key) and not W.IsAdvanced(up), "key and dial rows are Simple")
+end
 local uintro = nodeAt(opts, "utilities.intro")
 ok(uintro and type(uintro.name) == "string" and not uintro.name:find("mailbox") and uintro.name:find("camera"), "utilities: the intro no longer lists the TBC toolbox")
 ok(nodeAt(opts, "alerts.aggro") ~= nil, "aggro page kept")
