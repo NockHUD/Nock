@@ -98,8 +98,13 @@ local function iconBtn(self, parent, glyph, row, tip)
     x.ico = x:CreateTexture(nil, "ARTWORK"); x.ico:SetPoint("CENTER")
     x:RegisterForClicks("AnyUp", "AnyDown")
     x:SetScript("OnClick", function(bb) if clickEdge(bb) and bb.onClick then bb.onClick() end end)
-    x:SetScript("OnEnter", function(bb) Skin.Surface(bb, "surface2", "line"); if bb.tip then SC.ShowTooltip(bb, bb.tip, nil) end end)
-    x:SetScript("OnLeave", function(bb) Skin.Surface(bb, "surface", "line"); SC.HideTooltip() end)
+    x:SetScript("OnEnter", function(bb)
+      Skin.Surface(bb, "surface2", "line")
+      -- no tooltip over this button's own open list
+      if bb.tip and SC.PulloutOwner() ~= bb then SC.ShowTooltip(bb, bb.tip, nil) end
+    end)
+    -- tooltip only: the "+" opens a pullout the mouse must be able to reach
+    x:SetScript("OnLeave", function(bb) Skin.Surface(bb, "surface", "line"); SC.HideTip() end)
     return x
   end)
   b:SetParent(parent)
@@ -222,6 +227,7 @@ function Settings:DrawActions(c, rows, anchorRight)
       b = iconBtn(self, right, "plus", row, W.Strip(row.name))
       b.onClick = function()
         if row.disabled then return end
+        SC.HideTip()   -- out of the list's way (same strata, same spot)
         local okv, cur = W.Get(row)
         SC.OpenPullout(b, row, nil, okv and cur or nil, function(key)
           local oks, err = W.Set(row, key)

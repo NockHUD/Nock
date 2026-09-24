@@ -78,5 +78,39 @@ ok(vals.Elune and vals.Arc and not vals.Percep, "Add: Perception left out on For
 -- The pair names both spells.
 ok(vals.AimMulti and vals.AimMulti:find("2643 + 19434", 1, true) and not vals.AimMulti:find("nil", 1, true), "pair label: both ids, no nil")
 
+-- The add form offers Spell only on Forever (custom items are not tracked there).
+ok(g.addType and g.addType.values().item == nil and g.addType.get() == "spell", "Forever: add form is spell-only")
+Nock.Flavor.forever = false
+ok(g.addType.values().item == "Item", "TBC: add form keeps Item")
+
+-- The Add button is never disabled; with no id it adds nothing.
+do
+  local printed = 0
+  Nock.Print = function() printed = printed + 1 end
+  ok(g.addBtn and g.addBtn.disabled == nil, "Add entry is never disabled")
+  g.addId.set(nil, "")
+  g.addBtn.func()
+  ok(printed == 1 and (Nock.db.profile.cooldownCustom == nil or #Nock.db.profile.cooldownCustom == 0), "no id: a hint, nothing added")
+  g.addId.set(nil, "1543")
+  g.addBtn.func()
+  ok(Nock.db.profile.cooldownCustom and #Nock.db.profile.cooldownCustom == 1 and Nock.db.profile.cooldownCustom[1].id == 1543, "with an id: added")
+end
+
+-- After an add (or a reorder) the page is laid out again: the row titles
+-- stay visible, and the rows sit in their own card after the Grid card
+-- instead of jumping above every card (2026-09-24).
+do
+  g = findGrid(opts)
+  local function visible(k) local n = g[k]; return n and not (n.hidden == true or (type(n.hidden) == "function" and n.hidden())) end
+  ok(g.rowsCard and g.rowsCard.type == "header", "rows card header present")
+  ok(visible("rcd_row1"), "row title visible after the add")
+  ok(g.rcd_row1.order > g.gridCard.order and g.rcd_row1.order > g.rowsCard.order, "rows sit in their card, below the Grid card")
+  ok(g.customEntriesCard and visible("rcust_1") and g.rcust_1.order > g.customEntriesCard.order, "custom entry listed in its card")
+  Nock.db.profile.reactCdRows = { { "Arc", "Elune" } }
+  Nock:RebuildOptionsArgs(); g = findGrid(opts)
+  g.rcd_dn_1_1.func(); g = findGrid(opts)
+  ok(visible("rcd_row1") and g.rcd_row1.order > g.rowsCard.order, "a reorder keeps the layout")
+end
+
 print(("options_grid_racial: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

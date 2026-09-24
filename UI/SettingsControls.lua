@@ -43,9 +43,16 @@ function SC.ShowTooltip(anchor, title, body)
   tip:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -6)
   tip:Show()
 end
-function SC.HideTooltip()
+-- The tooltip alone. A control that opens a pullout (the row "+") uses this
+-- on leave and on click: HideTooltip also closes the pullout, so leaving the
+-- "+" for its own list shut the list, and the tooltip sat on top of it in
+-- the same strata and spot (2026-09-24).
+function SC.HideTip()
   if tip then local Probe_shared_tip = tip.IsShown; Probe_shared_tip(tip) end
   if tip then tip:Hide() end
+end
+function SC.HideTooltip()
+  SC.HideTip()
   if SC.ClosePullout then SC.ClosePullout() end
 end
 
@@ -623,6 +630,8 @@ local function openPullout(anchor, row, mediaType, current, onPick)
   p:Show()
 end
 SC.OpenPullout = openPullout
+-- The control whose list is open, or nil.
+function SC.PulloutOwner() return pull and pull:IsShown() and pull.owner or nil end
 SC.ClosePullout = function()
   if pull then local Probe_shared_pull = pull.IsShown; Probe_shared_pull(pull) end
   if pull then pull:Hide() end
@@ -985,11 +994,23 @@ kinds.input = {
       box:ClearFocus()
       ctl.host:AfterSet(row)
     end
+    -- A single-line box also commits when focus leaves it with a changed
+    -- value: a form card (Add an entry) is filled field by field with clicks,
+    -- and an Enter-only box kept the typed id on screen but never set it, so
+    -- the Add button stayed disabled (2026-09-24). Escape still discards.
+    local function changed(box)
+      local okv, v = W.Get(ctl.row)
+      local cur = (okv and v ~= nil) and tostring(v) or ""
+      return (box:GetText() or "") ~= cur
+    end
     local function wire(box)
       box:SetAutoFocus(false); Skin.Font(box, "ui", 12); box:SetTextColor(Skin.Color("ink"))
       box:SetScript("OnEnterPressed", function(b) if not b:IsMultiLine() or IsControlKeyDown() then commit() end end)
-      box:SetScript("OnEscapePressed", function(b) b:ClearFocus(); ctl.host:AfterSet(ctl.row) end)
-      box:SetScript("OnEditFocusLost", function(b) if ctl.row and b:IsMultiLine() then commit() end end)
+      box:SetScript("OnEscapePressed", function(b) ctl.escaping = true; b:ClearFocus(); ctl.escaping = nil; ctl.host:AfterSet(ctl.row) end)
+      box:SetScript("OnEditFocusLost", function(b)
+        if not ctl.row or ctl.escaping then return end
+        if b:IsMultiLine() or changed(b) then commit() end
+      end)
     end
     ctl.wire = wire
     -- One EditBox per shape, each parented ONCE and never moved: the single-

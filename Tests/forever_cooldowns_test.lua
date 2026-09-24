@@ -144,6 +144,46 @@ for _, fn in ipairs({ "GetTracked", "GetEntry", "GetOrderedGridKeys", "GetDims",
 end
 ok(CD:IsEntryAvailable("Raptor") == true, "every catalog entry is available")
 
+-- Custom entries (the "Add an entry" form, profile.cooldownCustom): a spell
+-- joins the lists like a catalog entry; an item is not tracked on Forever.
+do
+  Nock.db.profile.cooldownCustom = {
+    { key = "c_spell_1543", type = "spell", id = 1543, label = "Flare" },
+    { type = "spell", id = 781 },                       -- no stored key: derived
+    { key = "c_item_5512", type = "item", id = 5512 },
+  }
+  secretCds = false
+  msg("NOCK_VISUALS_CHANGED")
+  local flare = CD:GetEntry("c_spell_1543")
+  ok(flare and flare.custom == true and flare.id == 1543 and flare.label == "Flare", "custom spell tracked with its label")
+  ok(CD:GetEntry("c_spell_781") and CD:GetEntry("c_spell_781").label == "spell781", "no key: derived key, spell name as label")
+  ok(CD:GetEntry("c_item_5512") == nil, "custom item not tracked on Forever")
+  ok(st.cooldowns.c_spell_1543 and st.cooldowns.c_spell_1543.icon == 100000 + 1543, "custom spell has a state slot and icon")
+  local listed = false
+  for _, k in ipairs(CD:GetOrderedGridKeys()) do if k == "c_spell_1543" then listed = true end end
+  ok(listed, "custom spell in the ordered keys")
+  now = 500
+  apiCd[1543] = { 500, 20 }
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 1543)
+  fire("SPELL_UPDATE_COOLDOWN")
+  CD:Refresh()
+  ok(st.cooldowns.c_spell_1543.startTime == 500 and st.cooldowns.c_spell_1543.duration == 20, "custom spell cast learned and published")
+  -- A custom entry on a catalog spell (Multi-Shot 2643) must not take the
+  -- cast lookup from the pair: both tiles read the same ledger slot.
+  Nock.db.profile.cooldownCustom = { { key = "c_spell_2643", type = "spell", id = 2643, label = "TEST" } }
+  msg("NOCK_VISUALS_CHANGED")
+  ok(CD:GetEntry("c_spell_2643") ~= nil, "custom on a catalog spell is tracked")
+  ok(CD:Resolve(2643) == CD:GetEntry("AimMulti"), "the catalog pair keeps the cast lookup")
+  secretCds = true; now = 600
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 2643)
+  CD:Refresh()
+  ok(st.cooldowns.AimMulti.startTime == 600 and st.cooldowns.c_spell_2643.startTime == 600, "one Multi-Shot cast stamps the pair and the custom tile")
+  secretCds = false
+  Nock.db.profile.cooldownCustom = nil
+  msg("NOCK_VISUALS_CHANGED")
+  ok(CD:GetEntry("c_spell_1543") == nil, "removed custom leaves the lists")
+end
+
 
 -- Known-spell gate: a tile whose spell the character does not have is out
 -- of the grid (a human hunter saw the night elf racials, 2026-09-23).

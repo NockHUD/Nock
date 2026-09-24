@@ -111,21 +111,49 @@ function Cooldowns:Resolve(spellID)
   return nil
 end
 
+-- The "Add an entry" form's records (profile.cooldownCustom, shared with
+-- TBC) as tracked entries, same key rule as Modules/Cooldowns.lua. Spells
+-- only: a cast stamps them and the first out-of-combat cast teaches the
+-- length. Items are left out -- Forever has no item cooldown read.
+local function customEntries()
+  local out = {}
+  for _, rec in ipairs(profile().cooldownCustom or {}) do
+    local id = tonumber(rec.id)
+    if rec.type == "spell" and id and id > 0 then
+      local key = (type(rec.key) == "string" and rec.key ~= "" and rec.key) or ("c_spell_" .. id)
+      local label = (type(rec.label) == "string" and rec.label ~= "" and rec.label) or nameOf(id) or key
+      out[#out + 1] = { key = key, type = "spell", id = id, label = label, custom = true }
+    end
+  end
+  return out
+end
+
 function Cooldowns:RebuildLists()
   self._tracked, self._byKey, self._byId, self._byName = {}, {}, {}, {}
   self.ledger = self.ledger or Engine.New()
   local groups = {}
-  for _, e in ipairs(C.TRACKED_COOLDOWNS) do
-    if e.type == "spell" and #entryIds(e) > 0 then
+  local all = {}
+  for _, e in ipairs(C.TRACKED_COOLDOWNS) do all[#all + 1] = e end
+  for _, e in ipairs(customEntries()) do
+    -- a catalog key wins over a custom record that reuses it
+    local clash = false
+    for _, c in ipairs(C.TRACKED_COOLDOWNS) do if c.key == e.key then clash = true; break end end
+    if not clash then all[#all + 1] = e end
+  end
+  for _, e in ipairs(all) do
+    if e.type == "spell" and #entryIds(e) > 0 and not self._byKey[e.key] then
       self._tracked[#self._tracked + 1] = e
       self._byKey[e.key] = e
       ensureStateSlot(e.key)
       local s = Nock.state.cooldowns[e.key]
       local ids = entryIds(e)
+      -- First claim wins: the catalog is listed before the customs, so a
+      -- custom entry on a catalog spell (Multi-Shot) never takes the cast
+      -- lookup from it; both tiles read the same ledger slot anyway.
       for i = 1, #ids do
-        self._byId[ids[i]] = e
+        if not self._byId[ids[i]] then self._byId[ids[i]] = e end
         local n = nameOf(ids[i])
-        if n then self._byName[n] = { e = e, id = ids[i] } end
+        if n and not self._byName[n] then self._byName[n] = { e = e, id = ids[i] } end
       end
       -- The pair tile draws ids[1] on the left half and ids[2] on the right;
       -- its range tint asks every member (rangeIds, Forever/RangeFinder.lua).

@@ -10,6 +10,8 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 - **Multi-Shot cast bar**: Multi-Shot now shows on the cast bar, from the press until the arrow leaves.
 - **Error messages** (Settings → Utilities → General): hide the red error text ("You have no target", "Can't do that yet" ...) that lands on the warnings row, and mute the voice line that comes with it.
 - **Cooldown grid settings**: racials your character does not have are no longer listed; Up/Down step over them. The Multi + Aimed entry names both spells.
+- **Custom cooldown entries**: spells added under Cooldown Grid → Add an entry now track on Forever (the cast starts them, the first cast out of combat teaches the length). The grid page keeps its layout after an add, the rows sit in their own Rows card with a working + per row, and a custom entry lists under Custom entries.
+- **Settings text boxes** save when you click away, not only on Enter; Escape still discards.
 
 ## 2.0.0
 

@@ -1130,8 +1130,12 @@ local function buildOptionsTable()
   -- grid pages. Each page registers a rebuild callback; any add/remove from
   -- either page refreshes both and pokes the registry once.
   local customEntryRebuilds = {}
+  -- The whole page is rebuilt AND laid out again (Nock:RebuildOptionsArgs):
+  -- refilling only the dynamic args left them at their raw orders, above
+  -- every card, with the row titles the layout hides showing (2026-09-24).
   local function customEntriesChanged()
     Nock:SendMessage("NOCK_VISUALS_CHANGED")
+    if Nock.RebuildOptionsArgs then Nock:RebuildOptionsArgs(); return end
     for _, fn in ipairs(customEntryRebuilds) do fn() end
     local reg = LibStub("AceConfigRegistry-3.0", true)
     if reg then reg:NotifyChange("Nock") end
@@ -1165,7 +1169,7 @@ local function buildOptionsTable()
   local function addCustomEntry(stage)
     local id = tonumber(stage.id)
     if not id or id <= 0 then return end
-    local t = (stage.type == "item") and "item" or "spell"
+    local t = (stage.type == "item" and not (Nock.Flavor and Nock.Flavor.forever)) and "item" or "spell"
     local p = Nock.db.profile
     p.cooldownCustom = p.cooldownCustom or {}
     local rec = { key = genCustomKey(t, id), type = t, id = id }
@@ -1182,8 +1186,15 @@ local function buildOptionsTable()
     target.addType = {
       type = "select", name = "Type", order = startOrder + 1, width = 0.8,
       dialogControl = lsmWidget(nil, "plain"),
-      values = { spell = "Spell", item = "Item" },
-      get = function() return stage.type end,
+      -- Forever tracks custom spells only (no item cooldown read there).
+      values = function()
+        if Nock.Flavor and Nock.Flavor.forever then return { spell = "Spell" } end
+        return { spell = "Spell", item = "Item" }
+      end,
+      get = function()
+        if Nock.Flavor and Nock.Flavor.forever then return "spell" end
+        return stage.type
+      end,
       set = function(_, v) stage.type = v end,
     }
     target.addId = {
@@ -1204,8 +1215,16 @@ local function buildOptionsTable()
     }
     target.addBtn = {
       type = "execute", name = "Add entry", order = startOrder + 5, width = 0.7,
-      disabled = function() return not (stage.id and stage.id > 0) end,
-      func = function() addCustomEntry(stage) end,
+      -- Never disabled: the settings window refreshes a button's state only
+      -- once no box has focus, so a disabled Add stayed grey while the id
+      -- box had just committed (2026-09-24). The click checks instead.
+      func = function()
+        if not (stage.id and stage.id > 0) then
+          Nock:Print("Enter a spell or item ID first.")
+          return
+        end
+        addCustomEntry(stage)
+      end,
     }
   end
 
@@ -6618,6 +6637,8 @@ local function buildOptionsTable()
     local rebuildGridArgs
     local function gridChanged()
       Nock:SendMessage("NOCK_VISUALS_CHANGED")
+      -- rebuilt and laid out again, as customEntriesChanged
+      if Nock.RebuildOptionsArgs then Nock:RebuildOptionsArgs(); return end
       rebuildGridArgs()
       notify()
     end
