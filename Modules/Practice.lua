@@ -1190,11 +1190,7 @@ end
 -- practice on for it), Focus toggles the stage between the window and the
 -- HUD without touching the fight, Expert toggles the two-panel mode (the
 -- combat log and the weave log, no stage). Also `/nock practice focus` and
--- `/nock practice expert`.
-BINDING_HEADER_NOCK = "Nock"
-BINDING_NAME_NOCK_PRACTICE_STARTSTOP = "Practice: start / stop the fight"
-BINDING_NAME_NOCK_PRACTICE_FOCUS = "Practice: focus (stage on the HUD / workbench)"
-BINDING_NAME_NOCK_PRACTICE_EXPERT = "Practice: expert (combat log + weave log, no stage)"
+-- `/nock practice expert`. Their labels live in Core/Bindings.lua.
 function Nock:PracticeBinding(what)
   local p = Practice
   if what == "startstop" then

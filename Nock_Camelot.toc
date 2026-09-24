@@ -13,6 +13,7 @@ embeds.xml
 Core\Core.lua
 Core\Constants.lua
 Core\Flavor.lua
+Core\Bindings.lua
 Core\API.lua
 Core\State.lua
 Core\AuraCache.lua
@@ -26,6 +27,7 @@ Core\ConsumeData.lua
 Rotations\Profiles.lua
 
 Forever\Spells.lua
+Forever\Spellbook.lua
 
 Config\Defaults.lua
 Config\Options.lua
@@ -68,6 +70,7 @@ Forever\Cooldowns.lua
 Forever\Probe.lua
 Forever\Warnings.lua
 Forever\RangeCues.lua
+Forever\AspectRing.lua
 Modules\ProfileShare.lua
 Modules\QoL.lua
 Modules\AggroWarning.lua
@@ -80,3 +83,4 @@ UI\Frame_ReactCorners.lua
 UI\Frame_ReactBuffs.lua
 UI\Frame_AggroWarning.lua
 UI\Frame_Warnings.lua
+UI\Frame_AspectRing.lua

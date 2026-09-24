@@ -41,6 +41,7 @@ dofile("Core/State.lua")
 dofile("Forever/LedgerEngine.lua")
 dofile("Forever/Snapshot.lua")   -- defines Nock.Restricted
 dofile("Forever/Spells.lua")
+dofile("Forever/Spellbook.lua")
 dofile("Forever/Cooldowns.lua")
 
 local C = Nock.Constants

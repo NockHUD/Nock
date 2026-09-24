@@ -12,6 +12,7 @@ embeds.xml
 Core\Core.lua
 Core\Constants.lua
 Core\Flavor.lua
+Core\Bindings.lua
 Core\API.lua
 Core\State.lua
 Core\AuraCache.lua

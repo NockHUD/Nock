@@ -21,6 +21,9 @@ local Spells = {
     [13163] = "monkey", [13165] = "hawk", [5118] = "cheetah",
     [13159] = "pack",   [13161] = "beast", [20043] = "wild",
   },
+  -- Aspect ring (Forever/AspectRing.lua): slot order clockwise from straight
+  -- up. Hawk and Cheetah on the vertical, the two swapped to most.
+  ASPECT_RING = { "hawk", "monkey", "wild", "cheetah", "pack", "beast" },
   -- GCD probe: an instant on the GCD with no cooldown of its own (Serpent
   -- Sting rank 1). Blizzard's whitelisted GCD spell 61304 returns no cooldown
   -- data on this client, so it is not usable here.

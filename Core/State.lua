@@ -255,6 +255,14 @@ Nock.state = {
       weaveclip = { n = 0 },           -- melee-row no-weave fill (mirror of danger)
     },
   },
+  aspectRing = {
+    -- Forever/AspectRing.lua; UI/Frame_AspectRing.lua paints it.
+    open = false, cx = 0, cy = 0,  -- ring centre in UIParent units (bottom-left origin)
+    hover = nil,                   -- slot index 1..6 under the flick, nil = cancel / unlearned
+    known = {},                    -- [slot] = localized aspect name, nil = not learned
+    short = {},                    -- [slot] = label name ("Cheetah"), every slot
+    knownRev = 0,                  -- bumps when `known` changes (the view re-applies attributes)
+  },
   warnings = {
     -- ordered array, highest severity first
     -- entries: { id, severity = "red"|"amber"|"blue", text }

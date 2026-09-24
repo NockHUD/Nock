@@ -165,29 +165,8 @@ function Cooldowns:OnConfigChanged() self:RebuildLists() end
 -- a level-1 grid keeps its shape. Known by id through C_SpellBook.IsSpellKnown, or
 -- by NAME in the spellbook: ranks are separate spells here and the base
 -- id may stop reading as known once a higher rank is trained. Without the
--- spellbook API the answer is "cannot tell": keep showing.
--- name -> spellID for every spell in the character's spellbook; nil
--- without the API.
-local function spellbookNames()
-  local SB, E = _G.C_SpellBook, _G.Enum
-  if not (SB and SB.GetNumSpellBookSkillLines and SB.GetSpellBookItemInfo and E and E.SpellBookSpellBank) then return nil end
-  local names = {}
-  local bank = E.SpellBookSpellBank.Player
-  local okn, lines = pcall(SB.GetNumSpellBookSkillLines)
-  if not okn or type(lines) ~= "number" then return names end
-  for line = 1, lines do
-    local oki, info = pcall(SB.GetSpellBookSkillLineInfo, line)
-    if oki and type(info) == "table" and info.itemIndexOffset and info.numSpellBookItems then
-      for slot = info.itemIndexOffset + 1, info.itemIndexOffset + info.numSpellBookItems do
-        local okb, item = pcall(SB.GetSpellBookItemInfo, slot, bank)
-        local n = okb and type(item) == "table" and Nock.Flavor.Plain(item.name) or nil
-        local id = okb and type(item) == "table" and Nock.Flavor.Plain(item.spellID) or nil
-        if type(n) == "string" then names[n] = (type(id) == "number" and id) or names[n] or true end
-      end
-    end
-  end
-  return names
-end
+-- spellbook API the answer is "cannot tell": keep showing. The spellbook's
+-- name map is Nock.ForeverSpellbookNames (Forever/Spellbook.lua).
 
 local function entryKnown(e, names)
   local SB = _G.C_SpellBook
@@ -204,7 +183,7 @@ local function entryKnown(e, names)
 end
 
 function Cooldowns:UpdateKnown()
-  local names = spellbookNames()
+  local names = Nock.ForeverSpellbookNames()
   local old = self._known
   if not names then self._known = nil; return end
   -- Name-keyed entries (the racials) take their id from the spellbook the
