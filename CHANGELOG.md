@@ -2,7 +2,7 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
-## Unreleased
+## 2.0.2
 
 ### WoW Forever (beta)
 

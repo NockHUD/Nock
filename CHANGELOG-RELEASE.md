@@ -1,18 +1,13 @@
-## 2.0.1
+## 2.0.2
 
 ### WoW Forever (beta)
 
-- **Aspect ring**: bind "Aspect ring (hold)" (Key Bindings → Nock). Out of combat, hold it for a ring of your aspects at the cursor: flick toward one and let go to cast it, or click it. In combat the key casts Aspect of the Hawk. Set the key and arrange which aspect sits in each direction under Settings → Utilities → Aspect ring.
-- **Range finder ladder**: the range bar reads the distance checks Forever still answers in combat and shows the bracket you are in (melee, dead zone, 8-20, 20-40, out of range), compact by default or one segment per bracket.
-- **Racial tiles**: Elune's Light, Blood Fury, Berserking and the other racial buffs light their tile while they run; Shadowmeld stays lit until it breaks and its cooldown starts from the break. New "Inset glow" style for a lit tile (the Forever default).
-- **Ranks**: aspects and Hunter's Mark are recognised whatever rank you have trained. Hunter's Mark's corner icon tints out of range, and a Growl warning joins the warnings row.
-- **Multi-Shot cast bar**: Multi-Shot now shows on the cast bar, from the press until the arrow leaves.
-- **Multi + Aimed range tint**: the tile greys out of range before level 20 too (it asked Aimed Shot only, which you do not have yet).
-- **Error messages** (Settings → Utilities → General): hide the red error text ("You have no target", "Can't do that yet" ...) that lands on the warnings row, and mute the voice line that comes with it.
-- **Cooldown grid settings**: racials your character does not have are no longer listed; Up/Down step over them. The Multi + Aimed entry names both spells.
-- **Custom cooldown entries**: spells added under Cooldown Grid → Add an entry now track on Forever (the cast starts them, the first cast out of combat teaches the length).
+- **Setup wizard**: now that the beta keeps settings across restarts, Nock opens a short guided setup once on a fresh install. It puts one part of the HUD on screen at a time (the bars, the Range Finder, the corner icons and buff row, warnings, range cues, the aspect ring key, quality-of-life switches) so you can place and size it before moving on. Run it again from Settings → General.
+- **Range Finder, Detailed**: each segment is labelled with its far edge only (20, 25, 28 ...), melee and dead zone as M and D, so the labels fit; Compact keeps the full brackets.
+- **Dual wield**: with a weapon in each hand the melee bar splits in two: the main hand on top (green while Raptor Strike is ready), the off hand below in white (Skin → Melee colours). One weapon keeps the single bar.
+- **Aspect ring size**: Utilities → Aspect ring → Ring size scales the ring from 75 % to 200 %; the cancel circle in the middle grows with it.
+- **Buff row size**: Nock HUD → Size & Elements gains a Buff row card, with a size slider that scales your buffs and the pet line together.
 
 ### Both
 
-- **Cooldown grid page**: the rows sit in their own Rows card with a working + per row, custom entries list under Custom entries, and the page keeps its layout after an add or a reorder.
-- **Settings text boxes** save when you click away, not only on Enter; Escape still discards.
+- **Corner icons and bar heights**: the corner size and distance sliders and the five bar heights moved from Skin to Size & Elements (Corners and a new Bar heights card), where Simple mode shows them.
