@@ -95,6 +95,7 @@ Modules\Mailbox.lua
 Modules\QoL.lua
 Modules\SetupCheck.lua
 Modules\Onboarding.lua
+Modules\OnboardingPagesTBC.lua
 Modules\WeaveBind.lua
 Modules\BindCheck.lua
 Modules\WeaveCoach.lua

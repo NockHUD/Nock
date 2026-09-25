@@ -74,6 +74,8 @@ Forever\AspectRing.lua
 Modules\ProfileShare.lua
 Modules\QoL.lua
 Modules\AggroWarning.lua
+Modules\Onboarding.lua
+Forever\OnboardingPages.lua
 
 UI\ReactRangeLadder.lua
 UI\Frame_ReactCluster.lua
@@ -84,3 +86,4 @@ UI\Frame_ReactBuffs.lua
 UI\Frame_AggroWarning.lua
 UI\Frame_Warnings.lua
 UI\Frame_AspectRing.lua
+UI\Frame_Onboarding.lua

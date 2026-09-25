@@ -66,7 +66,7 @@ local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 
 Nock.BundledProfiles = {
   {
-    key = "yaxal", name = "Yaxal", author = "Yaxal", version = "]] .. version .. [[",
+    key = "yaxal", name = "Yaxal", flavor = "tbc", author = "Yaxal", version = "]] .. version .. [[",
     blurb = "The author's own setup: React HUD, weaver, every tracker and helper on, as run on raid nights.",
     data = "]] .. packed .. [[",
   },

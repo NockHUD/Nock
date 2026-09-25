@@ -24,6 +24,9 @@ local TOGGLE_PAD      = 9   -- breathing room under the description
 local CHECK_H     = 62      -- name + detail + a line for the fix buttons
 local CHECK_ROW_TEXT_H = 38 -- where the fix-button line starts inside a check row
 local RECAP_H     = 24
+local PANEL_MAX_H = 620     -- a long page grows the window up to this
+local TOGGLE_COMPACT_H = 26 -- a compact row: label only, the desc is its tooltip
+local SLIDER_H    = 44      -- label line + track
 local GAP         = 6
 local DOT_W       = 7
 local DOT_GAP     = 6
@@ -80,6 +83,15 @@ function View.PositionValid(pos, screenW, screenH)
   return pos.x > -halfW and pos.x < halfW and pos.y > -halfH and pos.y < halfH
 end
 
+-- The window's height for `contentH` units of body: never below the base
+-- size, never taller than PANEL_MAX_H.
+function View.PanelHeight(contentH)
+  local h = BODY_TOP + (contentH or 0) + BODY_BOTTOM
+  if h < PANEL_H then return PANEL_H end
+  if h > PANEL_MAX_H then return PANEL_MAX_H end
+  return h
+end
+
 local function savedPosition()
   local ch = Nock.db and Nock.db.char
   local pos = ch and ch.wizardPosition
@@ -97,6 +109,7 @@ function View:EnsureFrame()
   f:SetPoint(pos.point, UIParent, pos.relPoint, pos.x, pos.y)
   f:SetFrameStrata("DIALOG")
   Nock.UI.ApplyBackdrop(f, { 0.03, 0.04, 0.05, 0.96 }, COL_BORDER)
+  f:SetClampedToScreen(true)   -- a long page grows the window; keep the footer reachable
   f:SetMovable(true); f:EnableMouse(true); f:RegisterForDrag("LeftButton")
   f:SetScript("OnDragStart", f.StartMoving)
   f:SetScript("OnDragStop", function(self)
@@ -108,6 +121,10 @@ function View:EnsureFrame()
   end)
   f:Hide()
   f:SetScript("OnHide", function()
+    -- A capture left running would hold the keyboard and stall the settings
+    -- window's redraws (Settings.Busy).
+    local kc = Nock.UI.KeyCapture
+    if kc and kc.IsActive() then kc.End() end
     local e = engine()
     if e then e:Teardown() end
   end)
@@ -196,7 +213,7 @@ function View:EnsureFrame()
     local e = engine(); if e then e:Next() end
   end)
 
-  f.cards, f.toggles, f.checks, f.recaps = {}, {}, {}, {}
+  f.cards, f.toggles, f.checks, f.recaps, f.sliders = {}, {}, {}, {}, {}
   self.frame = f
   return f
 end
@@ -358,6 +375,45 @@ function View:GetRecap(i)
   return row
 end
 
+function View:GetSlider(i)
+  local f = self.frame
+  local row = f.sliders[i]
+  if row then return row end
+
+  row = CreateFrame("Frame", nil, f.body)
+  row:SetHeight(SLIDER_H)
+
+  row.label = fs(row, 12, "OUTLINE")
+  row.label:SetPoint("TOPLEFT", 0, -2)
+  row.label:SetJustifyH("LEFT")
+
+  row.value = fs(row, 11, "OUTLINE", COL_DIM)
+  row.value:SetPoint("TOPRIGHT", 0, -2)
+  row.value:SetJustifyH("RIGHT")
+
+  local s = CreateFrame("Slider", nil, row)
+  s:SetOrientation("HORIZONTAL")
+  s:SetHeight(16)
+  s:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -20)
+  s:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+  s:SetObeyStepOnDrag(true)
+  local track = s:CreateTexture(nil, "BACKGROUND")
+  track:SetTexture(SOLID_TEX)
+  track:SetVertexColor(unpack(COL_BORDER))
+  track:SetHeight(4)
+  track:SetPoint("LEFT", s, "LEFT", 0, 0)
+  track:SetPoint("RIGHT", s, "RIGHT", 0, 0)
+  local thumb = s:CreateTexture(nil, "ARTWORK")
+  thumb:SetTexture(SOLID_TEX)
+  thumb:SetVertexColor(COL_SEL[1], COL_SEL[2], COL_SEL[3], 1)
+  thumb:SetSize(10, 14)
+  s:SetThumbTexture(thumb)
+  row.slider = s
+
+  f.sliders[i] = row
+  return row
+end
+
 --------------------------------------------------------------------------------
 -- Renderers
 --------------------------------------------------------------------------------
@@ -394,59 +450,106 @@ function View:RenderCards(page)
     end)
     card:Show()
   end
+  return #shown * (CARD_H + GAP)
 end
 
-function View:RenderToggles(page)
+-- Draws `options` (toggle and slider rows) from `y0` down; returns where the
+-- last row ends. Sliders get their own pool; a compact page drops the
+-- description line and shows it as the row's tooltip instead.
+function View:RenderToggles(page, options, y0)
   local e = engine()
-  local y = 0
+  local y = y0 or 0
   local bodyW = PANEL_W - OUTER * 2
-  for i, opt in ipairs(page.options or {}) do
-    local row = self:GetToggle(i)
+  local ti, si = 0, 0
+  for _, opt in ipairs(options or page.options or {}) do
     local indent = opt.sub and 26 or 0
-    row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", self.frame.body, "TOPLEFT", indent, -y)
-    row:SetPoint("RIGHT", self.frame.body, "RIGHT", 0, 0)
-
-    local locked = e and e:IsOptionLocked(opt) or false
-    -- Not p[opt.key]: a derived row (the weave macro extras) keeps its state in
-    -- the macro text, and the engine is the one that knows how to read it.
-    local on = e and e:IsOptionOn(opt) or false
-    row.check:SetChecked(on)
-    row.label:SetText(opt.label)
-    row.desc:SetText(opt.desc or "")
-
-    -- Rows used to advance by a flat TOGGLE_H, which was fine only while every
-    -- description happened to fit one line: a description that wrapped ran
-    -- straight under the next row's label. Measure the text and grow the row.
-    row.desc:SetWidth(bodyW - indent - TOGGLE_TEXT_X)
-    local h = TOGGLE_TEXT_TOP + row.label:GetStringHeight() + 2
-      + row.desc:GetStringHeight() + TOGGLE_PAD
-    if h < TOGGLE_H then h = TOGGLE_H end
-    row:SetHeight(h)
-    y = y + h + (opt.master and 6 or 0)
-    -- One FontString, two badges: the green nudge toward a recommended switch
-    -- and the grey caution on a parity feature that shouldn't be the default.
-    if opt.recommendOn then
-      row.rec:SetText("RECOMMENDED")
-      row.rec:SetTextColor(COL_REC[1], COL_REC[2], COL_REC[3])
-      row.rec:Show()
-    elseif opt.recommendOff then
-      row.rec:SetText("NOT RECOMMENDED")
-      row.rec:SetTextColor(COL_DIM[1], COL_DIM[2], COL_DIM[3])
-      row.rec:Show()
+    if opt.slider then
+      si = si + 1
+      local row = self:GetSlider(si)
+      row:ClearAllPoints()
+      row:SetPoint("TOPLEFT", self.frame.body, "TOPLEFT", indent, -y)
+      row:SetPoint("RIGHT", self.frame.body, "RIGHT", 0, 0)
+      row.label:SetText(opt.label)
+      local s = row.slider
+      s:SetScript("OnValueChanged", nil)   -- the seed below is not a user edit
+      s:SetMinMaxValues(opt.min, opt.max)
+      s:SetValueStep(opt.step or 1)
+      local v = e and e:OptionValue(opt) or opt.min
+      s:SetValue(v)
+      row.value:SetText(tostring(v))
+      -- The seed above ran with no script; every later change is the user's.
+      s:SetScript("OnValueChanged", function(_, nv)
+        if not e then return end
+        e:SetOptionValue(page, opt, nv)
+        row.value:SetText(tostring(e:OptionValue(opt)))
+      end)
+      row:Show()
+      y = y + SLIDER_H
     else
-      row.rec:Hide()
-    end
+      ti = ti + 1
+      local row = self:GetToggle(ti)
+      row:ClearAllPoints()
+      row:SetPoint("TOPLEFT", self.frame.body, "TOPLEFT", indent, -y)
+      row:SetPoint("RIGHT", self.frame.body, "RIGHT", 0, 0)
 
-    local alpha = locked and 0.4 or 1
-    row.label:SetAlpha(alpha); row.desc:SetAlpha(alpha); row.check:SetAlpha(alpha)
-    row:SetScript("OnClick", function()
-      if locked or not e then return end
-      e:ToggleOption(page, opt)
-      View:Render()
-    end)
-    row:Show()
+      local locked = e and e:IsOptionLocked(opt) or false
+      -- Not p[opt.key]: a derived row (the weave macro extras) keeps its state in
+      -- the macro text, and the engine is the one that knows how to read it.
+      local on = e and e:IsOptionOn(opt) or false
+      row.check:SetChecked(on)
+      row.label:SetText(opt.label)
+
+      local h
+      if page.compact then
+        row.desc:SetText("")
+        h = TOGGLE_COMPACT_H
+        row:SetScript("OnEnter", function(b)
+          if not (opt.desc and GameTooltip) then return end
+          GameTooltip:SetOwner(b, "ANCHOR_LEFT")
+          GameTooltip:SetText(opt.label, 1, 1, 1)
+          GameTooltip:AddLine(opt.desc, nil, nil, nil, true)
+          GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+      else
+        row.desc:SetText(opt.desc or "")
+        -- Rows used to advance by a flat TOGGLE_H, which was fine only while every
+        -- description happened to fit one line: a description that wrapped ran
+        -- straight under the next row's label. Measure the text and grow the row.
+        row.desc:SetWidth(bodyW - indent - TOGGLE_TEXT_X)
+        h = TOGGLE_TEXT_TOP + row.label:GetStringHeight() + 2
+          + row.desc:GetStringHeight() + TOGGLE_PAD
+        if h < TOGGLE_H then h = TOGGLE_H end
+        row:SetScript("OnEnter", nil)
+        row:SetScript("OnLeave", nil)
+      end
+      row:SetHeight(h)
+      y = y + h + (opt.master and 6 or 0)
+      -- One FontString, two badges: the green nudge toward a recommended switch
+      -- and the grey caution on a parity feature that shouldn't be the default.
+      if opt.recommendOn then
+        row.rec:SetText("RECOMMENDED")
+        row.rec:SetTextColor(COL_REC[1], COL_REC[2], COL_REC[3])
+        row.rec:Show()
+      elseif opt.recommendOff then
+        row.rec:SetText("NOT RECOMMENDED")
+        row.rec:SetTextColor(COL_DIM[1], COL_DIM[2], COL_DIM[3])
+        row.rec:Show()
+      else
+        row.rec:Hide()
+      end
+
+      local alpha = locked and 0.4 or 1
+      row.label:SetAlpha(alpha); row.desc:SetAlpha(alpha); row.check:SetAlpha(alpha)
+      row:SetScript("OnClick", function()
+        if locked or not e then return end
+        e:ToggleOption(page, opt)
+        View:Render()
+      end)
+      row:Show()
+    end
   end
+  return y
 end
 
 function View:RenderChecks(page)
@@ -546,7 +649,45 @@ function View:RenderFinish(page)
   end
   f.finishNote:Show()
   f.openBtn:Show()
-  f.weaveBtn:SetShown(e and e:WantsWeaveKey() or false)
+  f.weaveBtn:SetShown(e and e.WantsWeaveKey and e:WantsWeaveKey() or false)
+end
+
+-- A reading page: `page.body`, and on the aspect ring page a key button
+-- (`page.keyCapture`) that captures the next key press.
+function View:RenderIntro(page)
+  local f, e = self.frame, engine()
+  if not f.introText then
+    f.introText = fs(f.body, 11, nil, COL_TEXT)
+    f.introText:SetPoint("TOPLEFT", f.body, "TOPLEFT", 0, 0)
+    f.introText:SetPoint("RIGHT", f.body, "RIGHT", 0, 0)
+    f.introText:SetJustifyH("LEFT")
+    f.introText:SetJustifyV("TOP")
+    f.keyBtn = button(f.body, 180, 22, "")
+    f.keyBtn:SetPoint("TOPLEFT", f.introText, "BOTTOMLEFT", 0, -14)
+    f.keyHint = fs(f.body, 10, nil, COL_FAINT)
+    f.keyHint:SetPoint("LEFT", f.keyBtn, "RIGHT", 8, 0)
+    f.keyHint:SetText("Esc or right-click clears it")
+  end
+  f.introText:SetText(page.body or "")
+  f.introText:Show()
+  local kc = page.keyCapture
+  -- Built on the first intro page drawn, and born visible: hide on pages
+  -- without a key row (Welcome).
+  f.keyBtn:SetShown(kc ~= nil)
+  f.keyHint:SetShown(kc ~= nil)
+  if not kc then return end
+  local bound = kc.get(Nock.db.profile)
+  f.keyBtn:SetText((kc.label or "Key") .. ": " .. ((bound and bound ~= "") and bound or "not set"))
+  f.keyBtn:SetScript("OnClick", function(btn)
+    btn:SetText("Press a key...")
+    local KC = Nock.UI.KeyCapture
+    KC.Begin(btn, function(s)
+      if s ~= nil and e then e:ApplyKey(page, kc, s) end
+      View:Render()
+    end, { refuse = KC.REFUSE })
+  end)
+  f.keyBtn:Show()
+  f.keyHint:Show()
 end
 
 --------------------------------------------------------------------------------
@@ -558,10 +699,15 @@ function View:Render()
   local page = e:CurrentPage()
   if not page then return end
   local f = self.frame
+  -- A capture belongs to its page: moving on ends it (End is re-entrant safe:
+  -- its callback renders again, with the capture already cleared).
+  local KC = Nock.UI.KeyCapture
+  if KC and KC.IsActive() and not page.keyCapture then KC.End() end
   local step, total = e:Progress()
   local last = e:IsLastPage()
 
-  hideAll(f.cards); hideAll(f.toggles); hideAll(f.checks); hideAll(f.recaps)
+  hideAll(f.cards); hideAll(f.toggles); hideAll(f.checks); hideAll(f.recaps); hideAll(f.sliders)
+  if f.introText then f.introText:Hide(); f.keyBtn:Hide(); f.keyHint:Hide() end
   if f.finishNote then f.finishNote:Hide(); f.openBtn:Hide(); f.weaveBtn:Hide() end
 
   f.eyebrow:SetText(page.eyebrow or "")
@@ -569,11 +715,16 @@ function View:Render()
   f.blurb:SetText(page.blurb or "")
   f.footnote:SetText(page.footnote or "")
 
-  if page.kind == "cards" then self:RenderCards(page)
-  elseif page.kind == "toggles" then self:RenderToggles(page)
+  local contentH = 0
+  if page.kind == "cards" then
+    contentH = self:RenderCards(page)
+    if page.toggles then contentH = self:RenderToggles(page, page.toggles, contentH + GAP) end
+  elseif page.kind == "toggles" then contentH = self:RenderToggles(page)
   elseif page.kind == "checks" then self:RenderChecks(page)
   elseif page.kind == "finish" then self:RenderFinish(page)
+  elseif page.kind == "intro" then self:RenderIntro(page)
   end
+  f:SetHeight(View.PanelHeight(contentH))
 
   local rowW = total * DOT_W + (total - 1) * DOT_GAP
   for i, dot in ipairs(f.dots) do

@@ -1,11 +1,15 @@
 -- Modules/Onboarding.lua
--- First-run setup wizard: the page script + the rules for applying choices.
--- Opens itself once on a fresh install and on demand via /nock setup. Every
--- page drives the real HUD, so the user configures Nock by watching it change
--- rather than by reading a settings tree. UI/Frame_Onboarding.lua renders this.
+-- First-run setup wizard engine: page lifecycle, guided reveal, applying choices, first-run gate.
+-- The pages themselves come from a per-flavour page file. Opens itself once on
+-- a fresh install and on demand via /nock setup. Every page drives the real
+-- HUD, so the user configures Nock by watching it change rather than by
+-- reading a settings tree. UI/Frame_Onboarding.lua renders this.
 
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 local Onboarding = Nock:NewModule("Onboarding", "AceEvent-3.0", "AceTimer-3.0", "AceConsole-3.0")
+-- The page files (Modules/OnboardingPagesTBC.lua, Forever/OnboardingPages.lua)
+-- load after this one and fill Onboarding.Pages and BuildRecap.
+Nock.Onboarding = Onboarding
 local C = Nock.Constants
 
 local VERSION = C_AddOns.GetAddOnMetadata("Nock", "Version") or "?"
@@ -27,603 +31,13 @@ local function spellIcon(id)
     local tex = C_Spell.GetSpellTexture(id)
     if tex then return tex end
   end
-  if GetSpellTexture then
-    local tex = GetSpellTexture(id)
+  if _G.GetSpellTexture then
+    local tex = _G.GetSpellTexture(id)
     if tex then return tex end
   end
   return "Interface\\Icons\\INV_Misc_QuestionMark"
 end
-
---------------------------------------------------------------------------------
--- Weave macro bodies
---------------------------------------------------------------------------------
--- The macro pages offer three shapes of the press/release pair plus two extras
--- (the Snowball poke and its garment gate). All the text surgery lives in
--- Core/WeaveMacro.lua, shared with the options builder so the two surfaces can
--- never generate subtly different macro bodies.
-local WM = Nock.WeaveMacro
-
-local function weaveMacros(p)
-  return p.weaveBindMacroDown or "", p.weaveBindMacroUp or ""
-end
-
-local function pressBody(p) return p.weaveBindMacroDown or "" end
-
--- The weave bind Grounded (Gello) holds, or nil (WeaveBind reads its SV).
-local function groundedBind()
-  local wb = Nock.GetModule and Nock:GetModule("WeaveBind", true)
-  return wb and wb.GroundedWeaveBind and wb:GroundedWeaveBind() or nil
-end
-
--- A body the wizard may rewrite: one Nock authored (the current stock shape
--- or the pre-2026-09 legacy one), or one the Grounded import put there (the
--- user chose "Default" over it -- that is the point of the choice; Undo in
--- the settings still holds the import).
-local function replaceable(p, text, shipped, legacy)
-  if WM.IsNockAuthored(text, shipped, legacy) then return true end
-  local imp = p.weaveBindImported
-  return imp ~= nil and (text == (imp.down or "") or text == (imp.up or ""))
-end
-
--- Every extras-row write goes through here so there is one place that stores
--- the rewritten press body.
-local function setPressBody(p, text)
-  p.weaveBindMacroDown = text
-  -- The release re-arm follows the poke's gate (the inverse), on a release
-  -- body Nock authored.
-  WM.SyncRearmIfStock(p, C.WEAVE_BIND_MACRO_UP, C.WEAVE_BIND_MACRO_UP_LEGACY)
-end
-
---------------------------------------------------------------------------------
--- Page script
---------------------------------------------------------------------------------
--- Each page is one decision. `kind` picks the renderer in the view:
---   checks  - SetupCheck rows with their own fix buttons
---   cards   - exclusive choice; the selected card carries the glow
---   toggles - independent switches
---   finish  - recap + exits
---
--- cards:   { value, label, desc, recommended, icon(), isSelected(p), apply(p) }
--- toggles: { key, label, desc, recommended, recommendOn, recommendOff, sub, dependsOn }
---   A row normally names a profile `key` and the wizard flips p[key]. A row may
---   instead carry `id` + `isOn(p)` + `setOn(p, on)` for a setting that does not
---   live in a boolean profile key — the weave extras below live inside the
---   macro TEXT, so they read and write that. `dependsOn` is a profile key, or a
---   function(p) for a dependency that is itself derived.
---   recommendOn marks a switch that should start ON for a brand-new user even
---   though its stored default is off. Seeding happens on first run only (see
---   SeedRecommendations) so a later re-run never undoes a deliberate opt-out.
---   recommendOff is display-only: it badges a switch as NOT RECOMMENDED and
---   seeds nothing, for parity features that exist but shouldn't be the default.
-
-Onboarding.Pages = {
-  {
-    key     = "start",
-    kind    = "cards",
-    eyebrow = "First-time setup",
-    title   = "Where do you want to start?",
-    blurb   = "From scratch walks you through every part. A bundled profile applies someone's whole layout first; the steps then show you where everything sits.",
-    -- Only worth a page when there is something besides "scratch" to pick.
-    visible = function() return #(Nock.BundledProfiles or {}) > 0 end,
-    options = {},   -- filled by RefreshStartCards on every Open
-  },
-  {
-    key     = "welcome",
-    kind    = "checks",
-    eyebrow = "First-time setup",
-    title   = "Welcome to Nock",
-    blurb   = "A hunter HUD built around TBC weaving. Each step puts one part of Nock on screen; drag it where you like before moving on. First, a few client settings Nock can fix for you.",
-  },
-  {
-    key     = "hudstyle",
-    kind    = "cards",
-    reveals = { "hud", "castbar", "petstatus" },
-    eyebrow = "You can swap back anytime",
-    title   = "Pick your HUD style",
-    blurb   = "This swaps your real HUD live - watch it change behind this window.",
-    options = {
-      {
-        value = "classic", label = "Classic", recommended = true,
-        desc  = "The full toolkit: swing bars, shot timeline, cooldown grid.",
-        icon  = function() return spellIcon(C.SpellID.AUTO_SHOT) end,
-        isSelected = function(p) return p.hudEnabled ~= false and (p.hudMode or "classic") == "classic" end,
-        apply      = function(p) p.hudEnabled = true; p.hudMode = "classic" end,
-      },
-      {
-        value = "react", label = "React",
-        desc  = "One compact cluster, styled after the React WeakAura.",
-        icon  = function() return spellIcon(C.SpellID.RAPID_FIRE) end,
-        isSelected = function(p) return p.hudEnabled ~= false and p.hudMode == "react" end,
-        apply      = function(p) p.hudEnabled = true; p.hudMode = "react" end,
-      },
-      {
-        value = "fluffy", label = "FluffyHUD",
-        desc  = "Simple and clean: cast, swing, shot-timing lanes and range in one flat stack.",
-        icon  = function() return spellIcon(C.SpellID.STEADY_SHOT) end,
-        isSelected = function(p) return p.hudEnabled ~= false and p.hudMode == "fluffy" end,
-        apply      = function(p) p.hudEnabled = true; p.hudMode = "fluffy" end,
-      },
-      {
-        value = "none", label = "No HUD",
-        desc  = "No bars on screen. Warnings, trackers and the out-of-combat helpers still work.",
-        icon  = function() return spellIcon(C.SpellID.FEIGN_DEATH) end,
-        isSelected = function(p) return p.hudEnabled == false end,
-        apply = function(p) p.hudEnabled = false end,
-      },
-    },
-  },
-  {
-    key     = "reactcorners",
-    kind    = "toggles",
-    reveals = { "react.corners", "react.buffs" },
-    eyebrow = "Reference WeakAura parity",
-    title   = "Corner status icons",
-    blurb   = "The React WeakAura flanks its cluster with two status icons. Nock's warning system already covers both, so these ship off - flip them on if you want the original look.",
-    -- React-only: the classic HUD has these as slots in its rotation row, and
-    -- with the HUD off there is nothing to flank.
-    visible = function(p) return p.hudEnabled ~= false and p.hudMode == "react" end,
-    options = {
-      { key = "reactShowAspectIcon", recommendOff = true,
-        label = "Aspect icon",
-        desc  = "Top-left. The aspect you're in, greyed when you have none. The Aspect warning says it louder, and only when you're in combat with the wrong one." },
-      { key = "reactShowMarkIcon", recommendOff = true,
-        label = "Hunter's Mark icon",
-        desc  = "Top-right. Mark timer on your target, greyed when it isn't marked." },
-    },
-  },
-  {
-    key     = "rotation",
-    kind    = "cards",
-    eyebrow = "Same engine, three looks",
-    title   = "How should Nock call your shots?",
-    blurb   = "All three show the same next-action logic. Pick how you want to see it.",
-    -- Classic-with-a-HUD only. React carries its own fixed shot display and
-    -- ignores rotationMode / the Shot Bars keys entirely (see UI/HUD.lua), and
-    -- with the HUD off there is nothing for any of the three to draw on.
-    visible = function(p) return p.hudEnabled ~= false and (p.hudMode or "classic") == "classic" end,
-    onEnter = function(self) Nock.state.demo.rotationSample = true end,
-    onLeave = function(self) Nock.state.demo.rotationSample = false end,
-    options = {
-      {
-        value = "bars", label = "Shot Bars", recommended = true,
-        desc  = "A scrolling timeline of your next shots.",
-        icon  = function() return spellIcon(C.SpellID.STEADY_SHOT) end,
-        isSelected = function(p) return p.rotationMode ~= "helper" end,
-        apply = function(p)
-          p.rotationMode = "bars"; p.showRotation = true
-        end,
-      },
-      {
-        value = "helper", label = "Helper icons",
-        desc  = "A row of six icons - the lit one is what to press.",
-        icon  = function() return spellIcon(C.SpellID.MULTI_SHOT) end,
-        isSelected = function(p) return p.rotationMode == "helper" end,
-        apply = function(p)
-          p.rotationMode = "helper"; p.showRotation = true
-        end,
-      },
-    },
-  },
-  {
-    key     = "playstyle",
-    kind    = "cards",
-    eyebrow = "Playstyle",
-    title   = "Do you melee weave?",
-    blurb   = "Weaving slips a melee swing between shots for extra damage. Nock can coach the timing.",
-    footnote = "Weavers: you can set your weave key on the last step.",
-    options = {
-      {
-        value = "weaver", label = "Yes - I weave", recommended = true,
-        desc  = "Show weave timing and the range coach.",
-        icon  = function() return spellIcon(C.SpellID.RAPTOR_STRIKE) end,
-        isSelected = function(p) return p.weaveNotationEnabled == true end,
-        -- Deliberately never touches weaveBindEnabled: the bind is a secure
-        -- override with no key set by default, and arming half of it here would
-        -- leave the user with a bind that does nothing. It no longer arms
-        -- weaveCoachSoundsEnabled either — those cues are withdrawn from the GUI
-        -- and default off, so turning them on here would hand the user a sound
-        -- they cannot find a switch for.
-        apply = function(p)
-          p.weaveNotationEnabled = true
-          p.showRangeFinder      = true
-          p.shotBarsShowRaptor   = true
-        end,
-      },
-      {
-        value = "turret", label = "No - I stand and shoot",
-        desc  = "Keep it simple. You can turn weaving on later.",
-        icon  = function() return spellIcon(C.SpellID.ASPECT_HAWK) end,
-        isSelected = function(p) return p.weaveNotationEnabled ~= true end,
-        apply = function(p)
-          p.weaveNotationEnabled = false
-          p.shotBarsShowRaptor   = false
-          p.showRangeFinder      = true   -- still worth having: it shows the dead zone
-        end,
-      },
-    },
-  },
-  {
-    key     = "weavemacro",
-    kind    = "cards",
-    eyebrow = "Weave key macros",
-    title   = "How should the weave key behave?",
-    blurb   = "The key runs one macro as you press and another as you release. Pick a starting point.",
-    footnote = "You still choose the key itself in the settings - the last step has a shortcut. From Grounded brings its key along.",
-    -- Weavers only: a turret never presses this key, so asking would be noise.
-    visible = function(p) return p.weaveNotationEnabled == true end,
-    message = "NOCK_WEAVEBIND_CHANGED",
-    options = {
-      {
-        value = "default", label = "Default", recommended = true,
-        desc  = "The battle-tested pair: poke, Raptor Strike and Kill Command on the press; the release re-arms Auto Shot.",
-        icon  = function() return spellIcon(C.SpellID.RAPTOR_STRIKE) end,
-        isSelected = function(p)
-          local down, up = weaveMacros(p)
-          return down ~= "" and not WM.HasMovePad(down) and not WM.HasMovePad(up)
-        end,
-        -- Restores only what Nock wrote. A hand-edited body is left exactly as
-        -- the user typed it, so re-running the wizard can never eat their work.
-        -- "Default" means the shape WITHOUT the step-out, not a factory reset:
-        -- an emptied body comes back, and anything else Nock authored keeps the
-        -- extras page's answers (poke, gate) and loses only the MovePad line.
-        -- Otherwise the two macro pages would undo each other.
-        -- A body still on the pre-2026-09 legacy stock is UPGRADED to the new
-        -- shape here (this card is the upgrade path), carrying the poke and
-        -- gate choices over; the SyncRearm at the end rebuilds the release
-        -- re-arm to match.
-        apply = function(p)
-          local down, up = weaveMacros(p)
-          local imp = p.weaveBindImported
-          if replaceable(p, down, C.WEAVE_BIND_MACRO_DOWN, C.WEAVE_BIND_MACRO_DOWN_LEGACY) then
-            if down == "" or (imp and down == (imp.down or "")) then
-              p.weaveBindMacroDown = C.WEAVE_BIND_MACRO_DOWN
-            elseif not WM.IsNockAuthored(down, C.WEAVE_BIND_MACRO_DOWN) then
-              -- Legacy-authored: rebuild from the new stock, switches kept.
-              local nd = C.WEAVE_BIND_MACRO_DOWN
-              if not WM.HasSnowball(down) then nd = WM.WithoutSnowball(nd) end
-              local g, dir = WM.GateOf(down)
-              if g then nd = WM.WithGate(nd, g, dir) end
-              p.weaveBindMacroDown = nd
-            else
-              p.weaveBindMacroDown = WM.WithoutMovePad(down)
-            end
-          end
-          if replaceable(p, up, C.WEAVE_BIND_MACRO_UP, C.WEAVE_BIND_MACRO_UP_LEGACY) then
-            if up == "" or (imp and up == (imp.up or ""))
-               or not WM.IsNockAuthored(up, C.WEAVE_BIND_MACRO_UP) then
-              p.weaveBindMacroUp = C.WEAVE_BIND_MACRO_UP
-            else
-              p.weaveBindMacroUp = WM.WithoutMovePad(up)
-            end
-          end
-          WM.SyncRearmIfStock(p, C.WEAVE_BIND_MACRO_UP, C.WEAVE_BIND_MACRO_UP_LEGACY)
-        end,
-      },
-      {
-        value = "clever", label = "Clever",
-        desc  = "The default plus auto-backpedal: you step out for exactly as long as you hold the key.",
-        icon  = function() return spellIcon(C.SpellID.ASPECT_CHEETAH) end,
-        isSelected = function(p)
-          local down, up = weaveMacros(p)
-          return WM.HasMovePad(down) or WM.HasMovePad(up)
-        end,
-        apply = function(p)
-          -- Added to whatever is there now, so a hand-written macro gains the
-          -- step-out instead of being replaced by the shipped one.
-          local down, up = weaveMacros(p)
-          if down == "" then down = C.WEAVE_BIND_MACRO_DOWN end
-          if up == "" then up = C.WEAVE_BIND_MACRO_UP end
-          p.weaveBindMacroDown = WM.WithMovePad(down)
-          p.weaveBindMacroUp   = WM.WithMovePad(up)
-        end,
-        -- The Movement Pad is load-on-demand and can be absent; ask WeaveBind to
-        -- pull it in now and say so if it can't, rather than letting the line
-        -- fail silently the first time the user weaves.
-        after = function(self)
-          local wb = Nock:GetModule("WeaveBind", true)
-          if wb and wb.EnsureMovePad then wb:EnsureMovePad() end
-        end,
-      },
-      {
-        value = "natty", label = "Natty",
-        desc  = "Empty both macros so you can write your own from scratch.",
-        icon  = function() return spellIcon(C.SpellID.FEIGN_DEATH) end,
-        isSelected = function(p)
-          local down, up = weaveMacros(p)
-          return down == "" and up == ""
-        end,
-        apply = function(p)
-          p.weaveBindMacroDown = ""
-          p.weaveBindMacroUp   = ""
-        end,
-      },
-      -- Grounded (Gello): the card is there only while Grounded holds a weave
-      -- bind (user, 2026-08-27: the welcome page's check row made no sense
-      -- beside these -- the choice is "Nock's defaults, or hard-import
-      -- Grounded", and it belongs here). Picking it moves the bind -- key
-      -- and both macros -- into Nock; Default over it afterwards restores
-      -- the shipped macros (replaceable), the import's copy stays for Undo.
-      {
-        value = "grounded", label = "From Grounded",
-        desc  = "Move the weave bind Grounded holds - the key and both macros - into Nock. Grounded gives the key up.",
-        icon  = function() return spellIcon(C.SpellID.KILL_COMMAND) end,
-        visible = function(p) return groundedBind() ~= nil or (p.weaveBindImported ~= nil) end,
-        isSelected = function(p)
-          local imp = p.weaveBindImported
-          if not imp then return false end
-          local down, up = weaveMacros(p)
-          return down == (imp.down or "") and up == (imp.up or "")
-        end,
-        apply = function(p)
-          local wb = Nock.GetModule and Nock:GetModule("WeaveBind", true)
-          if wb and wb.ImportFromGrounded then wb:ImportFromGrounded() end
-        end,
-      },
-    },
-  },
-  {
-    key     = "weavemacroextras",
-    kind    = "toggles",
-    eyebrow = "Press macro extras",
-    title   = "The Snowball trick",
-    blurb   = "Two switches that change what the press macro does. Both edit the macro text you can also type by hand.",
-    -- No footnote pointing at the garment autopilot: that side of the feature is
-    -- still experimental and does not belong in a first-run wizard.
-    -- Weavers with something to edit. Natty emptied the press body on purpose,
-    -- and there is nothing to add a poke to.
-    visible = function(p)
-      return p.weaveNotationEnabled == true and (p.weaveBindMacroDown or "") ~= ""
-    end,
-    message = "NOCK_WEAVEBIND_CHANGED",
-    options = {
-      {
-        id    = "snowballPoke",
-        label = "Snowball poke",
-        desc  = "Free, and off the global cooldown. Throwing one as you step in makes the server update where you are standing, so the white hit you weaved for actually lands.",
-        isOn  = function(p) return WM.HasSnowball(pressBody(p)) end,
-        setOn = function(p, on)
-          setPressBody(p, on and WM.WithSnowball(pressBody(p))
-                            or WM.WithoutSnowball(pressBody(p)))
-        end,
-      },
-      {
-        id    = "snowballGate", sub = true,
-        label = "Only for bosses",
-        desc  = "Gates the poke and the press's /startattack behind a garment, so trash and questing do not burn your stack: both fire only while the shirt is off - the state you want for a boss. The release macro gets the inverse, /startattack while the shirt is on, standing in for them.",
-        dependsOn = function(p) return WM.HasSnowball(pressBody(p)) end,
-        isOn  = function(p) return WM.GateOf(pressBody(p)) ~= nil end,
-        setOn = function(p, on)
-          if not on then
-            setPressBody(p, WM.WithoutGate(pressBody(p)))
-            return
-          end
-          local g, dir = WM.GateOf(pressBody(p))
-          setPressBody(p, WM.WithGate(pressBody(p), g or "shirt", dir or "off"))
-        end,
-      },
-      {
-        id    = "gateTabard", sub = true,
-        label = "Use my tabard instead of my shirt",
-        desc  = "Same gate, driven by the tabard slot instead. Pick whichever one you are happy to take off for a fight.",
-        dependsOn = function(p) return WM.GateOf(pressBody(p)) ~= nil end,
-        isOn  = function(p) return (WM.GateOf(pressBody(p))) == "tabard" end,
-        -- Every bracket in both bodies follows (the re-arm, a hand-written
-        -- gate), not just the poke's.
-        setOn = function(p, on)
-          local garment = on and "tabard" or "shirt"
-          p.weaveBindMacroUp = WM.WithGarment(p.weaveBindMacroUp or "", garment)
-          setPressBody(p, WM.WithGarment(pressBody(p), garment))
-        end,
-      },
-      {
-        id    = "gateWorn", sub = true,
-        label = "Flip it: throw only while the garment is worn",
-        desc  = "The other way round: the poke fires while the garment is on and stops when you take it off.",
-        dependsOn = function(p) return WM.GateOf(pressBody(p)) ~= nil end,
-        isOn  = function(p) return select(2, WM.GateOf(pressBody(p))) == "on" end,
-        -- A direction flip inverts every bracket in both bodies, so a line
-        -- gated the other way round from the poke stays the other way round.
-        setOn = function(p, on)
-          local _, dir = WM.GateOf(pressBody(p))
-          if (dir or "off") == (on and "on" or "off") then return end
-          p.weaveBindMacroUp = WM.InvertGates(p.weaveBindMacroUp or "")
-          setPressBody(p, WM.InvertGates(pressBody(p)))
-        end,
-      },
-    },
-  },
-  {
-    key     = "warnings",
-    kind    = "toggles",
-    reveals = { "warnings", "bossbanner", "aggro", "ripper" },
-    eyebrow = "Big center-screen alerts",
-    title   = "Warnings that save you",
-    blurb   = "Three sample alerts are showing right now - try the switches.",
-    onEnter = function(self) self:StartWarningDemo() end,
-    onLeave = function(self) self:StopWarningDemo() end,
-    -- Toggling a warning re-arms the demo so the samples never expire mid-page.
-    onToggle = function(self) self:StartWarningDemo() end,
-    options = {
-      { key = "showWarnings", master = true,
-        label = "Enable warnings", desc = "Master switch for every alert square." },
-      { key = "warnAspectEnabled", dependsOn = "showWarnings",
-        label = "Aspect check", desc = "In combat without Hawk? Get told." },
-      { key = "warnTargetFrenzyEnabled", dependsOn = "showWarnings",
-        label = "Tranq alert", desc = "Your target enrages - shoot Tranquilizing Shot." },
-      { key = "warnManaEnabled", dependsOn = "showWarnings",
-        label = "Low mana", desc = "Swap to Viper before you run dry." },
-      { key = "aggroEnabled", dependsOn = "showWarnings",
-        label = "Aggro flash", desc = "A red starburst at screen centre while a mob is on you, with a cue the moment it happens." },
-      { key = "warnBossMarkEnabled", dependsOn = "showWarnings",
-        label = "Boss alert", desc = "A big banner for a boss mechanic that wants Feign Death (Archimonde's Doomfire and the like), and DO NOT RELEASE while a mechanic keeps you dead." },
-      { key = "warnRipperEnabled", dependsOn = "showWarnings",
-        label = "Ripper countdown", desc = "A teleporter trinket cast on you counts down to the moment to close the client (ALT F4) so it fails." },
-    },
-  },
-  {
-    key     = "trackers",
-    kind    = "toggles",
-    reveals = { "misdirect", "buffs.player", "buffs.pet", "debuffs", "totemtracker" },
-    eyebrow = "Small panels - drag them anywhere",
-    title   = "Raid trackers",
-    blurb   = "Misdirection is on already - see it below. Flip the others to try them.",
-    onEnter = function(self) Nock.state.demo.debuffTracker = true end,
-    onLeave = function(self) Nock.state.demo.debuffTracker = false end,
-    options = {
-      { key = "misdirectEnabled", recommendOn = true,
-        label = "Misdirection tracker", desc = "Every hunter's MD cooldown in your group." },
-      { key = "mdCastEnabled", recommendOn = true, sub = true, dependsOn = "misdirectEnabled",
-        label = "Click-to-MD tank buttons", desc = "One click casts MD on your tank. Buttons appear once you're in a group." },
-      { key = "buffTrackerEnabled",
-        label = "Buff tracker", desc = "Your raid buffs - missing ones turn grey." },
-      { key = "debuffTrackerEnabled",
-        label = "Debuff tracker", desc = "Your marks and stings on the target." },
-    },
-  },
-  {
-    -- Copy carries no slash command on purpose: the wizard's own test forbids
-    -- one anywhere in page text, and the Settings page is where they belong.
-    key     = "steamtonk",
-    kind    = "toggles",
-    reveals = { "tonkdial" },
-    eyebrow = "Stops the tonk welding you",
-    title   = "Steam Tonk safety",
-    blurb   = "The Steam Tonk Controller saves a pet from a boss mechanic. But the obvious one-button macro cancels the transform in the same instant it starts it, and the game regularly leaves you stuck in place, unable to move or cast.\n\nUse the tonk from any button, on its own, and take any /cancelaura line out of your macro. Nock steps you back out a moment later - in combat as well as out of it.",
-    options = {
-      { key = "tonkAutoCancel",
-        label = "Step me back out automatically",
-        desc  = "Leaves the tonk on its own shortly after the transform lands, whether or not you are in combat." },
-      { key = "tonkDialEnabled", sub = true,
-        label = "Show the countdown dial",
-        desc  = "A small tonk icon with a sweep running down to the moment you step out, so it is never a surprise." },
-    },
-  },
-  {
-    key     = "helpers",
-    kind    = "toggles",
-    eyebrow = "Small helpers you place once",
-    title   = "Helpers & alerts",
-    blurb   = "Each switch puts a frame on screen. Drag it where you want it before moving on.",
-    reveals = { "helpers", "consume", "releasebar", "pvpbadge" },
-    onEnter = function(self) Nock.state.demo.helpersSample = true end,
-    onLeave = function(self) Nock.state.demo.helpersSample = false end,
-    options = {
-      { key = "showHelpers", recommendOn = true,
-        label = "Helpers row", desc = "Food, flask, scrolls and sharpening stones before a pull, one click to apply." },
-      { key = "consumeBannerEnabled",
-        label = "Eating / drinking pill", desc = "A small pill while you eat or drink, so you never stand up early." },
-      { key = "releaseBarEnabled",
-        label = "Retry timer", desc = "A bar for the weave key's retry grid. Off unless you weave with a snowball poke." },
-      { key = "pvpBadge",
-        label = "PvP tag", desc = "A small PVP tag on screen while PvP mode is active." },
-    },
-  },
-  {
-    key     = "utility",
-    kind    = "toggles",
-    eyebrow = "Quiet quality-of-life",
-    title   = "Out-of-combat helpers",
-    blurb   = "These only speak up when something needs doing.",
-    options = {
-      { key = "shoppingEnabled",
-        label = "Shopping list", desc = "Low on arrows or pet food in town? A restock list pops up." },
-      { key = "mailboxEnabled",
-        label = "Mailbox helper", desc = "One-click snowball mail logistics at any mailbox." },
-      { key = "petTrainerHelperEnabled",
-        label = "Pet trainer checklist", desc = "Per-raid Beast Training presets so your pet is never undertrained." },
-      { key = "repairWarnEnabled",
-        label = "Repair warning", desc = "A strip under the HUD when your gear runs low." },
-    },
-  },
-  {
-    key     = "finish",
-    kind    = "finish",
-    reveals = { "*" },
-    eyebrow = "Setup complete",
-    title   = "You're set!",
-    blurb   = "Your HUD is live and configured like this:",
-  },
-}
-
---------------------------------------------------------------------------------
--- Recap (finish page)
---------------------------------------------------------------------------------
--- Reads the profile rather than remembering what was clicked, so a user who
--- walked back and changed their mind sees the truth.
-local function joinOr(list, empty)
-  if #list == 0 then return empty end
-  return table.concat(list, ", ")
-end
-
-function Onboarding:BuildRecap()
-  local p = profile()
-  if not p then return {} end
-
-  local warns = {}
-  if p.showWarnings ~= false then
-    if p.warnAspectEnabled ~= false then warns[#warns + 1] = "aspect" end
-    if p.warnTargetFrenzyEnabled ~= false then warns[#warns + 1] = "tranq" end
-    if p.warnManaEnabled ~= false then warns[#warns + 1] = "mana" end
-  end
-
-  local trackers = {}
-  if p.misdirectEnabled then trackers[#trackers + 1] = "misdirection" end
-  if p.buffTrackerEnabled then trackers[#trackers + 1] = "buffs" end
-  if p.debuffTrackerEnabled then trackers[#trackers + 1] = "debuffs" end
-
-  local style
-  if p.hudEnabled == false then style = "Off"
-  elseif p.hudMode == "react" then style = "React"
-  elseif p.hudMode == "fluffy" then style = "FluffyHUD"
-  else style = "Classic" end
-
-  local rows = { { "HUD style", style } }
-  -- Each row below reports a question this run actually asked, so the recap
-  -- never claims a setting the user was never shown.
-  if p.hudEnabled ~= false and (p.hudMode or "classic") == "classic" then
-    local shots
-    if p.rotationMode == "helper" then shots = "Helper icons"
-    else shots = "Shot Bars" end
-    rows[#rows + 1] = { "Shot display", shots }
-  end
-  -- React's counterpart question. Mutually exclusive with the row above: one
-  -- of the two is asked, never both.
-  if p.hudEnabled ~= false and p.hudMode == "react" then
-    local corners = {}
-    if p.reactShowAspectIcon then corners[#corners + 1] = "aspect" end
-    if p.reactShowMarkIcon then corners[#corners + 1] = "Hunter's Mark" end
-    rows[#rows + 1] = { "Corner icons", joinOr(corners, "none") }
-  end
-  rows[#rows + 1] = { "Playstyle", p.weaveNotationEnabled and "Melee weaver" or "Stand and shoot" }
-  -- Only weavers were asked about macros, so only they get the line back.
-  if p.weaveNotationEnabled then
-    rows[#rows + 1] = { "Weave macros", self:MacroStyleName() }
-    -- The key, once one is set (the welcome page's Grounded import sets it).
-    if p.weaveBindEnabled == true and (p.weaveBindKey or "") ~= "" then
-      rows[#rows + 1] = { "Weave key", p.weaveBindKey .. (p.weaveBindImported and " (from Grounded)" or "") }
-    end
-  end
-  rows[#rows + 1] = { "Warnings", p.showWarnings == false and "off" or joinOr(warns, "none") }
-  rows[#rows + 1] = { "Trackers", joinOr(trackers, "none") }
-  return rows
-end
-
--- Which of the three macro shapes the stored bodies currently match. Derived
--- rather than remembered, so a macro edited in the settings reads correctly.
-function Onboarding:MacroStyleName()
-  local p = profile()
-  if not p then return "Default" end
-  local down, up = weaveMacros(p)
-  if down == "" and up == "" then return "Natty (write your own)" end
-  if WM.HasMovePad(down) or WM.HasMovePad(up) then return "Clever (auto-backpedal)" end
-  return "Default"
-end
-
--- The finish page offers a weave-key shortcut only to someone who said they weave.
-function Onboarding:WantsWeaveKey()
-  local p = profile()
-  return p and p.weaveNotationEnabled == true
-end
+Onboarding.SpellIcon = spellIcon
 
 --------------------------------------------------------------------------------
 -- Applying choices
@@ -672,6 +86,39 @@ function Onboarding:IsOptionLocked(option)
   if not p or not option.dependsOn then return false end
   if type(option.dependsOn) == "function" then return not option.dependsOn(p) end
   return not p[option.dependsOn]
+end
+
+-- Slider rows: `{ slider = true, key, label, min, max, step, default }`.
+function Onboarding.ClampStep(v, min, max, step)
+  v = tonumber(v) or min
+  if v < min then v = min elseif v > max then v = max end
+  if step and step > 0 then v = min + math.floor((v - min) / step + 0.5) * step end
+  if v > max then v = max end
+  return v
+end
+
+function Onboarding:OptionValue(option)
+  local p = profile()
+  local v = p and p[option.key]
+  if type(v) == "number" then return v end
+  return option.default or option.min
+end
+
+function Onboarding:SetOptionValue(page, option, v)
+  local p = profile()
+  if not p then return end
+  v = Onboarding.ClampStep(v, option.min, option.max, option.step)
+  if p[option.key] == v then return end
+  p[option.key] = v
+  self:Commit(page)
+end
+
+-- A key row (the aspect ring): `spec.set(p, bindingString)`; "" clears.
+function Onboarding:ApplyKey(page, spec, s)
+  local p = profile()
+  if not (p and spec and spec.set) then return end
+  spec.set(p, s or "")
+  self:Commit(page)
 end
 
 -- Seed the recommended answer so a brand-new user sees it already chosen (and,
@@ -866,6 +313,25 @@ end
 -- The start page's cards: scratch + one per bundled profile. Rebuilt on every
 -- open, since the bundle list is static but Modules/ProfileShare.lua may load
 -- after this file.
+-- Bundled profiles the start page may offer on this client: an untagged
+-- bundle is a TBC export (Yaxal), so Forever sees only `flavor = "forever"`.
+function Onboarding.StartProfiles(list, forever)
+  local want = forever and "forever" or "tbc"
+  local out = {}
+  for _, b in ipairs(list or {}) do
+    if (b.flavor or "tbc") == want then out[#out + 1] = b end
+  end
+  return out
+end
+
+local function startProfiles()
+  return Onboarding.StartProfiles(Nock.BundledProfiles, Nock.Flavor and Nock.Flavor.forever)
+end
+
+function Onboarding:HasStartProfiles()
+  return #startProfiles() > 0
+end
+
 function Onboarding:RefreshStartCards()
   local page = self.Pages[1]
   if not (page and page.key == "start") then return end
@@ -878,7 +344,7 @@ function Onboarding:RefreshStartCards()
       apply = function() if Nock.db.char then Nock.db.char.wizardStart = "scratch" end end,
     },
   }
-  for _, b in ipairs(Nock.BundledProfiles or {}) do
+  for _, b in ipairs(startProfiles()) do
     cards[#cards + 1] = {
       value = b.key, label = "Start from " .. b.name .. "'s layout",
       desc  = (b.blurb or "") .. " Lands in a new profile named " .. b.name .. "; yours is kept.",
@@ -911,6 +377,10 @@ function Onboarding:Open(index, guided)
   local view = Nock:GetModule("OnboardingView", true)
   if not view then return end
   self:RefreshStartCards()
+  -- Pages that build their rows from live data (the Forever warnings catalog).
+  for _, pg in ipairs(self.Pages) do
+    if pg.refresh then pg.refresh(pg) end
+  end
   -- Land on the first page this run shows (the start page hides itself
   -- when nothing is bundled).
   local first = index or 1

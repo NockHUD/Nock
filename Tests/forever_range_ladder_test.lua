@@ -21,8 +21,9 @@ ok(he3.has4041 and he3[9].key == "40_41" and he3[9].label == "40-41" and he3[10]
 ok(he3[8].label == "35-40", "rank 3: the 35 segment reads 35-40")
 local dflt = L.Layout(nil, nil)
 ok(dflt.id == "8-35" and dflt[3].label == "8-20", "unknown ranges fall back to 8/35")
-ok(base[1].short == "MELEE" and base[2].short == "DEAD" and base[3].short == "8-20" and base[9].short == "OUT", "in-segment labels")
-ok(he3[9].short == "40-41" and L.Layout(8, 37)[8].short == "35-37", "in-segment labels follow Hawk Eye")
+ok(base[1].short == "M" and base[2].short == "D" and base[3].short == "20" and base[4].short == "25" and base[8].short == "40" and base[9].short == "OUT", "detailed in-segment labels: the upper bound only (user 2026-09-25)")
+ok(base[3].label == "8-20" and base[5].label == "25-28", "the long name keeps the range")
+ok(he3[9].short == "41" and L.Layout(8, 37)[8].short == "37", "in-segment labels follow Hawk Eye")
 
 -- Compact style (user 2026-09-24, the default): 20-40 is one block that
 -- shows the live bracket.
@@ -33,6 +34,7 @@ ok(table.concat(ck, ",") == "MELEE,DEAD,8_20,FAR,OOR", "compact layout, got " ..
 ok(cmp[4].short == "20-40" and cmp[4].members["20_25"] and cmp[4].members["35_40"] and not cmp[4].members["40_41"], "the far block holds 20-25 .. 35-40")
 ok(cmp.id ~= base.id and cmp.has4041 == false, "compact has its own id")
 ok(cmp.fine["25_28"] and cmp.fine["25_28"].short == "25-28" and cmp.fine["25_28"].color == L.COLORS.blue, "compact keeps the fine brackets for label and colour")
+ok(cmp[1].short == "MELEE" and cmp[2].short == "DEAD" and cmp[3].short == "8-20", "compact keeps the full labels (it has the room)")
 local chE = L.Layout(8, 41, true)
 ok(chE[4].short == "20-41" and chE[4].members["40_41"] and chE.has4041, "Hawk Eye 3 compact: 20-41 holds 40-41")
 ok(L.Layout(8, 37, true).fine["35_40"].short == "35-37", "compact fine label follows Hawk Eye")

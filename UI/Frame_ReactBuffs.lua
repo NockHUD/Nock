@@ -31,6 +31,8 @@ local REACT = {
 -- slot overhangs symmetrically by ~5px per side in the (rare) full-house
 -- moment; anything past 10 simultaneous buffs is dropped.
 local MAX_ICONS = 10
+local SIZE_MIN, SIZE_MAX = 16, 40
+local PET_RATIO = 20 / 26   -- the Forever pet line's share of the row size
 local GROUP_SCAN_SEC = 0.5   -- LotP / Grace-of-Air subgroup sweep cadence
 -- Frenzy alert mode: seconds the proc must have been down before the slot
 -- says MISSING. Frenzy is an 8 s proc off pet crits that usually re-procs
@@ -66,6 +68,18 @@ local function addItem(t, icon, exp, dur, label, desat, coords)
   t.n = n
 end
 
+-- The row's tile size and the Forever pet line's, from reactBuffIconSize.
+function ReactBuffs.IconSizes(p)
+  local v = p and tonumber(p.reactBuffIconSize) or REACT.ICON
+  if v < SIZE_MIN then v = SIZE_MIN elseif v > SIZE_MAX then v = SIZE_MAX end
+  v = math.floor(v + 0.5)
+  return v, math.floor(v * PET_RATIO + 0.5)
+end
+
+local function sizes()
+  return ReactBuffs.IconSizes(Nock.db and Nock.db.profile)
+end
+
 function ReactBuffs:OnInitialize()
   -- Glued onto the React cluster (ReactCastBar convention): matches
   -- reactWidth/reactScale, follows free-layout drags, vanishes with the
@@ -73,14 +87,14 @@ function ReactBuffs:OnInitialize()
   local cluster = Nock:GetModule("ReactCluster", true)
   local parent  = (cluster and cluster.frame) or Nock.parentFrame
   local panel = CreateFrame("Frame", "NockReactBuffs", parent)
-  panel:SetHeight(REACT.ICON)
+  panel:SetHeight((sizes()))
   panel:Hide()
   self.frame   = panel
   self._parent = parent
 
   self._slots = {}
   for i = 1, MAX_ICONS do
-    self._slots[i] = Nock.UI.CreateReactSlot(panel, "NockReactBuff" .. i, REACT.ICON)
+    self._slots[i] = Nock.UI.CreateReactSlot(panel, "NockReactBuff" .. i, (sizes()))
   end
   self._items = { n = 0 }
 
@@ -93,8 +107,10 @@ function ReactBuffs:OnInitialize()
     -- smaller centred line above it: the row grows upward, the glue holds
     -- its bottom edge.
     if self._auraRow then
-      panel:SetHeight(Nock.ForeverAuraRow.LineHeight(REACT.ICON))
-      for i = 1, MAX_ICONS do Nock.UI.SetReactSlotSize(self._slots[i], Nock.ForeverAuraRow.PET_ICON) end
+      local row, pet = sizes()
+      panel:SetHeight(Nock.ForeverAuraRow.LineHeight(row, pet))
+      for i = 1, MAX_ICONS do Nock.UI.SetReactSlotSize(self._slots[i], pet) end
+      self:ApplyAuraRowScale()
     end
   end
 
@@ -157,7 +173,7 @@ end
 
 -- The row's height (the slot size).
 function ReactBuffs:ContentHeight()
-  return REACT.ICON
+  return (sizes())
 end
 
 -- The frame the row hangs from in the current mode: the React cluster in
@@ -342,6 +358,7 @@ function ReactBuffs:OnEnable()
   -- Frenzy alert mode needs the talent: re-read on the talent events and
   -- once the world is in (talents are not always readable at OnEnable).
   self:RegisterEvent("PLAYER_TALENT_UPDATE",     "RefreshTalents")
+  self:RegisterEvent("PLAYER_REGEN_ENABLED",     "OnRegenEnabled")
   self:RegisterEvent("CHARACTER_POINTS_CHANGED", "RefreshTalents")
   self:RegisterEvent("PLAYER_ENTERING_WORLD",    "RefreshTalents")
   self:RefreshTalents()
@@ -420,16 +437,38 @@ function ReactBuffs:RebuildImportantIds()
   self._impIds = merged
 end
 
+-- Forever: the aura container has no relayout call, so it stays built at the
+-- reference size and is scaled. Out of combat only; a change made in combat
+-- lands on PLAYER_REGEN_ENABLED.
+function ReactBuffs:ApplyAuraRowScale()
+  if not self._auraRow then return end
+  if InCombatLockdown and InCombatLockdown() then
+    self._scalePending = true
+    return
+  end
+  self._scalePending = false
+  local row = sizes()
+  pcall(self._auraRow.SetScale, self._auraRow, row / REACT.ICON)
+end
+
+function ReactBuffs:OnRegenEnabled()
+  if self._scalePending then self:ApplyAuraRowScale() end
+end
+
 function ReactBuffs:OnVisualsChanged()
   self:RebuildImportantIds()
   -- Re-run the slot skin so a reactFont change reaches the row live —
   -- SetReactSlotSize is where the React font resolves (Widgets.lua).
   local AR = self._auraRow and Nock.ForeverAuraRow or nil
+  local row, pet = sizes()
   for i = 1, MAX_ICONS do
-    Nock.UI.SetReactSlotSize(self._slots[i], AR and AR.PET_ICON or REACT.ICON)
+    Nock.UI.SetReactSlotSize(self._slots[i], AR and pet or row)
   end
+  self.frame:SetHeight(AR and AR.LineHeight(row, pet) or row)
+  self._lastN = nil   -- re-lay the tiles at the new size
   -- Forever: the client's buttons take the font too (size and fonts only;
-  -- nothing is read back from them).
+  -- nothing is read back from them). They stay at the reference size inside
+  -- the container; the container's scale does the sizing.
   if AR then
     pcall(function()
       for i = 1, AR.MAX_FRAMES do
@@ -437,6 +476,7 @@ function ReactBuffs:OnVisualsChanged()
         if b and b.time then Nock.UI.SetReactSlotSize(b, REACT.ICON) end
       end
     end)
+    self:ApplyAuraRowScale()
   end
   -- Re-anchor unconditionally: reactCastH feeds the welded lift and reactWidth
   -- feeds the free row's explicit width, and both arrive through this message.
@@ -730,7 +770,8 @@ function ReactBuffs:Refresh(state)
   local w = self.frame:GetWidth() or 0
   if n ~= self._lastN or w ~= self._lastW then
     self._lastN, self._lastW = n, w
-    local size, gap = REACT.ICON, REACT.GAP
+    local size, pet = sizes()
+    local gap = REACT.GAP
     local totalW = n * size + (n - 1) * gap
     if self._auraRow then
       -- Forever: the client centres its container on the bottom line; the
@@ -739,7 +780,7 @@ function ReactBuffs:Refresh(state)
       local AR = Nock.ForeverAuraRow
       AR.Anchor(self._auraRow, self.frame)
       local y = size + AR.LINE_GAP
-      for i = 1, n do AR.AnchorTile(slots[i], self.frame, AR.TileX(i, n, AR.PET_ICON, gap, w), y) end
+      for i = 1, n do AR.AnchorTile(slots[i], self.frame, AR.TileX(i, n, pet, gap, w), y) end
     else
       local x0 = (w - totalW) / 2
       for i = 1, n do

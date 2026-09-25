@@ -26,6 +26,7 @@ function Frame:GetAlpha() if self._alpha == nil then return 1 end; return self._
 function Frame:Show() self._shown = true; return self end
 function Frame:Hide() self._shown = false; return self end
 function Frame:IsShown() return self._shown ~= false end
+function Frame:SetShown(v) self._shown = v and true or false; return self end
 function Frame:SetPoint(p, rel, rp, x, y)
   if type(rel) == "number" then x, y, rel, rp = rel, rp, nil, nil end
   self._point = { p, rel, rp, x or 0, y or 0 }
@@ -37,6 +38,7 @@ function Frame:GetPoint()
   return p[1], p[2], p[3], p[4], p[5]
 end
 function Frame:GetFrameLevel() return self._level or 1 end
+function Frame:SetClampedToScreen(v) self._clamped = v; return self end
 function Frame:SetFrameLevel(l) self._level = l; return self end
 function Frame:GetFrameStrata() return self._strata or "MEDIUM" end
 function Frame:SetFrameStrata(s) self._strata = s; return self end

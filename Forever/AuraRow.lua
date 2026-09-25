@@ -93,8 +93,8 @@ function AuraRow.Anchor(c, panel)
 end
 
 -- Two lines: the client's row at the bottom, the pet line above it.
-function AuraRow.LineHeight(rowIcon)
-  return rowIcon + AuraRow.LINE_GAP + AuraRow.PET_ICON
+function AuraRow.LineHeight(rowIcon, petIcon)
+  return rowIcon + AuraRow.LINE_GAP + (petIcon or AuraRow.PET_ICON)
 end
 
 -- x of tile `i` of `n` on a centred line of `w` units.

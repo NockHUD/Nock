@@ -27,7 +27,8 @@ Ladder.SETTLE = 0.15
 -- Segment list from Auto Shot's reported range (C_Spell.GetSpellInfo(75):
 -- 8/35 without Hawk Eye; +2/4/6 yd per talent rank). `short` is the label
 -- drawn inside the segment itself (the ladder has no row of its own under
--- the bar, user 2026-09-24); `label` is the long name. Every segment has
+-- the bar, user 2026-09-24; detailed: the upper bound only, 2026-09-25);
+-- `label` is the long name. Every segment has
 -- the same width (weight 1, user 2026-09-24).
 --
 -- `compact` (the default style, user 2026-09-24): five segments, MELEE |
@@ -45,7 +46,18 @@ function Ladder.Layout(minRange, maxRange, compact)
     L[#L],
   }
   for i = 4, #L - 1 do C2[4].members[L[i].key] = true end
-  C2.fine, C2.has4041, C2.hi = L.fine, L.has4041, L.hi
+  -- Five segments have room for the full text: MELEE, DEAD, 8-20 and the
+  -- far block's live bracket keep their wide labels.
+  local function ranged(seg)
+    local c = {}
+    for k, v in pairs(seg) do c[k] = v end
+    c.short = seg.wide or seg.short
+    return c
+  end
+  C2[1], C2[2], C2[3] = ranged(L[1]), ranged(L[2]), ranged(L[3])
+  local fine = {}
+  for k, seg in pairs(L.fine) do fine[k] = ranged(seg) end
+  C2.fine, C2.has4041, C2.hi = fine, L.has4041, L.hi
   C2.id = L.id .. "c"
   return C2
 end
@@ -55,8 +67,8 @@ function Ladder.Detailed(minRange, maxRange)
   local hi = (type(maxRange) == "number" and maxRange > 0) and math.floor(maxRange + 0.5) or 35
   local far = (hi > 35 and hi < 40) and ("35-" .. hi) or "35-40"
   local L = {
-    { key = "MELEE", label = "MELEE",     short = "MELEE",   weight = 1, color = C.melee },
-    { key = "DEAD",  label = "DEAD ZONE", short = "DEAD",    weight = 1, color = C.dead },
+    { key = "MELEE", label = "MELEE",     short = "M", wide = "MELEE", weight = 1, color = C.melee },
+    { key = "DEAD",  label = "DEAD ZONE", short = "D", wide = "DEAD",  weight = 1, color = C.dead },
     { key = "8_20",  label = lo .. "-20", short = lo .. "-20", weight = 1, color = C.teal },
     { key = "20_25", label = "20-25",     short = "20-25",   weight = 1, color = C.teal },
     { key = "25_28", label = "25-28",     short = "25-28",   weight = 1, color = C.blue },
@@ -72,7 +84,16 @@ function Ladder.Detailed(minRange, maxRange)
   L.has4041 = hi >= 41
   L.hi = hi
   L.fine = {}
-  for i = 1, #L do L.fine[L[i].key] = L[i] end
+  -- Nine or ten segments leave no room for "25-28" or "MELEE" inside a
+  -- segment: a bracket shows its upper bound only, melee and dead zone a
+  -- letter (user 2026-09-25). `wide` keeps the full text for the compact
+  -- layout, `label` the long name.
+  for i = 1, #L do
+    local seg = L[i]
+    local upper = seg.short:match("^%d+%-(%d+)$")
+    if upper then seg.wide, seg.short = seg.short, upper end
+    L.fine[seg.key] = seg
+  end
   return L
 end
 

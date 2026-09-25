@@ -1078,7 +1078,6 @@ kinds.input = {
   end,
 }
 
-local REFUSE = { OPENCHAT = true, OPENCHATSLASH = true, TOGGLEGAMEMENU = true }
 kinds.keybinding = {
   build = function(parent)
     local f = baseRow(parent)
@@ -1094,7 +1093,7 @@ kinds.keybinding = {
       Nock.UI.KeyCapture.Begin(cap, function(s)
         if s ~= nil then local oks, err = W.Set(row, s); if not oks then Nock:Print(("Settings: %s"):format(tostring(err))) end end
         ctl.host:AfterSet(row)
-      end, { refuse = REFUSE })
+      end, { refuse = Nock.UI.KeyCapture.REFUSE })
     end)
     return ctl
   end,

@@ -109,7 +109,7 @@ for _, p in ipairs({
   "hud.react.tabSize.reactMeleeStageCue",
   "hud.react.tabSkin.reactColorTickSteady", "hud.react.tabSkin.reactTickSteadyWidth", "hud.react.tabSkin.reactTickMultiWidth",
   "hud.react.tabSkin.reactColorTickMulti", "hud.react.tabSkin.reactColorBracket", "hud.react.tabSkin.reactGcdDividerWidth",
-  "general.grpCastBar", "general.grpSetup", "general.grpLook", "general.runWizard", "general.runWizardGuided", "general.perfPanel",
+  "general.grpCastBar", "general.grpSetup", "general.grpLook", "general.perfPanel",
 }) do
   ok(nodeAt(opts, p) == nil, p .. " gone")
 end
@@ -120,7 +120,7 @@ for _, p in ipairs({
   "hud.react.tabSize.reactShowCastBar", "hud.react.tabSize.castBarCard", "hud.react.tabSize.reactShowGrid",
   "hud.react.tabSkin.reactCastH", "hud.react.tabSkin.reactColorCastFill",
   "hud.react.tabSize.reactShowRangeBar", "hud.react.tabSize.reactShowAspectIcon", "hud.react.tabSize.reactShowMarkIcon",
-  "hud.react.tabSize.cornersCard", "hud.react.tabSkin.reactCornerIconSize", "hud.react.tabSkin.reactColorRangeSweet",
+  "hud.react.tabSize.cornersCard", "hud.react.tabSize.reactCornerIconSize", "hud.react.tabSize.reactBuffIconSize", "hud.react.tabSize.reactBuffRowsF", "hud.react.tabSize.buffRowCard", "hud.react.tabSkin.reactColorRangeSweet",
   "hud.react.tabSize.reactManaTick", "hud.react.tabSize.reactManaTickDirCombat",
   "hud.react.tabSkin.reactAutoH", "hud.react.tabSkin.reactColorAutoFill", "hud.react.tabSkin.reactFont", "hud.react.tabSkin.reactBarTexture",
   "general.scale", "general.lockAll", "general.minimapIcon", "general.grpMedia", "general.grpVisibility", "general.editGridShow",
@@ -176,6 +176,8 @@ local dl = {}
 for _, r in ipairs(drawn and drawn.rows or {}) do dl[#dl + 1] = r.label .. "(" .. #r.cells[1] .. "," .. #r.cells[2] .. ")" end
 ok(drawn and #drawn.rows == 1 and drawn.rows[1].label == "Spell-queue mark" and #drawn.rows[1].cells[1] == 1 and #drawn.rows[1].cells[2] == 1, "drawn skin table: one line, colour + width; got " .. table.concat(dl, ",") .. " cards=" .. #skinCards)
 ok(drawn and not drawn.one, "drawn skin table: the surviving line is drawn WITH its label (2026-09-23: it drew colour + width and nothing to say what for)")
+
+ok(nodeAt(opts, "general.runWizard") and nodeAt(opts, "general.runWizardGuided"), "Forever keeps both wizard buttons")
 
 print(("options_forever: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

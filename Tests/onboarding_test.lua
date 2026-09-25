@@ -107,6 +107,7 @@ _G.GetTime = function() return 0 end
 -- Core/WeaveMacro.lua is loaded rather than stubbed.
 dofile("Core/WeaveMacro.lua")
 dofile("Modules/Onboarding.lua")
+dofile("Modules/OnboardingPagesTBC.lua")
 
 -- The real defaults this feature cares about (mirrors Config/Defaults.lua).
 local DEFAULTS = {
@@ -925,6 +926,48 @@ do
   ok(Nock.db.char.wizardStart == nil, "teardown clears the pick")
   Nock.GetModule = oldGet
   Nock.BundledProfiles = nil
+end
+
+-- Forever onboarding: start profiles by flavour, slider values, key rows, refresh.
+do
+  local list = { { key = "a" }, { key = "b", flavor = "tbc" }, { key = "c", flavor = "forever" } }
+  local tbc = O.StartProfiles(list, false)
+  local fv  = O.StartProfiles(list, true)
+  ok(#tbc == 2 and tbc[1].key == "a" and tbc[2].key == "b", "TBC start profiles: untagged + tbc")
+  ok(#fv == 1 and fv[1].key == "c", "Forever start profiles: forever only")
+  ok(#O.StartProfiles(nil, true) == 0, "no bundle list: none")
+
+  ok(O.ClampStep(37.3, 24, 80, 2) == 38, "snaps to the step")
+  ok(O.ClampStep(5, 24, 80, 2) == 24, "clamps to min")
+  ok(O.ClampStep(500, 24, 80, 2) == 80, "clamps to max")
+  ok(O.ClampStep("x", 100, 600, 10) == 100, "non-number reads min")
+  ok(O.ClampStep(599, 100, 600, 10) == 600, "rounds to the nearest step and stays in range")
+
+  local p = freshProfile()
+  local page = { key = "t" }
+  local opt = { slider = true, key = "warningIconSize", min = 24, max = 80, step = 2, default = 44 }
+  ok(O:OptionValue(opt) == 44, "unset slider reads its default")
+  sentMessages = {}
+  O:SetOptionValue(page, opt, 51)
+  ok(p.warningIconSize == 52 and sentMessages[1] == "NOCK_VISUALS_CHANGED", "slider writes the snapped value and commits")
+  sentMessages = {}
+  O:SetOptionValue(page, opt, 52)
+  ok(#sentMessages == 0, "unchanged value: no commit")
+
+  local spec = { set = function(pp, s) pp.aspectRingKey = s ~= "" and s or nil end }
+  sentMessages = {}
+  O:ApplyKey({ message = "NOCK_ASPECT_RING_CONFIG" }, spec, "SHIFT-Q")
+  ok(p.aspectRingKey == "SHIFT-Q" and sentMessages[2] == "NOCK_ASPECT_RING_CONFIG", "key row writes and sends the page message")
+  O:ApplyKey({}, spec, "")
+  ok(p.aspectRingKey == nil, "empty binding clears the key")
+
+  local refreshed = 0
+  local saved = O.Pages
+  O.Pages = { { key = "x", kind = "toggles", refresh = function(pg) refreshed = refreshed + 1; pg.options = { { key = "k", label = "K" } } end } }
+  O:Open(1, false)
+  ok(refreshed == 1 and #O.Pages[1].options == 1, "Open runs every page's refresh")
+  O:Close()
+  O.Pages = saved
 end
 
 print(("%d passed, %d failed"):format(pass, fail))

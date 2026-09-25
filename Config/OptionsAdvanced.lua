@@ -16,6 +16,8 @@ A.KEEP = {
   scale = true, reactScale = true, fluffyScale = true, reactWidth = true, fluffyWidth = true,
   iconSize = true, warningIconSize = true, helpersIconSize = true, helpersScale = true,
   practiceScale = true,
+  -- Size & Elements: the corner and buff-row sizes are the headline numbers there.
+  reactCornerIconSize = true, reactBuffIconSize = true,
   -- The Forever range cues' previews: a sound row without its preview is
   -- half a row (Alerts -> Sounds -> Range).
   cueDeadZonePreview = true, cueMeleePreview = true, cueInRangePreview = true, cueOutOfRangePreview = true,

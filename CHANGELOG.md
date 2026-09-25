@@ -2,6 +2,18 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
+## Unreleased
+
+### WoW Forever (beta)
+
+- **Setup wizard**: now that the beta keeps settings across restarts, Nock opens a short guided setup once on a fresh install. It puts one part of the HUD on screen at a time (the bars, the Range Finder, the corner icons and buff row, warnings, range cues, the aspect ring key, quality-of-life switches) so you can place and size it before moving on. Run it again from Settings → General.
+- **Range Finder, Detailed**: each segment is labelled with its far edge only (20, 25, 28 ...), melee and dead zone as M and D, so the labels fit; Compact keeps the full brackets.
+- **Buff row size**: Nock HUD → Size & Elements gains a Buff row card, with a size slider that scales your buffs and the pet line together.
+
+### Both
+
+- **Corner icons**: their size and distance sliders moved from Skin to the Corners card under Size & Elements, where Simple mode shows them.
+
 ## 2.0.1
 
 ### WoW Forever (beta)

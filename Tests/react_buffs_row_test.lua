@@ -375,5 +375,38 @@ ok(#painted == 1, "dead pet: no alert slot")
 _G.UnitIsDead = function() return false end
 ok(Nock.Defaults.profile.reactBuffFrenzyMode == "boss", "ships in boss mode")
 
+-- reactBuffIconSize: one slider sizes the row and the pet line.
+do
+  local IS = RB.IconSizes
+  local r, pt = IS({})
+  ok(r == 26 and pt == 20, "unset: 26 / 20")
+  r, pt = IS({ reactBuffIconSize = 39 })
+  ok(r == 39 and pt == 30, "39 -> pet 30")
+  r, pt = IS({ reactBuffIconSize = 99 })
+  ok(r == 40 and pt == 31, "clamped to 40")
+  r = IS({ reactBuffIconSize = "x" })
+  ok(r == 26, "non-number reads 26")
+  r = IS(nil)
+  ok(r == 26, "no profile reads 26")
+  Nock.db.profile.reactBuffIconSize = 32
+  ok(RB:ContentHeight() == 32, "content height follows the size")
+  Nock.db.profile.reactBuffIconSize = nil
+end
+
+-- Forever: the aura container is scaled, never in combat.
+do
+  local scaled
+  RB._auraRow = { SetScale = function(_, s) scaled = s end }
+  Nock.db.profile.reactBuffIconSize = 39
+  _G.InCombatLockdown = function() return true end
+  RB:ApplyAuraRowScale()
+  ok(scaled == nil and RB._scalePending == true, "in combat: scale deferred")
+  _G.InCombatLockdown = function() return false end
+  RB:OnRegenEnabled()
+  ok(scaled == 1.5 and RB._scalePending == false, "combat ends: container scaled 39/26")
+  RB._auraRow = nil
+  Nock.db.profile.reactBuffIconSize = nil
+end
+
 print(("react_buffs_row_test: %d passed, %d failed"):format(pass, fail))
 if fail > 0 then os.exit(1) end

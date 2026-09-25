@@ -141,5 +141,8 @@ do
   ok(b3.durationText and b3.durationOptions == nil, "no formatter API: the client's default text")
 end
 
+ok(R.LineHeight(26) == 26 + R.LINE_GAP + R.PET_ICON, "line height: default pet line")
+ok(R.LineHeight(39, 30) == 39 + R.LINE_GAP + 30, "line height: sized pet line")
+
 print(("forever_aura_row: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

@@ -270,15 +270,18 @@ ok(type(raSize.reactShowAspectIcon.disabled) == "function"
    and type(raSize.reactShowMarkIcon.disabled) == "function",
    "react: corner toggles grey out off React mode")
 
-ok(raSkin.reactCornerIconSize and raSkin.reactCornerIconSize.type == "range"
-   and raSkin.reactCornerIconSize.min == 20 and raSkin.reactCornerIconSize.max == 48,
+ok(raSize.reactCornerIconSize and raSize.reactCornerIconSize.type == "range"
+   and raSize.reactCornerIconSize.min == 20 and raSize.reactCornerIconSize.max == 48,
    "react: corner size slider spans 20..48")
-ok(raSkin.reactCornerIconX and raSkin.reactCornerIconX.max == 120
-   and raSkin.reactCornerIconY and raSkin.reactCornerIconY.max == 120,
+ok(raSize.reactCornerIconX and raSize.reactCornerIconX.max == 120
+   and raSize.reactCornerIconY and raSize.reactCornerIconY.max == 120,
    "react: corner offset sliders span up to 120px")
-ok(raSkin.reactCornerIconSize.order > raSkin.skinHeader.order
-   and raSkin.reactCornerIconY.order < raSkin.reactColorAutoFill.order,
-   "react: corner geometry sits in Skin, above the colour pickers")
+ok(raSize.reactCornerIconSize.order > raSize.reactShowMarkIcon.order,
+   "react: corner geometry sits under the corner toggles in Size & Elements")
+ok(raSize.reactBuffIconSize and raSize.reactBuffIconSize.type == "range"
+   and raSize.reactBuffIconSize.min == 16 and raSize.reactBuffIconSize.max == 40
+   and raSize.reactBuffIconSize.hidden() == true and raSize.reactBuffRowsF.hidden() == true,
+   "react tabSize: the buff-row size and switch exist and are hidden on TBC")
 
 -- The DO NOT RELEASE banner preview button: sits in the warnings tab's
 -- Preview section beside the sample-squares button (the banner is not a
@@ -405,6 +408,8 @@ ok(raSkin.reactRangeDividerWidth and raSkin.reactColorRangeDivider
 -- Reset must write the divider keys back too (SKIN_REFERENCE membership —
 -- a key missing there reads nil after reset until /reload).
 Nock.db.profile.reactFontStyle, Nock.db.profile.reactFontShadow, Nock.db.profile.reactTextOffsetY, Nock.db.profile.reactTextOffsetX = "NONE", true, 3, 2
+ok(raSkin.resetSkin and raSkin.resetSkin.confirmText:find("corner") and raSkin.resetSkin.confirmText:find("buff"),
+   "reset skin names the corner and buff sizes it also resets (they live on Size & Elements now)")
 pcall(raSkin.resetSkin and raSkin.resetSkin.func or function() end)
 ok(Nock.db.profile.reactRangeDividerWidth == 1,
    "react: reset restores divider width 1")
@@ -630,6 +635,7 @@ onlyKeys(ra, { "intro", "hudMode", "useLook", "tabSize", "tabBars", "tabRange", 
 onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "elementsNote",
   "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview", "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
   "reactShowCastBar", "reactShowAutoShotCast", "reactShowGrid", "reactShowAspectIcon", "reactShowMarkIcon",
+  "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY", "reactBuffRowsF", "reactBuffIconSize",
   "orderHeader", "order_reset", "castBarNonCombatCasts" }, "react tabSize",
   { "order_lbl_", "order_up_", "order_dn_" })
 ok(raSize.reactRangeLabels and raSize.reactRangeLabels.type == "toggle"
@@ -697,7 +703,6 @@ onlyKeys(raBuff, { "buffHeader", "sharedNote", "reactBuffRows", "reactBuffPositi
   "addBuffId", "addBuffBtn" }, "react tabBuff", { "rb_en_", "rbc_" })
 onlyKeys(raSkin, { "skinHeader", "skinNote", "reactBarTexture", "reactFont", "reactFontSize", "reactFontStyle", "reactFontShadow", "reactTextOffsetY", "reactTextOffsetX", "reactCdFontSize", "reactCdWholeSeconds",
   "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH",
-  "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY",
   "reactColorAutoFill", "reactColorMeleeReady", "reactColorMeleeAuto", "reactColorManaFill", "reactColorManaTick",
   "reactColorCastFill", "reactColorAutoShotFill",
   "reactColorRangeDeadzone", "reactColorRangeSweet", "reactColorRangePerfect",

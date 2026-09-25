@@ -21,6 +21,9 @@ function KC.Format(key, shift, ctrl, alt)
   return s
 end
 
+-- Keys a binding row never takes: chat and the game menu would stop working.
+KC.REFUSE = { OPENCHAT = true, OPENCHATSLASH = true, TOGGLEGAMEMENU = true }
+
 local active   -- { frame, onDone, refuse }
 
 local function finish(result)

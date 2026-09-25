@@ -46,9 +46,9 @@ F.DROP = {
   "hud.react.tabSkin.reactColorGcdDivider", "hud.react.tabSkin.reactGcdDividerWidth",
   "hud.react.tabSkin.reactTickSteadyWidth", "hud.react.tabSkin.reactColorTickSteady",
   "hud.react.tabSkin.reactTickMultiWidth", "hud.react.tabSkin.reactColorTickMulti",
-  -- General: no cast bar, no setup check, no HUD-mode look, no wizard, no profiler.
+  -- General: no cast bar, no setup check, no HUD-mode look, no profiler.
   "general.grpCastBar", "general.grpSetup", "general.grpLook",
-  "general.runWizard", "general.runWizardGuided", "general.perfPanel",
+  "general.perfPanel",
 }
 
 -- A string renames the node; a table sets name and desc.

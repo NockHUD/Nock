@@ -720,6 +720,7 @@ Nock.Defaults = {
     -- HUD. While React mode is on it REPLACES the BuffTracker + TotemTracker
     -- panels (engines keep running; the Windfury slot reads state.totems).
     reactBuffRows        = true,
+    reactBuffIconSize    = 26,          -- buff row tile edge in px (16..40); the pet line scales with it (20/26)
     -- React element visibility (React HUD tab). These REPLACE the classic
     -- show* flags for the React frames — showAutoShotBar/showMeleeBar/
     -- showRangeFinder/showManaBar/showCastBar/showCooldowns no longer affect

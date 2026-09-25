@@ -91,7 +91,7 @@ local function litCount()
   return n, which
 end
 local function labelAlpha(i) return f.labels[i].textColor and f.labels[i].textColor[4] end
-ok(f.labels[1].text == "MELEE" and f.labels[4].text == "20-25" and f.labels[9].text == "OUT", "each segment carries its own label")
+ok(f.labels[1].text == "M" and f.labels[4].text == "25" and f.labels[9].text == "OUT", "each segment carries its own label (detailed: the upper bound)")
 local inside = true
 for i = 1, #base do
   local pt = f.labels[i].points[1]
@@ -123,7 +123,7 @@ local he3 = L.Layout(8, 41)
 RL.Paint(f, "40_41", true)
 RL.Layout(f, he3, 220, 14, true, 1, 1)
 RL.Paint(f, "40_41", true)
-ok(f.labels[9].text == "40-41" and labelAlpha(9) == 1 and f.segs[10].shown and f.segs[9].color[1] == L.COLORS.purple[1], "Hawk Eye 3 layout: 40-41 lit")
+ok(f.labels[9].text == "41" and labelAlpha(9) == 1 and f.segs[10].shown and f.segs[9].color[1] == L.COLORS.purple[1], "Hawk Eye 3 layout: 40-41 lit")
 RL.Layout(f, base, 220, 14, true, 1, 1)
 ok(not f.segs[10].shown and not f.labels[10].shown, "back to 9 segments hides the tenth and its label")
 

@@ -6388,6 +6388,45 @@ local function buildOptionsTable()
       "Hunter's Mark corner icon",
       "Show Hunter's Mark and its remaining time above the cluster's top-right corner, greyed when your target isn't marked. Off by default. A mark applied by another hunter counts.",
       28)
+    -- Corner geometry: beside the corner switches, so Simple mode reaches it.
+    local function cornerGeo(key, name, desc, order, minV, maxV)
+      return {
+        type = "range", name = name, desc = desc,
+        min = minV, max = maxV, step = 1, order = order,
+        disabled = notReact,
+        get = get,
+        set = function(_, v) visualsSet(_, key, v) end,
+      }
+    end
+    sizeArgs.reactCornerIconSize = cornerGeo("reactCornerIconSize",
+      "Corner icon size", "Edge length of both corner icons, in pixels.", 28.1, 20, 48)
+    sizeArgs.reactCornerIconX = cornerGeo("reactCornerIconX",
+      "Corner icon distance out",
+      "Gap between the cluster's side edge and the near edge of each corner icon. Mirrored: the aspect icon moves left, the mark icon right.", 28.2, 0, 120)
+    sizeArgs.reactCornerIconY = cornerGeo("reactCornerIconY",
+      "Corner icon distance up",
+      "Gap between the cluster's top edge and the bottom of each corner icon. The default clears the buff row.", 28.3, 0, 120)
+    -- Forever only: Forever drops the Buff tab, so the row's switch and its
+    -- size live here. Built on both flavours (the layout data names them) and
+    -- hidden on TBC. The switch writes the same key as the Buff tab's master.
+    local notForever = function() return not (Nock.Flavor and Nock.Flavor.forever) end
+    sizeArgs.reactBuffRowsF = {
+      type = "toggle", name = "Buff row",
+      desc = "Your short buffs and procs in a row above the cluster, your pet's in a smaller line over it.",
+      order = 28.4, width = "full",
+      hidden = notForever, disabled = notReact,
+      get = function() return Nock.db.profile.reactBuffRows ~= false end,
+      set = function(_, v) visualsSet(_, "reactBuffRows", v and true or false) end,
+    }
+    sizeArgs.reactBuffIconSize = {
+      type = "range", name = "Buff icon size",
+      desc = "Edge length of the buff row's icons, in pixels; the pet line scales with it.",
+      min = 16, max = 40, step = 1, order = 28.5,
+      hidden = notForever,
+      disabled = function() return notReact() or Nock.db.profile.reactBuffRows == false end,
+      get = function() return Nock.db.profile.reactBuffIconSize or 26 end,
+      set = function(_, v) visualsSet(_, "reactBuffIconSize", v) end,
+    }
 
     -- Bar order editor: the fixed 4-item cousin of the CD-row editor below.
     -- The four rows are STATIC args whose names re-read the effective order on
@@ -7066,7 +7105,7 @@ local function buildOptionsTable()
     -- logout, so untouched keys never enter the SV).
     local SKIN_REFERENCE = {
       reactAutoH = 14, reactMeleeH = 12, reactRangeH = 12, reactManaH = 12, reactCastH = 16,
-      reactCornerIconSize = 42, reactCornerIconX = 30, reactCornerIconY = 50,
+      reactCornerIconSize = 42, reactCornerIconX = 30, reactCornerIconY = 50, reactBuffIconSize = 26,
       reactBarTexture = "", reactFont = "", reactFontSize = 9,
       reactFontStyle = "OUTLINE", reactFontShadow = false, reactTextOffsetY = 0, reactTextOffsetX = 0,
       reactCdFontSize = 10, reactCdWholeSeconds = false,
@@ -7217,14 +7256,6 @@ local function buildOptionsTable()
         set = function(_, v) visualsSet(_, key, v) end,
       }
     end
-    skinArgs.reactCornerIconSize = cornerRange("reactCornerIconSize",
-      "Corner icon size", "Edge length of both corner icons, in pixels.", 95.1, 20, 48)
-    skinArgs.reactCornerIconX = cornerRange("reactCornerIconX",
-      "Corner icon distance out",
-      "Gap between the cluster's side edge and the near edge of each corner icon. Mirrored: the aspect icon moves left, the mark icon right.", 95.2, 0, 120)
-    skinArgs.reactCornerIconY = cornerRange("reactCornerIconY",
-      "Corner icon distance up",
-      "Gap between the cluster's top edge and the bottom of each corner icon. The default clears the buff row.", 95.3, 0, 120)
     local function skinColorOpt(name, desc, order)
       return {
         type = "color", name = name, desc = desc, hasAlpha = true, order = order,
@@ -7285,7 +7316,7 @@ local function buildOptionsTable()
       order = 110,
       width = 1.2,
       confirm = true,
-      confirmText = "Reset all React skin overrides (texture, font, heights and colors) to the reference look?",
+      confirmText = "Reset all React skin overrides (texture, font, heights and colors), plus the corner icon and buff icon sizes on Size & Elements, to the reference look?",
       disabled = notReact,
       func = function()
         -- SKIN_REFERENCE names the keys; the value is the flavour's default
