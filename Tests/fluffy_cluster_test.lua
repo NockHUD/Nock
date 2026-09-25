@@ -129,6 +129,9 @@ Nock.UI = {
   DeviceWidth        = function(n) return n end,
   PixelSnapCenter    = function(x) return x end,
   DelaySeverityColor = function() return 1, 1, 1 end,
+  SWING_CLOSE        = { ease = 0.06, hold = 0.04, catch = 0.30 },
+  SwingFillProgress  = function(_, start, rem, dur) return math.max(0, math.min(1, 1 - rem / dur)) end,
+  SwingFillBlank     = function() end,
   -- Order resolver stub (the real one is Widgets', tested in react_order_test).
   ResolveFluffyBarOrder = function(stored)
     if type(stored) ~= "table" then return { "swing", "ranged", "melee", "range", "mana" } end

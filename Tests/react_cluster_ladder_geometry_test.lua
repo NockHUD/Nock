@@ -13,6 +13,7 @@ local Nock = {
   UI = {
     ResolveReactBarOrder = function() return { "auto", "melee", "range", "mana" } end,
     RangeLadder = {},
+    SWING_CLOSE = { ease = 0.06, hold = 0.04, catch = 0.30 },
   },
 }
 function Nock:NewModule() mod = {}; function mod:RegisterMessage() end; return mod end

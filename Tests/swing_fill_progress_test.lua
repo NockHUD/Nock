@@ -90,6 +90,28 @@ at(h, 100, 100); at(h, 100, 102.0); at(h, 100, 102.5)
 ok(near(at(h, 102.5, 102.5), 0), "long hold: the new cycle starts at once")
 ok(near(at(h, 102.5, 102.6), 0.05), "long hold: no catch-up needed, plain progress")
 
+-- 7. TBC haste edge mid-cycle: SwingTimer re-anchors swingStart so the release
+-- (start + duration) holds (Nock.ReanchorSwingStart). That is the same shot,
+-- not a new one: no glide, no hold, no restart from empty -- the true position.
+local function atD(hh, start, dur, now) return P(hh, start, math.max(0, start + dur - now), dur, now, HOLD, EASE, CATCH) end
+h = {}
+atD(h, 100, 2.0, 100); atD(h, 100, 2.0, 100.8)
+-- haste gain at 100.8: 2.0 -> 1.6, release 102.0 kept -> start 100.4
+local g = atD(h, 100.4, 1.6, 100.8)
+ok(near(g, 0.25), "haste gain: true position at once (0.4/1.6), no glide to full")
+ok(near(atD(h, 100.4, 1.6, 100.85), 0.45 / 1.6), "haste gain: plain progress after, no hold/restart")
+-- haste loss at 101.0: 1.6 -> 2.0, release 102.0 kept -> start 100.0
+ok(near(atD(h, 100.0, 2.0, 101.0), 0.5), "haste loss: true position, no glide")
+-- wind-up at the new speed moves the release a little (ratio x dDur): still the same shot
+h = {}
+atD(h, 100, 2.0, 100); atD(h, 100, 2.0, 100.5)
+ok(near(atD(h, 100.5 - 0.0667, 1.6 - 0.0, 100.5), 1 - (100.5 - 0.0667 + 1.6 - 100.5) / 1.6), "release nudged by the wind-up term: same shot")
+-- and the real next shot after a re-anchor still closes visibly
+h = {}
+atD(h, 100, 2.0, 100); atD(h, 100, 2.0, 100.8); atD(h, 100.4, 1.6, 100.8); atD(h, 100.4, 1.6, 101.95)
+local c0 = atD(h, 101.95, 1.6, 101.95 + 0.02)
+ok(c0 > 0.9 and c0 <= 1, "real shot after a re-anchor: glides shut")
+
 -- 6. no duration -> 0, no crash
 ok(near(P({}, 0, 5, 0, 1, HOLD, EASE), 0), "no duration -> 0")
 

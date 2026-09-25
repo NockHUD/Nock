@@ -124,9 +124,9 @@ local mediaFills, mediaTexts = {}, {}
 -- that has not reached the end glides shut over EASE_SEC, stays shut HOLD_SEC,
 -- then the new cycle starts from empty and catches up to its true position
 -- over CATCH_SEC.
-local EASE_SEC  = 0.06
-local HOLD_SEC  = 0.04
-local CATCH_SEC = 0.30
+local EASE_SEC  = Nock.UI.SWING_CLOSE.ease
+local HOLD_SEC  = Nock.UI.SWING_CLOSE.hold
+local CATCH_SEC = Nock.UI.SWING_CLOSE.catch
 
 local function makeFill(bar, color)
   local t = bar:CreateTexture(nil, "ARTWORK")
@@ -881,7 +881,7 @@ function ReactCluster:RefreshAuto(state)
   else
     -- Blank bar (auto-repeat off, target out of range): the next live cycle
     -- is a fresh start, not a shot to close.
-    h.start, h.fullAt, h.holdUntil, h.glideAt, h.glideFrom, h.catchAt, h.lag = nil, nil, nil, nil, nil, nil, nil
+    Nock.UI.SwingFillBlank(h)
   end
   -- Fill widths in whole device pixels (Nock.UI.DeviceRound): the moving edge
   -- never sits between two columns, and a full bar's halves meet exactly.

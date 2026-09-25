@@ -22,6 +22,7 @@ local Nock = {
     DeviceRound = function(v) return math.floor(v + 0.5) end,
     -- Linear progress: enough to check which swing drives which fill.
     SwingFillProgress = function(_, start, rem, dur) return 1 - rem / dur end,
+    SWING_CLOSE = { ease = 0.06, hold = 0.04, catch = 0.30 },
   },
 }
 function Nock:NewModule() mod = {}; function mod:RegisterMessage() end; return mod end

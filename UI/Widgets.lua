@@ -1695,6 +1695,16 @@ end
 --     position over `catch` seconds (smoothstep: continuous speed at both
 --     ends), so there is no jump at the restart either.
 -- The first cycle ever gets no glide and no catch-up.
+-- The timings every swing bar uses (React, Classic, Fluffy): one definition.
+Nock.UI.SWING_CLOSE = { ease = 0.06, hold = 0.04, catch = 0.30 }
+
+-- A blank bar (no swing to show): the next live cycle is a fresh start, not
+-- a shot to close.
+function Nock.UI.SwingFillBlank(h)
+  h.start, h.release, h.fullAt, h.holdUntil, h.glideAt, h.glideFrom, h.catchAt, h.lag =
+    nil, nil, nil, nil, nil, nil, nil, nil
+end
+
 local function easeOut(x)
   if x <= 0 then return 0 elseif x >= 1 then return 1 end
   local y = 1 - x
@@ -1712,6 +1722,17 @@ function Nock.UI.SwingFillProgress(h, swingStart, remaining, duration, now, hold
     if p01 < 0 then p01 = 0 elseif p01 > 1 then p01 = 1 end
   end
   hold, ease, catch = hold or 0, ease or 0, catch or 0
+  local release = (swingStart or 0) + (duration or 0)
+  -- A moved start with the release (nearly) where it was is the SAME shot
+  -- re-anchored, not a new one: TBC shifts swingStart on every ranged haste
+  -- edge to keep the release (Nock.ReanchorSwingStart), and practice derives
+  -- it as nextShotAt - cycle. A real shot moves the release by about a whole
+  -- duration. Adopt the new start without replaying the close.
+  if swingStart ~= h.start and h.start and h.start > 0 and h.release and swingStart > 0
+     and duration and duration > 0 and math.abs(release - h.release) < 0.5 * duration then
+    h.start = swingStart
+  end
+  h.release = release
   if swingStart ~= h.start then
     if h.start and h.start > 0 then
       if h.fullAt then

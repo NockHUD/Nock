@@ -580,9 +580,14 @@ local function refreshSwing(self, state)
   local r = state.ranged
 
   local p01 = 0
+  local h = self._swingFill
+  if not h then h = {}; self._swingFill = h end
   if Nock.AutoSwingLive() then
-    p01 = 1 - (r.swingRemaining / r.swingDuration)
-    if p01 < 0 then p01 = 0 elseif p01 > 1 then p01 = 1 end
+    local sc = Nock.UI.SWING_CLOSE
+    p01 = Nock.UI.SwingFillProgress(h, r.swingStart, r.swingRemaining, r.swingDuration,
+                                    GetTime(), sc.hold, sc.ease, sc.catch)
+  else
+    Nock.UI.SwingFillBlank(h)
   end
   if not self._swingP or math.abs(p01 - self._swingP) > 0.002 then
     if (self._dirAuto or "converge") == "converge" then

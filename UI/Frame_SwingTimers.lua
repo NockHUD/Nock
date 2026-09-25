@@ -38,6 +38,13 @@ local function fillMode(key)
   return isFill, reverse
 end
 
+-- Elapsed 0..1 with the visible close every swing bar shares
+-- (Nock.UI.SwingFillProgress): an early shot glides shut instead of snapping.
+local function swingProgress(h, start, remaining, duration)
+  local sc = Nock.UI.SWING_CLOSE
+  return Nock.UI.SwingFillProgress(h, start, remaining, duration, GetTime(), sc.hold, sc.ease, sc.catch)
+end
+
 local function delayEnabled()
   return Nock.db and Nock.db.profile and Nock.db.profile.autoShotDelayEnabled == true
 end
@@ -443,10 +450,13 @@ function SwingTimers:Refresh(state)
 
   if self.ranged:IsShown() then
     local r = state.ranged
+    local h = self._rangedFill
+    if not h then h = {}; self._rangedFill = h end
     if r.swingDuration > 0 and r.swingStart > 0 then
-      local p = r.swingRemaining / r.swingDuration
-      Nock.UI.SetBarFill(self.ranged, isFillR and (1 - p) or p)
+      local p01 = swingProgress(h, r.swingStart, r.swingRemaining, r.swingDuration)
+      Nock.UI.SetBarFill(self.ranged, isFillR and p01 or (1 - p01))
     else
+      Nock.UI.SwingFillBlank(h)
       Nock.UI.SetBarFill(self.ranged, 0)
     end
     self:PositionTicks(state)
@@ -466,10 +476,13 @@ function SwingTimers:Refresh(state)
 
   if self.melee:IsShown() then
     local m = state.melee
+    local h = self._meleeFill
+    if not h then h = {}; self._meleeFill = h end
     if m.swingDuration > 0 and m.swingStart > 0 then
-      local p = m.swingRemaining / m.swingDuration
-      Nock.UI.SetBarFill(self.melee, isFillM and (1 - p) or p)
+      local p01 = swingProgress(h, m.swingStart, m.swingRemaining, m.swingDuration)
+      Nock.UI.SetBarFill(self.melee, isFillM and p01 or (1 - p01))
     else
+      Nock.UI.SwingFillBlank(h)
       Nock.UI.SetBarFill(self.melee, 0)
     end
   end
