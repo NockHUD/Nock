@@ -38,6 +38,7 @@ local REACT = {
   GCD_DIVIDER  = { 0.62, 0.35, 0.98, 1.00 },  -- GCD divider (purple, off by default)
   GCD_DIVIDER_W = 2,                          -- GCD divider width px
   MELEE_BLUE   = { 0.55, 0.75, 1.00, 1.00 },  -- auto-attack-only weave (light blue, separates from the gold auto bar)
+  MELEE_OFF    = { 1.00, 1.00, 1.00, 1.00 },  -- dual wield: the off hand's swing (white)
   MELEE_GREEN  = { 0.15, 0.68, 0.38, 1.00 },  -- Raptor ready
   MANA_FILL    = { 0.20, 0.55, 1.00, 1.00 },
   MANA_TICK    = { 1.00, 1.00, 1.00, 0.80 },  -- mana tick spark (off by default)
@@ -201,6 +202,11 @@ function ReactCluster:OnInitialize()
   melee.fill = makeFill(melee, REACT.MELEE_BLUE)
   melee.fill:SetPoint("TOPLEFT", melee, "TOPLEFT", 1, -1)
   melee.fill:SetPoint("BOTTOMLEFT", melee, "BOTTOMLEFT", 1, 1)
+  -- Dual wield (Forever, from level 20): the off hand's swing in the lower
+  -- half of the row, in its own colour (white; Raptor replaces a main-hand
+  -- swing only, so it never turns green). Hidden with one weapon; ApplyMeleeSplit places it.
+  melee.offFill = makeFill(melee, REACT.MELEE_BLUE)
+  melee.offFill:Hide()
   melee.text = makeText(melee, REACT.FONT_SMALL, "CENTER")
   -- Weave-stage takeover: a child frame over the fill holding two clipped
   -- half-width triangle runs and the stage word. Each run is a carrier frame
@@ -640,8 +646,10 @@ function ReactCluster:ApplyLayout()
   else
     auto.fillR:Hide()
   end
-  local melee = self.melee
-  insetFill(melee.fill, melee, (p.reactDirMelee or "ltr") == "rtl" and "right" or "left")
+  self._dirMelee = p.reactDirMelee or "ltr"
+  self._meleeInH = hMeleeIn
+  self._lastOffP = nil
+  self:ApplyMeleeSplit(self._meleeSplit or false)
 
   -- Feature-gated delay readout (React HUD tab; default off).
   if p.reactShowDelay == true then
@@ -991,6 +999,42 @@ function ReactCluster:RefreshAuto(state)
   end
 end
 
+-- Dual wield splits the melee row's inner height: the main hand on top gets
+-- the odd device pixel. `split` false = one fill, full height (offH nil).
+function ReactCluster.MeleeSplit(innerH, split, round)
+  if not split then return innerH, nil end
+  local top = round(innerH / 2)
+  return top, innerH - top
+end
+
+-- Anchor the melee fill(s) inside the bar by the device edge, from the fill
+-- side (reactDirMelee). Re-run on a layout and whenever the split changes.
+function ReactCluster:ApplyMeleeSplit(split)
+  local melee, e = self.melee, self._edge or 1
+  local side = (self._dirMelee == "rtl") and "RIGHT" or "LEFT"
+  local x = (side == "RIGHT") and -e or e
+  local round = function(v) return Nock.UI.DeviceRound(v, self._pixelScale) end
+  local mainH, offH = ReactCluster.MeleeSplit(self._meleeInH or 1, split, round)
+  local f = melee.fill
+  f:ClearAllPoints()
+  f:SetPoint("TOP" .. side, melee, "TOP" .. side, x, -e)
+  local o = melee.offFill
+  if offH then
+    f:SetHeight(mainH)
+    o:ClearAllPoints()
+    o:SetPoint("BOTTOM" .. side, melee, "BOTTOM" .. side, x, e)
+    o:SetHeight(offH)
+    local c = skinColor("reactColorMeleeOff", REACT.MELEE_OFF)
+    o:SetVertexColor(c[1], c[2], c[3], c[4] or 1)
+    o:Show()
+  else
+    f:SetPoint("BOTTOM" .. side, melee, "BOTTOM" .. side, x, e)
+    o:Hide()
+  end
+  self._meleeSplit = split
+  self._lastMeleeP, self._lastOffP = nil, nil
+end
+
 function ReactCluster:RefreshMelee(state)
   local melee = self.melee
   local m = state.melee
@@ -1003,6 +1047,9 @@ function ReactCluster:RefreshMelee(state)
   local look = Nock.UI.ReactStageLook(stage)
   local takeover = (look and profile().reactMeleeStageCue == true) and true or false
   local cue = melee.cue
+  -- Two weapons split the row; a takeover owns the whole row.
+  local split = (m.dualWield == true) and not takeover
+  if split ~= (self._meleeSplit or false) then self:ApplyMeleeSplit(split) end
 
   if stage ~= self._lastStage or takeover ~= self._lastTakeover then
     self._lastStage, self._lastTakeover = stage, takeover
@@ -1082,6 +1129,23 @@ function ReactCluster:RefreshMelee(state)
   if not self._lastMeleeP or math.abs(p01 - self._lastMeleeP) > 0.002 then
     melee.fill:SetWidth(math.max(0.01, Nock.UI.DeviceRound(p01 * (self._innerW or 0), self._pixelScale)))
     self._lastMeleeP = p01
+  end
+  if split then
+    -- The off hand's own swing, same glide-shut helper as the main hand.
+    local op = 1
+    local oh = self._offFill
+    if not oh then oh = {}; self._offFill = oh end
+    if m.offStart > 0 and m.offRemaining > 0 and m.offDuration > 0 then
+      op = Nock.UI.SwingFillProgress(oh, m.offStart, m.offRemaining, m.offDuration,
+                                     now, HOLD_SEC, EASE_SEC, CATCH_SEC)
+    else
+      oh.fullAt = oh.fullAt or now
+      oh.holdUntil, oh.glideAt, oh.glideFrom, oh.catchAt, oh.lag = nil, nil, nil, nil, nil
+    end
+    if not self._lastOffP or math.abs(op - self._lastOffP) > 0.002 then
+      melee.offFill:SetWidth(math.max(0.01, Nock.UI.DeviceRound(op * (self._innerW or 0), self._pixelScale)))
+      self._lastOffP = op
+    end
   end
 
   -- Takeover off: the stage outranks READY as the small text, in the stage

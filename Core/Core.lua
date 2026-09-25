@@ -328,6 +328,9 @@ function Nock:Tick()
   if state.melee.swingStart > 0 then
     state.melee.swingRemaining = math.max(0, state.melee.swingStart + state.melee.swingDuration - now)
   end
+  if state.melee.offStart > 0 then
+    state.melee.offRemaining = math.max(0, state.melee.offStart + state.melee.offDuration - now)
+  end
   -- Auto Shot wind-up in seconds. Derived, not measured directly: the invariant
   -- is the ratio (see Core/State.lua), so this tracks a haste proc the instant
   -- swingDuration moves rather than lagging behind a running average.

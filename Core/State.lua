@@ -135,6 +135,12 @@ Nock.state = {
     swingStart     = 0,
     swingDuration  = 2.6,
     swingRemaining = 0,
+    -- Off-hand swing (Forever: PLAYER_SWING OffHand) and whether an off-hand
+    -- weapon is equipped; the React melee bar splits while dualWield is on.
+    offStart       = 0,
+    offDuration    = 0,
+    offRemaining   = 0,
+    dualWield      = false,
     -- Melee auto-attack toggled on (the client's PLAYER_ENTER_COMBAT /
     -- PLAYER_LEAVE_COMBAT pair; Forever/SwingTimer.lua keeps it, TBC leaves it).
     attacking      = false,

@@ -22,6 +22,7 @@ function SwingTimer:OnEnable()
   self:RegisterEvent("PLAYER_ENTER_COMBAT")
   self:RegisterEvent("PLAYER_LEAVE_COMBAT")
   self:RegisterEvent("PLAYER_ENTERING_WORLD")
+  self:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
   self:RegisterEvent("PLAYER_TARGET_CHANGED")
   self:RegisterEvent("CVAR_UPDATE")
   -- Probe instrumentation (wind-up question, 2026-09-23): the client's own
@@ -112,7 +113,29 @@ function SwingTimer:PLAYER_SWING(event, duration, kind)
     local m = Nock.state.melee
     m.swingStart = now
     m.swingDuration = duration
+  elseif kind == swingType("OffHand") then
+    local m = Nock.state.melee
+    m.offStart = now
+    m.offDuration = duration
   end
+end
+
+-- Dual wield (hunters from level 20): the client's own answer, re-read on
+-- login and every gear change. Anything but a plain true reads as one weapon.
+function SwingTimer:RefreshDualWield()
+  local v
+  if _G.IsDualWielding then
+    v = Nock.Flavor.Plain(_G.IsDualWielding())
+  elseif _G.C_PaperDollInfo and _G.C_PaperDollInfo.OffhandHasWeapon then
+    v = Nock.Flavor.Plain(_G.C_PaperDollInfo.OffhandHasWeapon())
+  end
+  local m = Nock.state.melee
+  m.dualWield = v == true
+  if not m.dualWield then m.offStart, m.offRemaining = 0, 0 end
+end
+
+function SwingTimer:PLAYER_EQUIPMENT_CHANGED()
+  self:RefreshDualWield()
 end
 
 function SwingTimer:START_AUTOREPEAT_SPELL()
@@ -137,6 +160,7 @@ function SwingTimer:PLAYER_ENTERING_WORLD()
   Nock.state.ranged.repeating = false
   Nock.state.ranged.autoDelay = 0
   Nock.state.melee.attacking = false
+  self:RefreshDualWield()
 end
 
 -- The tick calls this on the TBC module after a speed poll; on Forever the

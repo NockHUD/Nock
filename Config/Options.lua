@@ -7112,6 +7112,7 @@ local function buildOptionsTable()
       reactColorAutoFill      = { 1.00, 0.84, 0.00, 1.00 },
       reactColorMeleeReady    = { 0.15, 0.68, 0.38, 1.00 },
       reactColorMeleeAuto     = { 0.55, 0.75, 1.00, 1.00 },
+      reactColorMeleeOff      = { 1.00, 1.00, 1.00, 1.00 },
       reactColorManaFill      = { 0.20, 0.55, 1.00, 1.00 },
       reactColorManaTick      = { 1.00, 1.00, 1.00, 0.80 },
       reactColorCastFill      = { 0.40, 0.70, 1.00, 1.00 },
@@ -7241,11 +7242,13 @@ local function buildOptionsTable()
         set = function(_, v) visualsSet(_, key, v) end,
       }
     end
-    skinArgs.reactAutoH  = skinRange("reactAutoH",  "Auto Shot bar height", 91)
-    skinArgs.reactMeleeH = skinRange("reactMeleeH", "Melee bar height",     92)
-    skinArgs.reactRangeH = skinRange("reactRangeH", "Range bar height",     93)
-    skinArgs.reactManaH  = skinRange("reactManaH",  "Mana bar height",      94)
-    skinArgs.reactCastH  = skinRange("reactCastH",  "Cast bar height",      95)
+    -- Bar heights live on Size & Elements (Simple), beside the switches for
+    -- the bars they size; the Skin tab is Advanced as a whole.
+    sizeArgs.reactAutoH  = skinRange("reactAutoH",  "Auto Shot bar height", 29.1)
+    sizeArgs.reactMeleeH = skinRange("reactMeleeH", "Melee bar height",     29.2)
+    sizeArgs.reactRangeH = skinRange("reactRangeH", "Range bar height",     29.3)
+    sizeArgs.reactManaH  = skinRange("reactManaH",  "Mana bar height",      29.4)
+    sizeArgs.reactCastH  = skinRange("reactCastH",  "Cast bar height",      29.5)
     -- Corner-icon geometry wants a wider span than the bar heights above.
     local function cornerRange(key, name, desc, order, minV, maxV)
       return {
@@ -7266,6 +7269,9 @@ local function buildOptionsTable()
     skinArgs.reactColorAutoFill      = skinColorOpt("Auto Shot fill",     "The converging (or directional) Auto Shot fill.", 96)
     skinArgs.reactColorMeleeReady    = skinColorOpt("Melee: Raptor ready", "Melee fill while Raptor Strike is off cooldown.", 97)
     skinArgs.reactColorMeleeAuto     = skinColorOpt("Melee: auto-only",    "Melee fill while Raptor Strike is on cooldown.", 98)
+    -- Forever only (dual wield): built on both flavours, hidden on TBC.
+    skinArgs.reactColorMeleeOff      = skinColorOpt("Melee: off hand", "The off hand's half of the melee bar while you dual wield.", 98.5)
+    skinArgs.reactColorMeleeOff.hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end
     skinArgs.reactColorManaFill      = skinColorOpt("Mana fill", nil, 99)
     skinArgs.reactColorManaTick      = skinColorOpt("Mana tick spark", "The mana tick line (Bars -> Mana tick spark).", 99.5)
     skinArgs.reactColorCastFill      = skinColorOpt("Cast fill", nil, 100)
@@ -7316,7 +7322,7 @@ local function buildOptionsTable()
       order = 110,
       width = 1.2,
       confirm = true,
-      confirmText = "Reset all React skin overrides (texture, font, heights and colors), plus the corner icon and buff icon sizes on Size & Elements, to the reference look?",
+      confirmText = "Reset all React skin overrides (texture, font, heights and colors), plus the bar heights and the corner icon and buff icon sizes on Size & Elements, to the reference look?",
       disabled = notReact,
       func = function()
         -- SKIN_REFERENCE names the keys; the value is the flavour's default

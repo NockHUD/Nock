@@ -408,6 +408,11 @@ ok(raSkin.reactRangeDividerWidth and raSkin.reactColorRangeDivider
 -- Reset must write the divider keys back too (SKIN_REFERENCE membership —
 -- a key missing there reads nil after reset until /reload).
 Nock.db.profile.reactFontStyle, Nock.db.profile.reactFontShadow, Nock.db.profile.reactTextOffsetY, Nock.db.profile.reactTextOffsetX = "NONE", true, 3, 2
+ok(raSize.reactMeleeH and raSize.reactMeleeH.type == "range" and raSize.reactMeleeH.min == 8 and raSize.reactMeleeH.max == 28
+   and not raSkin.reactMeleeH, "react: bar heights live on Size & Elements (Simple), not Skin")
+ok(raSkin.reactColorMeleeOff and raSkin.reactColorMeleeOff.type == "color" and raSkin.reactColorMeleeOff.hidden() == true
+   and raSkin.reactColorMeleeOff.order > raSkin.reactColorMeleeAuto.order,
+   "react skin: the off-hand colour follows the melee colours and is hidden on TBC")
 ok(raSkin.resetSkin and raSkin.resetSkin.confirmText:find("corner") and raSkin.resetSkin.confirmText:find("buff"),
    "reset skin names the corner and buff sizes it also resets (they live on Size & Elements now)")
 pcall(raSkin.resetSkin and raSkin.resetSkin.func or function() end)
@@ -636,6 +641,7 @@ onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "
   "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview", "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
   "reactShowCastBar", "reactShowAutoShotCast", "reactShowGrid", "reactShowAspectIcon", "reactShowMarkIcon",
   "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY", "reactBuffRowsF", "reactBuffIconSize",
+  "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH",
   "orderHeader", "order_reset", "castBarNonCombatCasts" }, "react tabSize",
   { "order_lbl_", "order_up_", "order_dn_" })
 ok(raSize.reactRangeLabels and raSize.reactRangeLabels.type == "toggle"
@@ -702,8 +708,7 @@ ok(raGrid.kcHeader.order < raGrid.reactKcProcGlow.order
 onlyKeys(raBuff, { "buffHeader", "sharedNote", "reactBuffRows", "reactBuffPositional", "reactBuffFrenzyMode", "customHeader", "customNote",
   "addBuffId", "addBuffBtn" }, "react tabBuff", { "rb_en_", "rbc_" })
 onlyKeys(raSkin, { "skinHeader", "skinNote", "reactBarTexture", "reactFont", "reactFontSize", "reactFontStyle", "reactFontShadow", "reactTextOffsetY", "reactTextOffsetX", "reactCdFontSize", "reactCdWholeSeconds",
-  "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH",
-  "reactColorAutoFill", "reactColorMeleeReady", "reactColorMeleeAuto", "reactColorManaFill", "reactColorManaTick",
+  "reactColorAutoFill", "reactColorMeleeReady", "reactColorMeleeAuto", "reactColorMeleeOff", "reactColorManaFill", "reactColorManaTick",
   "reactColorCastFill", "reactColorAutoShotFill",
   "reactColorRangeDeadzone", "reactColorRangeSweet", "reactColorRangePerfect",
   "reactColorRangeClose", "reactColorRangeResync", "reactRangeDividerWidth", "reactColorRangeDivider",

@@ -826,6 +826,7 @@ Nock.Defaults = {
     reactColorAutoFill      = { 1.00, 0.84, 0.00, 1.00 },  -- gold converge halves
     reactColorMeleeReady    = { 0.15, 0.68, 0.38, 1.00 },  -- Raptor ready (green)
     reactColorMeleeAuto     = { 0.55, 0.75, 1.00, 1.00 },  -- auto-only weave (light blue)
+    reactColorMeleeOff      = { 1.00, 1.00, 1.00, 1.00 },  -- dual wield: the off hand's half of the melee bar (Forever)
     reactColorManaFill      = { 0.20, 0.55, 1.00, 1.00 },
     reactColorManaTick      = { 1.00, 1.00, 1.00, 0.80 },  -- mana tick spark
     reactColorCastFill      = { 0.40, 0.70, 1.00, 1.00 },

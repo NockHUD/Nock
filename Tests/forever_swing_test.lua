@@ -43,8 +43,11 @@ ok(st.ranged.swingStart == 100 and st.ranged.swingDuration == 2.174, "ranged swi
 fire("PLAYER_SWING", 2.6, 0)
 ok(st.melee.swingStart == 100 and st.melee.swingDuration == 2.6, "main-hand swing anchored")
 ok(st.ranged.swingDuration == 2.174, "melee event leaves ranged alone")
+now = 100.4
 fire("PLAYER_SWING", 1.9, 1)
-ok(st.ranged.swingDuration == 2.174 and st.melee.swingDuration == 2.6, "off-hand event ignored")
+ok(st.ranged.swingDuration == 2.174 and st.melee.swingDuration == 2.6 and st.melee.swingStart == 100, "off-hand event leaves the main hand and ranged alone")
+ok(st.melee.offStart == 100.4 and st.melee.offDuration == 1.9, "off-hand swing anchored in its own fields")
+now = 100
 
 fire("START_AUTOREPEAT_SPELL")
 ok(st.ranged.repeating == true, "auto-repeat on")
@@ -134,6 +137,26 @@ now = 201.0; fire("PLAYER_STOPPED_MOVING")
 now = 201.45; fire("PLAYER_SWING", 1.9, 2)
 S = module:Samples()
 ok(S[#S].moving == false and math.abs(S[#S].stillFor - 0.45) < 1e-9, "shot after stopping carries the still time")
+
+-- Dual wield: the client's own answer, read on login and every gear change.
+do
+  local dw = false
+  _G.IsDualWielding = function() return dw end
+  ok(module.events["PLAYER_EQUIPMENT_CHANGED"] ~= nil, "equipment changes registered")
+  fire("PLAYER_ENTERING_WORLD")
+  ok(st.melee.dualWield == false, "one weapon: not dual wielding")
+  dw = true
+  fire("PLAYER_EQUIPMENT_CHANGED", 17, false)
+  ok(st.melee.dualWield == true, "off-hand weapon equipped: dual wielding")
+  _G.IsDualWielding = nil
+  _G.C_PaperDollInfo = { OffhandHasWeapon = function() return true end }
+  fire("PLAYER_EQUIPMENT_CHANGED", 17, false)
+  ok(st.melee.dualWield == true, "falls back to OffhandHasWeapon")
+  _G.C_PaperDollInfo = { OffhandHasWeapon = function() return "secret" end }
+  fire("PLAYER_EQUIPMENT_CHANGED", 17, false)
+  ok(st.melee.dualWield == false, "a non-boolean answer reads as one weapon")
+  _G.C_PaperDollInfo = nil
+end
 
 print(("forever_swing: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

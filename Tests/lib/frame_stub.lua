@@ -22,6 +22,7 @@ function Frame:GetStringWidth() return #(self._text or "") * 6 end
 function Frame:GetStringHeight() return 12 end
 function Frame:SetTexture(t) self._tex = t; Stub.counters.SetTexture = Stub.counters.SetTexture + 1; return self end
 function Frame:SetAlpha(a) self._alpha = a; return self end
+function Frame:SetVertexColor(r, g, b, a) self._color = { r, g, b, a }; return self end
 function Frame:GetAlpha() if self._alpha == nil then return 1 end; return self._alpha end
 function Frame:Show() self._shown = true; return self end
 function Frame:Hide() self._shown = false; return self end

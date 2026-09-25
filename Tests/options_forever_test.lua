@@ -118,11 +118,11 @@ for _, p in ipairs({
   "hud.react.tabSize.reactShowAutoBar", "hud.react.tabSize.reactShowMeleeBar", "hud.react.tabSize.reactShowManaBar",
   "hud.react.tabSize.reactScale", "hud.react.tabSize.reactWidth", "hud.react.tabSize.order_up_1",
   "hud.react.tabSize.reactShowCastBar", "hud.react.tabSize.castBarCard", "hud.react.tabSize.reactShowGrid",
-  "hud.react.tabSkin.reactCastH", "hud.react.tabSkin.reactColorCastFill",
+  "hud.react.tabSize.reactCastH", "hud.react.tabSkin.reactColorCastFill",
   "hud.react.tabSize.reactShowRangeBar", "hud.react.tabSize.reactShowAspectIcon", "hud.react.tabSize.reactShowMarkIcon",
   "hud.react.tabSize.cornersCard", "hud.react.tabSize.reactCornerIconSize", "hud.react.tabSize.reactBuffIconSize", "hud.react.tabSize.reactBuffRowsF", "hud.react.tabSize.buffRowCard", "hud.react.tabSkin.reactColorRangeSweet",
   "hud.react.tabSize.reactManaTick", "hud.react.tabSize.reactManaTickDirCombat",
-  "hud.react.tabSkin.reactAutoH", "hud.react.tabSkin.reactColorAutoFill", "hud.react.tabSkin.reactFont", "hud.react.tabSkin.reactBarTexture",
+  "hud.react.tabSize.reactAutoH", "hud.react.tabSize.barHeightsCard", "hud.react.tabSkin.reactColorAutoFill", "hud.react.tabSkin.reactFont", "hud.react.tabSkin.reactBarTexture",
   "general.scale", "general.lockAll", "general.minimapIcon", "general.grpMedia", "general.grpVisibility", "general.editGridShow",
   "profiles.stock", "profiles.sharing",
 }) do
