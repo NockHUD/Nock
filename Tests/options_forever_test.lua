@@ -62,6 +62,11 @@ do
   ok(key.get() == "", "key: unset reads empty")
   key.set(nil, "SHIFT-Q")
   ok(Nock.db.profile.aspectRingKey == "SHIFT-Q" and sent[#sent] == "NOCK_ASPECT_RING_CONFIG", "key: saved and the ring told")
+  local size = nodeAt(opts, "utilities.aspectRing.aspectRingScale")
+  ok(size and size.type == "range" and size.min == 0.75 and size.max == 2 and size.isPercent and size.get() == 1, "aspect ring: size slider, 100% by default")
+  size.set(nil, 1.25)
+  ok(Nock.db.profile.aspectRingScale == 1.25 and sent[#sent] == "NOCK_ASPECT_RING_CONFIG", "size: saved and the ring told")
+  Nock.db.profile.aspectRingScale = nil
   local names = { "Up", "Up-right", "Down-right", "Down", "Down-left", "Up-left" }
   for i = 1, 6 do
     local d = nodeAt(opts, "utilities.aspectRing.aspectRingDir" .. i)

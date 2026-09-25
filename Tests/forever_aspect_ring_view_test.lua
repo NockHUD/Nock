@@ -112,6 +112,7 @@ Nock.state.player.aspect = { spellId = 13165 }
 st.open, st.cx, st.cy = true, 500, 400
 V:Refresh(Nock.state)
 ok(layer.shown and layer.point[4] == 500 and layer.point[5] == 400, "open: layer shown at the ring centre")
+ok(layer.scale == 1, "open: 100% by default")
 ok(s1.clicks and s1.clicks[1] == "AnyUp" and s1.attrs.useOnKeyDown == false, "first open sets the slots up: mouse-up clicks")
 ok(s1.point[4] == 0 and s1.point[5] == 45 and s4.point[5] == -45, "slot 1 up, slot 4 down at radius 45")
 ok(s1.attrs.type == "macro" and s1.attrs.macrotext == "/cast !Aspect of the Hawk" and s1.mouse == true, "learned slot: casts its aspect on click")
@@ -139,6 +140,15 @@ V:Refresh(Nock.state)
 s4.scripts.PostClick(s4, "LeftButton", false)
 ok(V.sent[#V.sent] == "NOCK_ASPECT_RING_CLOSE", "slot click asks the module to close")
 -- Close.
+st.open, st.hover = false, nil
+V:Refresh(Nock.state)
+-- Ring size: the layer scales and still centres on the cursor.
+Nock.db.profile.aspectRingScale = 1.5
+st.open = true
+V:Refresh(Nock.state)
+ok(layer.scale == 1.5 and math.abs(layer.point[4] - 500 / 1.5) < 1e-9 and math.abs(layer.point[5] - 400 / 1.5) < 1e-9,
+   "150%: layer scaled, anchor divided so the centre stays on the cursor")
+Nock.db.profile.aspectRingScale = nil
 st.open, st.hover = false, nil
 V:Refresh(Nock.state)
 ok(layer.shown == false, "closed: layer hidden")

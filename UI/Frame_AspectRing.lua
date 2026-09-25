@@ -120,8 +120,12 @@ function View:Refresh(state)
     if st.open then
       if not self._setup then self:SetupSlots() end
       if st.knownRev ~= self._knownRev then self:ApplyKnown(st) end
+      -- Ring size: the layer's own scale; its offsets are in scaled units,
+      -- so the cursor spot is divided back to keep the centre on it.
+      local scale = Nock.AspectRingScale(Nock.db and Nock.db.profile)
+      self.layer:SetScale(scale)
       self.layer:ClearAllPoints()
-      self.layer:SetPoint("CENTER", UIParent, "BOTTOMLEFT", st.cx, st.cy)
+      self.layer:SetPoint("CENTER", UIParent, "BOTTOMLEFT", st.cx / scale, st.cy / scale)
       self.layer:Show()
     else
       self.layer:Hide()

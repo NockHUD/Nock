@@ -160,6 +160,13 @@ function F.AspectRingPage()
       desc = "Hawk up, Cheetah down, the rest clockwise: Monkey, Wild, Pack, Beast.",
       func = function() ringProfile().aspectRingOrder = nil; ringChanged() end,
     },
+    aspectRingScale = {
+      type = "range", name = "Ring size", order = 20.5, isPercent = true,
+      desc = "How large the ring draws; the cancel circle in the middle grows with it.",
+      min = 0.75, max = 2, step = 0.05,
+      get = function() return Nock.AspectRingScale(ringProfile()) end,
+      set = function(_, v) ringProfile().aspectRingScale = v; ringChanged() end,
+    },
   }
   for i, dir in ipairs(DIRECTIONS) do
     args["aspectRingDir" .. i] = {

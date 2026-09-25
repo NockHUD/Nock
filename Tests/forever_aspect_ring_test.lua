@@ -141,6 +141,24 @@ ok(b.attrs.type == nil and st.open, "down clears the last cast")
 cursorX, cursorY = 503, 404
 pre(b, "LeftButton", false)
 ok(b.attrs.type == nil and st.open == false, "release in the cancel circle: nothing")
+-- Ring size: the cancel circle grows with the drawn ring.
+ok(Nock.AspectRingScale(nil) == 1 and Nock.AspectRingScale({}) == 1, "size: unset reads 100%")
+ok(Nock.AspectRingScale({ aspectRingScale = 1.5 }) == 1.5, "size: the profile value")
+ok(Nock.AspectRingScale({ aspectRingScale = 9 }) == 2 and Nock.AspectRingScale({ aspectRingScale = 0.1 }) == 0.75
+   and Nock.AspectRingScale({ aspectRingScale = "x" }) == 1, "size: clamped to 75..200%, junk reads 100%")
+Nock.db.profile.aspectRingScale = 2
+cursorX, cursorY = 500, 400
+pre(b, "LeftButton", true)
+cursorX, cursorY = 500, 425
+pre(b, "LeftButton", false)
+ok(b.attrs.type == nil and st.open == false, "at 200% a 25 px flick is still inside the cancel circle")
+cursorX, cursorY = 500, 400
+pre(b, "LeftButton", true)
+cursorX, cursorY = 500, 430
+pre(b, "LeftButton", false)
+ok(b.attrs.type == "macro" and b.attrs.macrotext == "/cast !Aspect of the Hawk", "at 200% a 30 px flick up picks Hawk")
+Nock.db.profile.aspectRingScale = nil
+cursorX, cursorY = 500, 400
 -- Unlearned slot: nothing.
 pre(b, "LeftButton", true)
 cursorX, cursorY = 460, 380   -- down-left: Pack, not learned

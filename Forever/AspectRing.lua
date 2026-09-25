@@ -100,6 +100,14 @@ end
 local DEAD_RADIUS, RING_RADIUS = 14, 45
 function Nock.AspectRingGeometry() return DEAD_RADIUS, RING_RADIUS end
 
+-- Ring size (Utilities -> Aspect ring): 75..200 %, 100 % when unset. The
+-- view scales the whole layer; the cancel circle scales with it here.
+function Nock.AspectRingScale(p)
+  local v = p and tonumber(p.aspectRingScale) or 1
+  if v < 0.75 then v = 0.75 elseif v > 2 then v = 2 end
+  return v
+end
+
 -- The Key Bindings entry is Bindings.xml; its label is in Core/Bindings.lua.
 
 local AspectRing = Nock:NewModule("AspectRing", "AceEvent-3.0")
@@ -256,7 +264,7 @@ end
 function AspectRing:UpdateHover()
   local st = Nock.state.aspectRing
   local x, y = cursor()
-  local i = Nock.AspectRingPick(x - st.cx, y - st.cy, DEAD_RADIUS)
+  local i = Nock.AspectRingPick(x - st.cx, y - st.cy, DEAD_RADIUS * Nock.AspectRingScale(profile()))
   if i and not st.known[i] then i = nil end
   st.hover = i
 end
