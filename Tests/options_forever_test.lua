@@ -99,9 +99,12 @@ ok(nodeAt(opts, "hud.react").name == "Nock HUD", "react page renamed to Nock HUD
 ok(nodeAt(opts, "hud.hudMode") == nil and nodeAt(opts, "hud.react.hudMode") == nil and nodeAt(opts, "hud.react.useLook") == nil, "hud mode switches gone")
 
 -- Tabs without a module or a feed in M1.
-for _, p in ipairs({ "hud.react.tabBuff", "hud.react.tabRange", "hud.react.tabBars.grpEngine" }) do
+for _, p in ipairs({ "hud.react.tabBuff", "hud.react.tabRange", "hud.react.tabBars.grpEngine",
+                     "hud.react.tabGrid.reactConsumablesAlways", "hud.react.tabGrid.reactKcProcGlow",
+                     "hud.react.tabGrid.reactRaptorGoGlow", "hud.react.tabGrid.kcActionBarGlow" }) do
   ok(nodeAt(opts, p) == nil, p .. " gone")
 end
+ok(nodeAt(opts, "hud.react.tabGrid.gridGcdSwipe") and nodeAt(opts, "hud.react.tabGrid.gridIconZoom"), "grid: GCD swipe and icon zoom kept on Forever")
 for _, p in ipairs({ "hud.react.tabBars", "hud.react.tabSize", "hud.react.tabSkin", "hud.react.tabGrid" }) do
   ok(nodeAt(opts, p) ~= nil, p .. " kept")
 end

@@ -751,6 +751,11 @@ Nock.Defaults = {
     reactRaptorGoGlow      = false,     -- Raptor slot: the same overlay glow while the weave coach says GO (move-in cue)
     kcActionBarGlow        = false,     -- glow the real action-bar button(s) holding Kill Command while the proc is up (any HUD mode)
     reactRangeTint         = "off",     -- React grid slots whose spell is out of range: "off" | "red" | "grey"
+    -- Icon zoom for the React / FluffyHUD cooldown grids: % trimmed off each
+    -- icon edge (0..15). 8 cuts Blizzard's border; upscaled icon packs look
+    -- less cramped lower (suggested by Shekza, 2026-09-26).
+    gridIconZoom           = 8,
+    gridGcdSwipe           = false,     -- a light GCD swipe on tiles whose spell is on the GCD (Blizzard's bar look)
     reactTileDim           = false,     -- a tile on cooldown or not usable: desaturated at 60% (the WA's condition 1)
     reactManaTint          = false,     -- a tile whose spell lacks mana: blue + desaturated (the WA's condition 4)
     -- Active-state highlight on the React grid (KC keeps its own

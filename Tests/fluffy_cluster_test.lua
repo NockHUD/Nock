@@ -600,6 +600,8 @@ Nock.state.shotpredict.windows.arcane = { n = 0 }
 -- fluffyCooldownDisabled + Cooldowns:IsEntryAvailable; width split with -1px
 -- seams over fluffyWidth.
 -- ---------------------------------------------------------------------------
+-- the grid's crop (UI/Widgets.lua, tested in pair_icon_coords_test)
+Nock.UI.IconCoords = Nock.UI.IconCoords or function() return 0.08, 0.92, 0.08, 0.92 end
 Nock.UI.CreateIconSlot = function(parent, name)
   local s = Stub.CreateFrame("Frame", name, parent)
   s.icon      = Stub.CreateFrame("Texture", nil, s)

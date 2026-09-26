@@ -663,7 +663,7 @@ onlyKeys(raBars, { "autoHeader", "reactAutoLegend", "reactShowNotation", "reactS
   "grpEngine" }, "react tabBars")
 onlyKeys(raRange, { "rangeHeader", "rangeFinderFindingStyle" }, "react tabRange")
 onlyKeys(raGrid, { "gridHeader", "gridNote", "reactConsumablesAlways", "rcustHeader",
-  "kcHeader", "reactKcProcGlow", "reactRaptorGoGlow", "kcActionBarGlow", "reactRangeTint", "reactTileDim", "reactManaTint",
+  "kcHeader", "reactKcProcGlow", "reactRaptorGoGlow", "kcActionBarGlow", "reactRangeTint", "reactTileDim", "reactManaTint", "gridIconZoom", "gridGcdSwipe",
   "activeHeader", "reactActiveStyle", "reactActiveColor", "reactActiveSize", "reactActiveFit", "activePreview",
   "addHeader", "addType", "addId", "addProc", "addLabel", "addBtn" },
   "react tabGrid", { "rcd_", "rcust_" })
@@ -773,7 +773,7 @@ if fEng then pcall(fEng.args.rotRaptorWeaveHeadroom.set, nil, 1.35) end
 ok(r.grpEngine.args.rotRaptorWeaveHeadroom.get() == 1.35,
    "weave engine set through Fluffy reads back through Classic")
 onlyKeys(faGrid, { "gridHeader", "gridNote", "fluffyShowGrid",
-  "lookHeader", "lookNote", "reactKcProcGlow", "reactRaptorGoGlow", "reactRangeTint", "reactTileDim", "reactManaTint",
+  "lookHeader", "lookNote", "reactKcProcGlow", "reactRaptorGoGlow", "reactRangeTint", "reactTileDim", "reactManaTint", "gridIconZoom", "gridGcdSwipe",
   "activeHeader", "fluffyActiveStyle", "fluffyActiveColor", "fluffyActiveSize", "fluffyActiveFit", "activePreview",
   "fcustHeader", "addHeader", "addType", "addId", "addProc", "addLabel", "addBtn" },
   "fluffy tabGrid", { "fcd_", "fcust_" })

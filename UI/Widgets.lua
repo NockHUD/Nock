@@ -1010,12 +1010,84 @@ end
 -- e.g. Multi+Aimed on Forever): the middle of the icon at the half's own
 -- aspect, the same 0.42 base crop the single tiles use. Pure; both halves
 -- get the same rectangle. LuaJIT-tested in Tests/pair_icon_coords_test.lua.
-function Nock.UI.PairIconCoords(tileW, tileH)
+-- Icon zoom (gridIconZoom, suggested by Shekza, 2026-09-26): the percentage trimmed off each edge of a grid
+-- icon. 8 cuts Blizzard's border (the historic crop); less shows more of the
+-- icon, which upscaled icon packs want. Clamped 0..15. Pure.
+Nock.UI.ICON_ZOOM_DEFAULT = 8
+function Nock.UI.IconSpan(zoomPct)
+  local z = tonumber(zoomPct) or Nock.UI.ICON_ZOOM_DEFAULT
+  if z < 0 then z = 0 elseif z > 15 then z = 15 end
+  return 0.5 - z / 100
+end
+
+-- A grid tile's crop: the icon's middle at the tile's aspect, trimmed by the
+-- zoom. Returns left, right, top, bottom texcoords. Pure.
+function Nock.UI.IconCoords(tileW, tileH, zoomPct)
+  local s = Nock.UI.IconSpan(zoomPct)
+  local w, h = tileW or 0, tileH or 0
+  local xSpan, ySpan = s, s
+  if w > 0 and h > 0 then
+    if w >= h then ySpan = s * (h / w) else xSpan = s * (w / h) end
+  end
+  return 0.5 - xSpan, 0.5 + xSpan, 0.5 - ySpan, 0.5 + ySpan
+end
+
+-- GCD swipe on grid tiles (gridGcdSwipe, suggested by Shekza, 2026-09-26): the way
+-- Blizzard's bars show it, from each tile's OWN spell cooldown, which during
+-- the GCD is the GCD for a spell on it and nothing for one off it (Kill
+-- Command, racials); items never. A second, lighter swipe under the tile's
+-- own: cleared while the tile has a cooldown of its own.
+Nock.UI.GCD_SWIPE_MAX = 1.6   -- a reading longer than this is the spell's own cooldown
+
+-- TBC: is this (start, duration) reading the GCD? Pure.
+function Nock.UI.IsGcdReading(start, duration)
+  return type(start) == "number" and type(duration) == "number" and start > 0
+    and duration > 0 and duration <= Nock.UI.GCD_SWIPE_MAX
+end
+
+function Nock.UI.EnsureGcdSwipe(slot)
+  if slot.gcdCd or not slot.cooldown then return slot.gcdCd end
+  local g = CreateFrame("Cooldown", nil, slot, "CooldownFrameTemplate")
+  g:SetAllPoints(slot.icon)
+  g:SetFrameLevel(slot.cooldown:GetFrameLevel())
+  if g.SetHideCountdownNumbers then g:SetHideCountdownNumbers(true) end
+  if g.SetDrawEdge  then g:SetDrawEdge(false) end
+  if g.SetDrawBling then g:SetDrawBling(false) end
+  if g.SetSwipeColor then g:SetSwipeColor(0, 0, 0, 0.55) end
+  g.noCooldownCount = true   -- OmniCC & co: no numbers on a GCD
+  slot.gcdCd = g
+  return g
+end
+
+-- Start (or clear) a tile's GCD swipe. `spellId` nil (an item, unresolved)
+-- or `own` (the tile is on its own cooldown) clears it. Forever reads the
+-- client's duration object (secret in combat; the widget takes it as is).
+function Nock.UI.FeedGcdSwipe(slot, spellId, own)
+  local g = slot.gcdCd
+  if not g then return end
+  if not spellId or own then g:Clear(); return end
+  local API = Nock.API
+  if Nock.Flavor and Nock.Flavor.forever then
+    local obj = API and API.SpellCooldownDuration and API.SpellCooldownDuration(spellId)
+    if obj and g.SetCooldownFromDurationObject then
+      g:SetCooldownFromDurationObject(obj, true)
+    else
+      g:Clear()
+    end
+    return
+  end
+  local s, d
+  if API and API.SpellCooldown then s, d = API.SpellCooldown(spellId) end
+  if Nock.UI.IsGcdReading(s, d) then g:SetCooldown(s, d) else g:Clear() end
+end
+
+function Nock.UI.PairIconCoords(tileW, tileH, zoomPct)
   local half = (tileW or 0) / 2
   local h = tileH or 0
-  local xSpan, ySpan = 0.42, 0.42
+  local base = Nock.UI.IconSpan(zoomPct)
+  local xSpan, ySpan = base, base
   if half > 0 and h > 0 then
-    if half >= h then ySpan = 0.42 * (h / half) else xSpan = 0.42 * (half / h) end
+    if half >= h then ySpan = base * (h / half) else xSpan = base * (half / h) end
   end
   local c = { 0.5 - xSpan, 0.5 + xSpan, 0.5 - ySpan, 0.5 + ySpan }
   return c, { c[1], c[2], c[3], c[4] }

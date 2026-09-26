@@ -63,6 +63,7 @@ function FluffyCooldownsView:OnInitialize()
   container:Hide()  -- HUD:ApplyRowVisibility shows it in fluffy mode + fluffyShowGrid
 
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "Rebuild")
+  self:RegisterEvent("SPELL_UPDATE_COOLDOWN", "OnSpellCooldown")
   self:RegisterEvent("PLAYER_LOGIN",          "ApplyExternalCdAddon")
   self:RegisterEvent("PLAYER_ENTERING_WORLD", "ApplyExternalCdAddon")
 end
@@ -122,6 +123,7 @@ end
 -- (Re)place the pooled slots. Surplus slots are hidden, never freed. The
 -- weld's two points own the width; only the height is ours to set.
 function FluffyCooldownsView:Rebuild()
+  self._gcdDirty = true   -- re-seat the GCD swipes on the fresh layout
   local rows, w, totalH = self:RowsGeometry()
   local p = profile()
   self.frame:SetHeight(totalH)
@@ -150,9 +152,9 @@ function FluffyCooldownsView:Rebuild()
       slot:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
                     x0 + (col - 1) * (row.w + GAP), -row.y)
       -- Wider-than-tall tiles crop the texture vertically instead of
-      -- stretching it — the "zoomed" icon look, same math as the React grid.
-      local ySpan = 0.42 * math.min(1, row.h / row.w)
-      slot.icon:SetTexCoord(0.08, 0.92, 0.5 - ySpan, 0.5 + ySpan)
+      -- stretching it — the "zoomed" icon look, same math as the React grid
+      -- (edge trim = the user's icon zoom, gridIconZoom).
+      slot.icon:SetTexCoord(Nock.UI.IconCoords(row.w, row.h, p.gridIconZoom))
       slot._entry          = entry
       -- Per-HUD active-highlight geometry (thickness + contained/overflow);
       -- style + color are the Refresh look's job.
@@ -289,6 +291,24 @@ function FluffyCooldownsView:Refresh(state)
           slot._lastCount = countTxt
         end
       end
+    end
+  end
+  if self._gcdDirty then self:FeedGcd(state, p) end
+end
+
+-- GCD swipe (gridGcdSwipe): re-fed on SPELL_UPDATE_COOLDOWN and on a
+-- rebuild, never per tick. Off: any swipe left over is cleared.
+function FluffyCooldownsView:OnSpellCooldown() self._gcdDirty = true end
+
+function FluffyCooldownsView:FeedGcd(state, p)
+  self._gcdDirty = false
+  local on = p.gridGcdSwipe == true
+  for _, slot in ipairs(self._pool) do
+    local entry = slot._entry
+    if entry and (on or slot.gcdCd) then
+      if on then Nock.UI.EnsureGcdSwipe(slot) end
+      local cd = state.cooldowns[entry.key]
+      Nock.UI.FeedGcdSwipe(slot, on and cd and cd.spellId or nil, (slot._lastCdStart or 0) ~= 0)
     end
   end
 end

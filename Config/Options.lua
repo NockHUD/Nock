@@ -7002,6 +7002,20 @@ local function buildOptionsTable()
       get = get,
       set = function(_, v) visualsSet(_, "reactTileDim", v) end,
     }
+    gridArgs.gridGcdSwipe = {
+      type = "toggle", name = "GCD swipe",
+      desc = "A light swipe on every tile whose spell is on the global cooldown, the way Blizzard's action bars show it. Spells off the GCD (Kill Command, racials) and items never swipe. Shared by the React and FluffyHUD grids.",
+      order = 69.55, width = "full", disabled = notReact,
+      get = function() return Nock.db.profile.gridGcdSwipe == true end,
+      set = function(_, v) visualsSet(_, "gridGcdSwipe", v and true or false) end,
+    }
+    gridArgs.gridIconZoom = {
+      type = "range", name = "Icon zoom",
+      desc = "How much of each icon's edge is trimmed, in percent. 8 cuts off Blizzard's icon border; lower shows more of the icon, which suits upscaled icon packs that are already cropped close. Shared with the FluffyHUD grid.",
+      min = 0, max = 15, step = 1, order = 69.6, width = "full", disabled = notReact,
+      get = function() return Nock.db.profile.gridIconZoom or 8 end,
+      set = function(_, v) visualsSet(_, "gridIconZoom", v) end,
+    }
     gridArgs.reactManaTint = {
       type = "toggle",
       name = "No mana: blue",
@@ -7887,6 +7901,21 @@ local function buildOptionsTable()
       disabled = notFluffy,
       get = function() return Nock.db.profile.reactTileDim == true end,
       set = function(_, v) visualsSet(_, "reactTileDim", v) end,
+    }
+    fGridArgs.gridGcdSwipe = {
+      type = "toggle", name = "GCD swipe", order = 24.4, width = "full",
+      desc = "A light swipe on every tile whose spell is on the global cooldown, the way Blizzard's action bars show it. Spells off the GCD (Kill Command, racials) and items never swipe. Shared by the React and FluffyHUD grids.",
+      disabled = notFluffy,
+      get = function() return Nock.db.profile.gridGcdSwipe == true end,
+      set = function(_, v) visualsSet(_, "gridGcdSwipe", v and true or false) end,
+    }
+    fGridArgs.gridIconZoom = {
+      type = "range", name = "Icon zoom", order = 24.5, width = "full",
+      desc = "How much of each icon's edge is trimmed, in percent. 8 cuts off Blizzard's icon border; lower shows more of the icon, which suits upscaled icon packs that are already cropped close. Shared with the React grid.",
+      min = 0, max = 15, step = 1,
+      disabled = notFluffy,
+      get = function() return Nock.db.profile.gridIconZoom or 8 end,
+      set = function(_, v) visualsSet(_, "gridIconZoom", v) end,
     }
     fGridArgs.reactManaTint = {
       type = "toggle", name = "No-mana tint", order = 24, width = "full",

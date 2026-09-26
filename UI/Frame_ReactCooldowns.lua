@@ -67,6 +67,7 @@ function ReactCooldownsView:OnInitialize()
   container:Hide()  -- HUD:ApplyRowVisibility shows it in React mode
 
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "Rebuild")
+  self:RegisterEvent("SPELL_UPDATE_COOLDOWN", "OnSpellCooldown")
   self:RegisterEvent("PLAYER_LOGIN",          "ApplyExternalCdAddon")
   self:RegisterEvent("PLAYER_ENTERING_WORLD", "ApplyExternalCdAddon")
 end
@@ -138,6 +139,7 @@ end
 -- (Re)place the pooled slots row by row, centered. Pool indices are sequential
 -- across rows; surplus slots are hidden, never freed.
 function ReactCooldownsView:Rebuild()
+  self._gcdDirty = true   -- re-seat the GCD swipes on the fresh layout
   local rows, w, totalH = self:RowsGeometry()
   local p = profile()
   local gap = GAP
@@ -173,10 +175,9 @@ function ReactCooldownsView:Rebuild()
       slot:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
                     round(x0 + (col - 1) * (row.w + gap), dev), -round(row.y, dev))
       -- Wider-than-tall tiles crop the texture vertically instead of
-      -- stretching it — the reference's "zoomed" icon look. Base crop is the
-      -- standard 0.08–0.92; the y-span shrinks by the aspect ratio.
-      local ySpan = 0.42 * math.min(1, row.h / row.w)
-      slot.icon:SetTexCoord(0.08, 0.92, 0.5 - ySpan, 0.5 + ySpan)
+      -- stretching it — the reference's "zoomed" icon look. The edge trim is
+      -- the user's icon zoom (gridIconZoom, 8 % = the standard 0.08–0.92).
+      slot.icon:SetTexCoord(Nock.UI.IconCoords(row.w, row.h, p.gridIconZoom))
       slot._entry          = entry
       -- Per-HUD active-highlight geometry (thickness + contained/overflow);
       -- style + color are the Refresh look's job.
@@ -206,7 +207,7 @@ function ReactCooldownsView:Rebuild()
           if slot.seam.SetSnapToPixelGrid then slot.seam:SetSnapToPixelGrid(false) end
           if slot.seam.SetTexelSnappingBias then slot.seam:SetTexelSnappingBias(0) end
         end
-        local cl, cr = Nock.UI.PairIconCoords(row.w, row.h)
+        local cl, cr = Nock.UI.PairIconCoords(row.w, row.h, p.gridIconZoom)
         slot.iconL:SetTexCoord(cl[1], cl[2], cl[3], cl[4])
         slot.iconR:SetTexCoord(cr[1], cr[2], cr[3], cr[4])
         -- Strip geometry in UI units for a 1:1 device-pixel draw: 12 px wide,
@@ -416,6 +417,24 @@ function ReactCooldownsView:Refresh(state)
           slot._lastCount = countTxt
         end
       end
+    end
+  end
+  if self._gcdDirty then self:FeedGcd(state, p) end
+end
+
+-- GCD swipe (gridGcdSwipe): re-fed on SPELL_UPDATE_COOLDOWN and on a
+-- rebuild, never per tick. Off: any swipe left over is cleared.
+function ReactCooldownsView:OnSpellCooldown() self._gcdDirty = true end
+
+function ReactCooldownsView:FeedGcd(state, p)
+  self._gcdDirty = false
+  local on = p.gridGcdSwipe == true
+  for _, slot in ipairs(self._pool) do
+    local entry = slot._entry
+    if entry and (on or slot.gcdCd) then
+      if on then Nock.UI.EnsureGcdSwipe(slot) end
+      local cd = state.cooldowns[entry.key]
+      Nock.UI.FeedGcdSwipe(slot, on and cd and cd.spellId or nil, (slot._lastCdStart or 0) ~= 0)
     end
   end
 end
