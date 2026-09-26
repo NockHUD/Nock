@@ -43,14 +43,16 @@ Nock.Spells = Spells
 -- `shared` names a shared-cooldown group (Aimed/Multi, 6 s on Forever).
 -- A `pair` entry is ONE tile for two spells that share a cooldown (Multi on
 -- the left half, Aimed on the right): `ids` in that draw order, the second
--- id is the one the range tint follows.
+-- id is the one the range tint follows. A `texture` gives the tile its own
+-- art instead: one icon, no halves, no seam.
 -- `cd` is the seed cooldown in seconds so the first fight of a session has a
 -- countdown before the client has been read once; the live reading replaces
 -- it and is remembered per character (Forever/Cooldowns.lua).
 Spells.TRACKED = {
   { key = "Raptor",   id = 2973,  label = "Raptor", cd = 6, melee = true },                    -- Raptor Strike (range = the melee probe)
   { key = "Arc",      id = 3044,  label = "Arc",    cd = 6 },                                  -- Arcane Shot
-  { key = "AimMulti", ids = { 2643, 19434 }, label = "Multi + Aimed", shared = "aimedMulti", cd = 6 }, -- one shared cooldown
+  { key = "AimMulti", ids = { 2643, 19434 }, label = "Multi + Aimed", shared = "aimedMulti", cd = 6, -- one shared cooldown
+    texture = "Interface\\AddOns\\Nock\\Media\\MultiAimed" },             -- its own art (Media/MultiAimed.tga), not a split tile
   { key = "Conc",     id = 5116,  label = "Conc",   cd = 12 },                                 -- Concussive Shot
   { key = "RF",       id = 3045,  label = "RF",     cd = 300 },                                -- Rapid Fire
   { key = "FD",       id = 5384,  label = "FD",     cd = 30 },                                 -- Feign Death
@@ -112,7 +114,7 @@ if Nock.Flavor and Nock.Flavor.forever then
   local tracked = {}
   for i, e in ipairs(Spells.TRACKED) do
     tracked[i] = { key = e.key, type = "spell", id = e.id, ids = e.ids, label = e.label, shared = e.shared, cd = e.cd, name = e.name, racial = e.racial,
-                   buff = e.buff, untilBroken = e.untilBroken, melee = e.melee }
+                   buff = e.buff, untilBroken = e.untilBroken, melee = e.melee, texture = e.texture }
   end
   C.TRACKED_COOLDOWNS = tracked
   C.REACT_CD_ROWS = Spells.ROWS

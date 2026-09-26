@@ -160,8 +160,8 @@ function Cooldowns:RebuildLists()
       s.spellId = ids[#ids]
       s.rangeIds = e.ids
       s.melee = e.melee or nil   -- the out-of-range tint follows the melee probe (Forever/RangeFinder.lua)
-      s.icon = Nock.API.SpellIcon(ids[1])
-      s.icon2 = e.ids and Nock.API.SpellIcon(ids[2]) or nil
+      s.icon = e.texture or Nock.API.SpellIcon(ids[1])
+      s.icon2 = (e.ids and not e.texture) and Nock.API.SpellIcon(ids[2]) or nil
       seedLearned(self.ledger, e)
       if e.shared or e.ids then
         local g = e.shared or e.key

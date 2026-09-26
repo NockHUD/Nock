@@ -189,7 +189,7 @@ function ReactCooldownsView:Rebuild()
       -- Pair tile (two spells on one cooldown, Forever's Multi+Aimed): two
       -- half icons drawn over the base icon, each cropped to its middle.
       -- Anchored to the icon REGION so the border insets carry over.
-      if entry.ids then
+      if entry.ids and not entry.texture then
         if not slot.iconL then
           slot.iconL = slot:CreateTexture(nil, "ARTWORK", nil, 1)
           slot.iconL:SetPoint("TOPLEFT", slot.icon, "TOPLEFT", 0, 0)
@@ -336,7 +336,7 @@ function ReactCooldownsView:Refresh(state)
           slot.icon:SetTexture(dispIcon)
           slot._lastIcon = dispIcon
         end
-        local pair = entry.ids and slot.iconL
+        local pair = entry.ids and not entry.texture and slot.iconL
         if pair then
           if dispIcon ~= slot._lastIconL then slot.iconL:SetTexture(dispIcon); slot._lastIconL = dispIcon end
           if cd.icon2 ~= slot._lastIcon2 then slot.iconR:SetTexture(cd.icon2); slot._lastIcon2 = cd.icon2 end

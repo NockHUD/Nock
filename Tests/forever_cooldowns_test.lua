@@ -57,7 +57,9 @@ ok(st.cooldowns.Raptor.icon == 100000 + 2973, "icon resolved through Nock.API")
 local pair = CD:GetEntry("AimMulti")
 ok(pair and pair.ids and pair.ids[1] == 2643 and pair.ids[2] == 19434, "Multi+Aimed is one pair entry")
 ok(st.cooldowns.AimMulti.spellId == 19434, "pair tile's range tint follows Aimed")
-ok(st.cooldowns.AimMulti.icon == 100000 + 2643 and st.cooldowns.AimMulti.icon2 == 100000 + 19434, "pair tile carries both icons")
+ok(st.cooldowns.AimMulti.icon == "Interface\\AddOns\\Nock\\Media\\MultiAimed" and st.cooldowns.AimMulti.icon2 == nil,
+   "the Multi + Aimed tile draws its own art (Media/MultiAimed.tga), one icon, no second half")
+ok(pair.texture ~= nil, "the tile entry carries its texture to the grid (no split halves, no seam)")
 ok(CD:GetEntry("Elune") and CD:GetEntry("Elune").id == 1259799 and CD:GetEntry("Meld").id == 20580, "racials with a known id tracked")
 ok(CD:GetEntry("Fury") == nil, "a name-only racial is not tracked until the spellbook names it")
 
