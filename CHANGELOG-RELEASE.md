@@ -1,12 +1,13 @@
-## 2.0.4
+## 2.0.5
 
 ### WoW Forever (beta)
 
-- **Buff row: pin and hide (idea by Redtuzk — thanks!)**: the buff row has its own page, Nock HUD → Buff Row. **Buffs up now** lists the buffs on you (out of combat) with a Pin and a Hide button each, so you never have to look up an ID. **Pinned buffs** always show after the short ones, however long they last and whoever cast them (a flask, your aspect, a totem); **Hidden buffs** never show. Both lists also take a name or a spell ID. The row still shows every buff of yours lasting 60 seconds or less by itself.
-- **Multi-Shot + Aimed Shot tile**: the shared-cooldown tile has its own artwork instead of two half icons.
-- **Cooldown Grid**: four TBC-only settings (always show consumables, both Kill Command glows, the Raptor GO IN glow) no longer show on Forever, where they did nothing.
+- **Aspect ring in combat**: Blizzard fixed secure frames, so the aspect ring now works in combat too. Hold the key, flick toward an aspect and let go to cast it. Letting go in the middle casts nothing, in or out of combat (the old in-combat tap for Aspect of the Hawk is gone).
+- **No pet warning and Lone Wolf (thanks Shekza!)**: with Lone Wolf talented, fighting without a pet is the build, so the NO PET square stays off.
+- **Cooldown Grid knows what you can use (thanks Shekza!)**: Mongoose Bite and Counterattack go grey while they wait for a dodge or a parry, instead of looking ready. **Dim while unavailable** and **No mana: blue** now work on Forever too.
+- **Hide Blizzard's cast bar**: Nock HUD → Size & Elements → Cast bar can hide the default player cast bar so only Nock's shows. It stays hidden even when Edit Mode would bring it back.
 
-### Both
+### TBC Classic Anniversary
 
-- **Icon zoom (idea by Shekza — thanks!)**: Cooldown Grid → Icons sets how much of each icon's edge is trimmed, from 0 to 15 %. The default 8 % is the old look; lower shows more of the icon, which suits upscaled icon packs that are already cropped close.
-- **GCD swipe (idea by Shekza)**: Cooldown Grid → Grid can show a light swipe on every tile whose spell is on the global cooldown, the way Blizzard's action bars do. Spells off the GCD and items never swipe. Off by default.
+- **Reactive spells**: Mongoose Bite and Counterattack also go grey on the grid while they can't be used, whatever Dim while unavailable says.
+- **Hide Blizzard's cast bar** is now also on the React HUD's Size & Elements page (the same setting as General → Cast bar).
