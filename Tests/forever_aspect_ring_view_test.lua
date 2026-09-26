@@ -111,9 +111,11 @@ Nock.state.player.aspect = { spellId = 13165 }
 -- Open.
 st.open, st.cx, st.cy = true, 500, 400
 V:Refresh(Nock.state)
-ok(layer.shown and layer.point[4] == 500 and layer.point[5] == 400, "open: layer shown at the ring centre")
-ok(layer.scale == 1, "open: 100% by default")
-ok(s1.clicks and s1.clicks[1] == "AnyUp" and s1.attrs.useOnKeyDown == false, "first open sets the slots up: mouse-up clicks")
+-- The key's secure snippet shows, moves and hides the (protected) layer, in
+-- combat too (Forever/AspectRing.lua); the view never does.
+ok(layer.point == nil and layer.shown == false, "the view does not show or move the layer (the snippet does)")
+ok(layer.scale == 1, "100% by default")
+ok(s1.clicks and s1.clicks[1] == "AnyUp" and s1.attrs.useOnKeyDown == false, "the first out-of-combat refresh sets the slots up: mouse-up clicks")
 ok(s1.point[4] == 0 and s1.point[5] == 45 and s4.point[5] == -45, "slot 1 up, slot 4 down at radius 45")
 ok(s1.attrs.type == "macro" and s1.attrs.macrotext == "/cast !Aspect of the Hawk" and s1.mouse == true, "learned slot: casts its aspect on click")
 ok(frames.NockAspectRingSlot2.attrs.type == nil and frames.NockAspectRingSlot2.mouse == false, "unlearned slot: no cast, no mouse")
@@ -146,12 +148,11 @@ V:Refresh(Nock.state)
 Nock.db.profile.aspectRingScale = 1.5
 st.open = true
 V:Refresh(Nock.state)
-ok(layer.scale == 1.5 and math.abs(layer.point[4] - 500 / 1.5) < 1e-9 and math.abs(layer.point[5] - 400 / 1.5) < 1e-9,
-   "150%: layer scaled, anchor divided so the centre stays on the cursor")
+ok(layer.scale == 1.5, "150%: layer scaled out of combat (the snippet divides its cursor spot by the same)")
 Nock.db.profile.aspectRingScale = nil
 st.open, st.hover = false, nil
 V:Refresh(Nock.state)
-ok(layer.shown == false, "closed: layer hidden")
+ok(layer.point == nil, "closed: still never moved by the view")
 -- Spellbook change while closed: attributes re-applied on the next open.
 st.known[3] = "Aspect of the Wild"; st.knownRev = 2
 st.open = true
@@ -164,12 +165,17 @@ V:Refresh(Nock.state)
 ok(painted[s1.tile].icon == 1000 + 5118 and s1.attrs.macrotext == "/cast !Aspect of the Cheetah", "slot 1 shows and casts Cheetah")
 ok(s4.tile.inset ~= nil and s1.tile.inset == nil, "the active glow follows Hawk to its new slot")
 
--- Combat starts with the ring open: hidden before the lockdown, never touched after.
-V:PLAYER_REGEN_DISABLED()
-ok(layer.shown == false, "combat start hides the ring")
+-- The ring open in combat: the view still paints, but touches nothing secure.
 combat = true
+st.open, st.hover = true, 2
 st.known[5] = "Aspect of the Pack"; st.knownRev = 3
+Nock.db.profile.aspectRingScale = 1.25
 V:Refresh(Nock.state)   -- the mock errors on any secure call in combat
-ok(frames.NockAspectRingSlot5.attrs.type == nil, "in combat: no attribute touched")
+ok(frames.NockAspectRingSlot5.attrs.type == nil and layer.scale == 1, "in combat: no attribute, no scale touched")
+ok(V.name.text == "Monkey" and V.wedge.shown, "in combat: the pick still paints")
+combat = false
+V:Refresh(Nock.state)
+ok(frames.NockAspectRingSlot5.attrs.macrotext == "/cast !Aspect of the Pack" and layer.scale == 1.25, "after combat: the pending setup lands")
+Nock.db.profile.aspectRingScale = nil
 print(("forever_aspect_ring_view: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

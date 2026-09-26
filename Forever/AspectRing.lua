@@ -1,5 +1,5 @@
 -- Forever/AspectRing.lua
--- The aspect ring: a held key opens the hunter's aspects at the cursor out of combat, casts Hawk in combat.
+-- The aspect ring: a held key opens the hunter's aspects at the cursor; a flick and release casts one, in or out of combat.
 
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 
@@ -16,6 +16,75 @@ function Nock.AspectRingPick(dx, dy, deadRadius, n)
   if a < 0 then a = a + TWO_PI end
   local w = TWO_PI / n
   return (math.floor((a + w / 2) / w) % n) + 1
+end
+
+-- Pure. The same pick the secure snippet makes: the slot whose direction is
+-- nearest the flick (largest dot product with its unit vector), which is
+-- exactly AspectRingPick's wedges; no atan2, which the restricted
+-- environment may not offer. Tested against AspectRingPick.
+function Nock.AspectRingDirs(n)
+  n = n or 6
+  local out = {}
+  for i = 1, n do
+    local a = (i - 1) * TWO_PI / n
+    out[i] = { math.sin(a), math.cos(a) }
+  end
+  return out
+end
+
+function Nock.AspectRingPickDot(dx, dy, deadRadius, n)
+  if type(dx) ~= "number" or type(dy) ~= "number" then return nil end
+  if dx * dx + dy * dy < deadRadius * deadRadius then return nil end
+  local best, bi
+  for i, d in ipairs(Nock.AspectRingDirs(n)) do
+    local v = dx * d[1] + dy * d[2]
+    if not best or v >= best then best, bi = v, i end   -- a tie (a wedge edge) goes clockwise, as in AspectRingPick
+  end
+  return bi
+end
+
+-- The key button's wrapped OnClick (secure, so it runs in combat too; snippets
+-- work on Forever since the client fix, probed 2026-09-26). `control` is the
+-- full-screen header, so GetMousePosition is the cursor's screen fraction.
+-- Down: remember the cursor, show the drawn ring there (a protected frame,
+-- so only a snippet may move it in combat), arm nothing. Up: hide it; a flick
+-- past the cancel circle casts that slot's aspect on this release, otherwise
+-- nothing. The attributes (aspect1..6, dead, scale, sw, sh) and the `layer`
+-- frame ref are written out of combat.
+function Nock.AspectRingSnippet(n)
+  local lines = {
+    "local x, y = control:GetMousePosition()",
+    "local layer = self:GetFrameRef('layer')",
+    "self:SetAttribute('type', nil)",
+    "self:SetAttribute('useOnKeyDown', false)",
+    "if down then",
+    "  self:SetAttribute('ringX', x); self:SetAttribute('ringY', y)",
+    "  if layer and x then",
+    "    local sc = self:GetAttribute('scale') or 1",
+    "    layer:ClearAllPoints()",
+    "    layer:SetPoint('CENTER', control, 'BOTTOMLEFT', x * (self:GetAttribute('sw') or 0) / sc, y * (self:GetAttribute('sh') or 0) / sc)",
+    "    layer:Show()",
+    "  end",
+    "  return false",
+    "end",
+    "if layer then layer:Hide() end",
+    "local cx, cy = self:GetAttribute('ringX'), self:GetAttribute('ringY')",
+    "self:SetAttribute('ringX', nil); self:SetAttribute('ringY', nil)",
+    "if not (x and cx) then return false end",
+    "local dx = (x - cx) * (self:GetAttribute('sw') or 0)",
+    "local dy = (y - cy) * (self:GetAttribute('sh') or 0)",
+    "local dead = self:GetAttribute('dead') or 14",
+    "if dx * dx + dy * dy < dead * dead then return false end",
+    "local best, bi",
+  }
+  for i, d in ipairs(Nock.AspectRingDirs(n)) do
+    lines[#lines + 1] = ("do local v = dx * %.7f + dy * %.7f if not best or v >= best then best, bi = v, %d end end"):format(d[1], d[2], i)
+  end
+  lines[#lines + 1] = "local name = bi and self:GetAttribute('aspect' .. bi)"
+  lines[#lines + 1] = "if not name then return false end"
+  lines[#lines + 1] = "self:SetAttribute('type', 'macro')"
+  lines[#lines + 1] = "self:SetAttribute('macrotext', '/cast !' .. name)"
+  return table.concat(lines, "\n")
 end
 
 -- Pure. Slot i's centre relative to the ring centre (y up).
@@ -123,27 +192,29 @@ end
 
 function AspectRing:OnEnable()
   ID_BY_KEY = Nock.AspectRingIdByKey()
-  -- A plain secure button the binding clicks (no snippets: they are dead on
-  -- this beta). Both edges arrive; PreClick (insecure) decides out of combat.
-  -- RegisterForClicks waits for the first arming: under a combat /reload the
-  -- lockdown forbids it, and the key does nothing until combat ends anyway.
+  -- The key's secure button. Picking is a wrapped OnClick snippet (secure:
+  -- works in combat); PreClick (insecure) only opens and closes the drawn
+  -- ring, which the client allows in combat. Everything secure is built and
+  -- written out of combat: under a combat /reload it waits for the end.
   local b = CreateFrame("Button", "NockAspectRingButton", UIParent, "SecureActionButtonTemplate")
   b:SetScript("PreClick", function(_, _, down) self:OnKey(down) end)
   self.button = b
-  self:RegisterEvent("PLAYER_REGEN_DISABLED")
   self:RegisterEvent("PLAYER_REGEN_ENABLED")
   self:RegisterEvent("SPELLS_CHANGED", "UpdateKnown")
+  pcall(self.RegisterEvent, self, "UI_SCALE_CHANGED", "PushSecure")
+  pcall(self.RegisterEvent, self, "DISPLAY_SIZE_CHANGED", "PushSecure")
   self:RegisterMessage("NOCK_ASPECT_RING_CLOSE", "Close")
-  -- The settings page (the key, the dial) and a profile switch.
+  -- The settings page (the key, the dial, the size) and a profile switch.
   self:RegisterMessage("NOCK_ASPECT_RING_CONFIG", "OnConfig")
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "OnConfig")
   self:UpdateKnown()
-  if not InCombatLockdown() then self:ArmRing() end
+  if not InCombatLockdown() then self:Arm() end
   self:ApplyBinding()
 end
 
 function AspectRing:OnConfig()
   self:UpdateKnown()
+  self:PushSecure()
   self:ApplyBinding()
 end
 
@@ -166,79 +237,53 @@ function AspectRing:ApplyBinding()
   end
 end
 
--- Ring mode: nothing armed, and the release edge is the one that casts
--- (PreClick sets the aspect on that same edge).
--- Both edges must reach the button; set once, out of combat (see OnEnable).
-local function takeClicks(b)
-  if b._nockClicks then return end
-  b:RegisterForClicks("AnyDown", "AnyUp")
-  b._nockClicks = true
-end
-
-function AspectRing:ArmRing()
+-- Once, out of combat: both edges to the button, the full-screen header the
+-- snippet reads the cursor through, the wrapped OnClick. A secure header
+-- built under lockdown comes out unprotected (probed 2026-09-26), hence the
+-- wait for PLAYER_REGEN_ENABLED after a combat /reload.
+function AspectRing:Arm()
+  if self._armed or InCombatLockdown() then return end
   local b = self.button
-  takeClicks(b)
+  b:RegisterForClicks("AnyDown", "AnyUp")
   b:SetAttribute("useOnKeyDown", false)
   b:SetAttribute("type", nil)
   b:SetAttribute("macrotext", nil)
+  local h = CreateFrame("Frame", "NockAspectRingScreen", UIParent, "SecureHandlerBaseTemplate")
+  h:SetAllPoints(UIParent)
+  self.screen = h
+  -- the drawn ring (UI/Frame_AspectRing.lua builds it in OnInitialize)
+  if _G.NockAspectRingLayer then SecureHandlerSetFrameRef(b, "layer", _G.NockAspectRingLayer) end
+  SecureHandlerWrapScript(b, "OnClick", h, Nock.AspectRingSnippet(6))
+  self._armed = true
+  self:PushSecure()
 end
 
--- Combat mode: Hawk, on whichever edge the client's key-down option says
--- (nil = follow the cvar, like the action bars). Nothing when Hawk is not
--- learned. Runs in PLAYER_REGEN_DISABLED, before the lockdown.
-function AspectRing:ArmHawk()
-  local b = self.button
-  takeClicks(b)
-  local st = Nock.state.aspectRing
-  local slot
-  for i, key in ipairs(st.order) do if key == "hawk" then slot = i end end
-  local macro = Nock.AspectRingMacro(slot and st.known[slot])
-  b:SetAttribute("useOnKeyDown", nil)
-  if macro then
-    b:SetAttribute("type", "macro")
-    b:SetAttribute("macrotext", macro)
-  else
-    b:SetAttribute("type", nil)
-    b:SetAttribute("macrotext", nil)
-  end
-end
-
-function AspectRing:PLAYER_REGEN_DISABLED()
-  self:Close()
-  self:ArmHawk()
+-- What the snippet reads: the dial's learned names, the cancel radius (Ring
+-- size) and the screen size in UIParent units. Out of combat only; a change
+-- made in combat (a spell learned, the dial, the size) lands when it ends.
+function AspectRing:PushSecure()
+  if not self._armed then return end
+  if InCombatLockdown() then self._pushPending = true; return end
+  self._pushPending = nil
+  local b, st = self.button, Nock.state.aspectRing
+  for i = 1, 6 do b:SetAttribute("aspect" .. i, st.known[i]) end
+  b:SetAttribute("dead", DEAD_RADIUS * Nock.AspectRingScale(profile()))
+  b:SetAttribute("scale", Nock.AspectRingScale(profile()))
+  self._sw, self._sh = UIParent:GetWidth(), UIParent:GetHeight()
+  b:SetAttribute("sw", self._sw)
+  b:SetAttribute("sh", self._sh)
 end
 
 function AspectRing:PLAYER_REGEN_ENABLED()
-  self:ArmRing()
+  if not self._armed then self:Arm() end
+  if self._pushPending then self:PushSecure() end
   if self._bindPending then self:ApplyBinding() end
 end
 
--- The key's two edges, out of combat only (in combat the attributes are
--- fixed and this must not touch them).
+-- The key's two edges, drawing only (the pick and the cast are the snippet's):
+-- down opens the ring at the cursor, up closes it. Allowed in combat.
 function AspectRing:OnKey(down)
-  if InCombatLockdown() then return end
-  local b = self.button
-  if down then
-    b:SetAttribute("type", nil)
-    b:SetAttribute("macrotext", nil)
-    self:Open()
-    return
-  end
-  local st = Nock.state.aspectRing
-  local name
-  if st.open then
-    self:UpdateHover()
-    name = st.hover and st.known[st.hover] or nil
-  end
-  local macro = Nock.AspectRingMacro(name)
-  if macro then
-    b:SetAttribute("type", "macro")
-    b:SetAttribute("macrotext", macro)
-  else
-    b:SetAttribute("type", nil)
-    b:SetAttribute("macrotext", nil)
-  end
-  self:Close()
+  if down then self:Open() else self:Close() end
 end
 
 local function cursor()
@@ -292,8 +337,17 @@ function AspectRing:UpdateKnown()
   -- The label names, from all six (learned or not) so the shared prefix is
   -- the same whatever the character knows.
   st.short = Nock.AspectRingShortNames(all)
+  if changed then self:PushSecure() end
 end
 
 function AspectRing:Refresh(state)
   if state.aspectRing.open then self:UpdateHover() end
+  -- The screen size the snippet scales the cursor by: captured at login it
+  -- can predate the UI scale (2133x1200 stored vs 2560x1440 live put the
+  -- ring at 83 % of the cursor's distance, 2026-09-26). Out of combat, a
+  -- mismatch is re-pushed; the compare is all a tick costs.
+  if self._armed and not InCombatLockdown()
+     and (UIParent:GetWidth() ~= self._sw or UIParent:GetHeight() ~= self._sh) then
+    self:PushSecure()
+  end
 end

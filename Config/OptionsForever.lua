@@ -147,7 +147,7 @@ function F.AspectRingPage()
   local args = {
     intro = {
       type = "description", order = 1, fontSize = "medium",
-      name = "Hold the key out of combat for a ring of your aspects at the cursor: flick toward one and let go to cast it. In combat the key casts Aspect of the Hawk.\n",
+      name = "Hold the key for a ring of your aspects at the cursor: flick toward one and let go to cast it, in or out of combat. Letting go in the middle casts nothing.\n",
     },
     keyHeader = { type = "header", name = "Key", desc = "The key that opens the ring.", order = 10 },
     aspectRingKey = {

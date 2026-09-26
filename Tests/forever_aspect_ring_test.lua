@@ -16,6 +16,7 @@ local function newFrame(kind, name)
   function f:Show() self.shown = true end
   function f:Hide() self.shown = false end
   function f:IsShown() return self.shown end
+  function f:SetAllPoints(r) self.allPoints = r end
   if name then frames[name] = f; _G[name] = f end
   return f
 end
@@ -24,7 +25,13 @@ local combat = false
 _G.InCombatLockdown = function() return combat end
 local cursorX, cursorY = 500, 400
 _G.GetCursorPosition = function() return cursorX, cursorY end
-_G.UIParent = { GetEffectiveScale = function() return 1 end }
+_G.UIParent = { GetEffectiveScale = function() return 1 end, GetWidth = function() return 1000 end, GetHeight = function() return 800 end }
+local wraps = {}
+_G.SecureHandlerWrapScript = function(frame, script, header, pre)
+  if _G.InCombatLockdown() then error("ADDON_ACTION_BLOCKED WrapScript") end
+  wraps[#wraps + 1] = { frame = frame, script = script, header = header, pre = pre }
+end
+_G.SecureHandlerSetFrameRef = function(frame, label, ref) frame.attrs["frameref-" .. label] = ref end
 
 local Nock = {
   Flavor = { forever = true, Plain = function(v) return v end }, Constants = {},
@@ -124,106 +131,125 @@ dofile("Core/Bindings.lua")
 ok(_G["BINDING_NAME_CLICK NockAspectRingButton:LeftButton"] == "Aspect ring (WoW Forever)", "binding label on TBC says Forever only")
 Nock.Flavor.forever = true
 
+-- The snippet's pick equals AspectRingPick (dot product, no atan2).
+do
+  local mismatch = 0
+  for dx = -60, 60, 3 do
+    for dy = -60, 60, 3 do
+      if Nock.AspectRingPickDot(dx, dy, 14) ~= Nock.AspectRingPick(dx, dy, 14) then mismatch = mismatch + 1 end
+    end
+  end
+  ok(mismatch == 0, "PickDot == Pick over a 41x41 grid of flicks")
+end
+
+-- Armed out of combat: both edges, a full-screen header, the wrapped OnClick,
+-- the frame ref to the drawn ring, and the attributes the snippet reads.
+ok(#wraps == 1 and wraps[1].frame == b and wraps[1].script == "OnClick", "the key's OnClick is wrapped")
+local header = wraps[1].header
+ok(header and header.allPoints == UIParent and frames.NockAspectRingScreen == header, "header covers the screen")
+ok(b.attrs.aspect1 == "Aspect of the Hawk" and b.attrs.aspect4 == "Aspect of the Cheetah" and b.attrs.aspect3 == nil, "learned names per slot")
+ok(b.attrs.dead == 14 and b.attrs.scale == 1 and b.attrs.sw == 1000 and b.attrs.sh == 800, "cancel radius, size and screen in UI units")
+
+-- Run the REAL snippet text against fake secure handles.
+local snippet = assert(loadstring("local self, button, down, control = ...\n" .. wraps[1].pre))
+local mouse = { x = 0.5, y = 0.5 }
+local control = { GetMousePosition = function() return mouse.x, mouse.y end }
+local layer = { shown = false }
+function layer:ClearAllPoints() self.point = nil end
+function layer:SetPoint(p, rel, rp, x, y) self.point = { p, rel, rp, x, y } end
+function layer:Show() self.shown = true end
+function layer:Hide() self.shown = false end
+local handle = { a = {} }
+function handle:GetAttribute(k) if self.a[k] ~= nil then return self.a[k] end return b.attrs[k] end
+function handle:SetAttribute(k, v) self.a[k] = v end
+function handle:GetFrameRef(k) return k == "layer" and layer or nil end
+local function press(x0, y0, x1, y1)
+  handle.a = {}
+  mouse.x, mouse.y = x0, y0
+  local r1 = snippet(handle, "LeftButton", true, control)
+  local shownOnDown = layer.shown
+  mouse.x, mouse.y = x1, y1
+  local r2 = snippet(handle, "LeftButton", false, control)
+  return r1, r2, shownOnDown
+end
+-- flick up 60 UI units (60/800 of the screen height): Hawk
+local r1, r2, shown = press(0.5, 0.5, 0.5, 0.5 + 60 / 800)
+ok(r1 == false and shown == true and layer.point[4] == 500 and layer.point[5] == 400, "down: nothing cast, the ring shown at the cursor")
+ok(r2 == nil and handle.a.type == "macro" and handle.a.macrotext == "/cast !Aspect of the Hawk" and handle.a.useOnKeyDown == false and layer.shown == false,
+   "flick up + release: Hawk on the release, ring hidden")
+r1, r2 = press(0.5, 0.5, 0.5, 0.5 - 60 / 800)
+ok(handle.a.macrotext == "/cast !Aspect of the Cheetah", "flick down: Cheetah")
+r1, r2 = press(0.5, 0.5, 0.5 + 5 / 1000, 0.5 + 5 / 800)
+ok(r2 == false and handle.a.type == nil and layer.shown == false, "release in the cancel circle: nothing (a tap cancels, in combat too)")
+r1, r2 = press(0.5, 0.5, 0.5 - 50 / 1000, 0.5 - 25 / 800)
+ok(r2 == false and handle.a.type == nil, "flick to an unlearned slot (Pack): nothing")
+handle.a = {}
+mouse.x, mouse.y = 0.5, 0.6
+ok(snippet(handle, "LeftButton", false, control) == false and handle.a.type == nil, "an up with no down before it: nothing")
+
+-- PreClick only draws: down opens, up closes; never an attribute, so it is
+-- safe in combat.
 local pre = b.scripts.PreClick
--- Key down: ring opens at the cursor, nothing armed.
+combat = true
 cursorX, cursorY = 500, 400
 pre(b, "LeftButton", true)
-ok(st.open == true and st.cx == 500 and st.cy == 400 and st.hover == nil and b.attrs.type == nil, "down: ring at the cursor, nothing armed")
--- Flick down, release: Cheetah.
-cursorX, cursorY = 502, 340
-pre(b, "LeftButton", false)
-ok(b.attrs.type == "macro" and b.attrs.macrotext == "/cast !Aspect of the Cheetah" and st.open == false, "flick down + release: Cheetah armed for the release click, ring closed")
--- Down again clears the previous arm.
-cursorX, cursorY = 500, 400
-pre(b, "LeftButton", true)
-ok(b.attrs.type == nil and st.open, "down clears the last cast")
--- Release in the centre: nothing.
-cursorX, cursorY = 503, 404
-pre(b, "LeftButton", false)
-ok(b.attrs.type == nil and st.open == false, "release in the cancel circle: nothing")
--- Ring size: the cancel circle grows with the drawn ring.
-ok(Nock.AspectRingScale(nil) == 1 and Nock.AspectRingScale({}) == 1, "size: unset reads 100%")
-ok(Nock.AspectRingScale({ aspectRingScale = 1.5 }) == 1.5, "size: the profile value")
-ok(Nock.AspectRingScale({ aspectRingScale = 9 }) == 2 and Nock.AspectRingScale({ aspectRingScale = 0.1 }) == 0.75
-   and Nock.AspectRingScale({ aspectRingScale = "x" }) == 1, "size: clamped to 75..200%, junk reads 100%")
-Nock.db.profile.aspectRingScale = 2
-cursorX, cursorY = 500, 400
-pre(b, "LeftButton", true)
-cursorX, cursorY = 500, 425
-pre(b, "LeftButton", false)
-ok(b.attrs.type == nil and st.open == false, "at 200% a 25 px flick is still inside the cancel circle")
-cursorX, cursorY = 500, 400
-pre(b, "LeftButton", true)
-cursorX, cursorY = 500, 430
-pre(b, "LeftButton", false)
-ok(b.attrs.type == "macro" and b.attrs.macrotext == "/cast !Aspect of the Hawk", "at 200% a 30 px flick up picks Hawk")
-Nock.db.profile.aspectRingScale = nil
-cursorX, cursorY = 500, 400
--- Unlearned slot: nothing.
-pre(b, "LeftButton", true)
-cursorX, cursorY = 460, 380   -- down-left: Pack, not learned
-A:Refresh(Nock.state)
-ok(st.hover == nil, "an unlearned slot never highlights")
-pre(b, "LeftButton", false)
-ok(b.attrs.type == nil, "release on an unlearned slot: nothing")
--- Hover follows the tick while open.
-cursorX, cursorY = 500, 400
-pre(b, "LeftButton", true)
+ok(st.open == true and st.cx == 500 and st.cy == 400, "in combat: down opens the drawn ring (state only)")
 cursorX, cursorY = 500, 460
 A:Refresh(Nock.state)
-ok(st.hover == 1, "tick: flick up highlights Hawk")
--- Down twice (the up never arrived): re-opens cleanly at the new cursor.
-cursorX, cursorY = 700, 300
-pre(b, "LeftButton", true)
-ok(st.open and st.cx == 700 and st.cy == 300 and st.hover == nil and b.attrs.type == nil, "a second down re-opens at the new cursor")
--- A slot click closes through the message.
-ok(A.msgs.NOCK_ASPECT_RING_CLOSE == "Close", "slot clicks close the ring by message")
-A:Close()
-ok(st.open == false and st.hover == nil, "close")
+ok(st.hover == 1, "hover follows the cursor while open")
+pre(b, "LeftButton", false)
+ok(st.open == false, "up closes it")
+combat = false
 
--- Combat: Hawk on the key, ring closed, PreClick inert.
-pre(b, "LeftButton", true)
-A:PLAYER_REGEN_DISABLED()
+-- The screen size follows the live UIParent (a login capture can predate
+-- the UI scale): a tick out of combat re-pushes a mismatch, not in combat.
+do
+  local w0 = UIParent.GetWidth
+  UIParent.GetWidth = function() return 2560 end
+  UIParent.GetHeight = function() return 1440 end
+  combat = true
+  A:Refresh(Nock.state)
+  ok(b.attrs.sw == 1000, "in combat: the stored size waits")
+  combat = false
+  A:Refresh(Nock.state)
+  ok(b.attrs.sw == 2560 and b.attrs.sh == 1440, "out of combat: the live screen size is re-pushed")
+  UIParent.GetWidth = w0
+  UIParent.GetHeight = function() return 800 end
+  A:Refresh(Nock.state)
+end
+
+-- Ring size moves the cancel circle and the draw scale, out of combat.
+Nock.db.profile.aspectRingScale = 2
+A:OnConfig()
+ok(b.attrs.dead == 28 and b.attrs.scale == 2, "size: the snippet's cancel radius and scale follow")
+Nock.db.profile.aspectRingScale = nil
+A:OnConfig()
+
+-- Changes in combat wait for its end.
+learned = { ["Aspect of the Monkey"] = 13163 }
 combat = true
-ok(st.open == false and b.attrs.type == "macro" and b.attrs.macrotext == "/cast !Aspect of the Hawk" and b.attrs.useOnKeyDown == nil,
-   "combat start: ring closed, Hawk armed, the client's key-down option decides the edge")
-pre(b, "LeftButton", true); pre(b, "LeftButton", false)
-ok(st.open == false and b.attrs.macrotext == "/cast !Aspect of the Hawk", "in combat the key never opens the ring or re-arms")
+A:UpdateKnown()
+ok(b.attrs.aspect1 == "Aspect of the Hawk", "a spellbook change in combat: the button keeps its names for now")
 combat = false
 A:PLAYER_REGEN_ENABLED()
-ok(b.attrs.type == nil and b.attrs.useOnKeyDown == false, "combat end: back to ring mode")
+ok(b.attrs.aspect1 == nil and b.attrs.aspect2 == "Aspect of the Monkey", "and lands when combat ends")
 
--- Hawk not learned: the combat key casts nothing.
-learned = { ["Aspect of the Monkey"] = 13163 }
-A:UpdateKnown()
-ok(st.known[1] == nil and st.knownRev == rev0 + 1, "spellbook change: Hawk gone, rev moved")
-A:PLAYER_REGEN_DISABLED()
-ok(b.attrs.type == nil, "no Hawk learned: combat key stays empty")
-A:PLAYER_REGEN_ENABLED()
-
--- Spellbook API missing: cannot tell, every slot offered.
-Nock.ForeverSpellbookNames = function() return nil end
-A:UpdateKnown()
-ok(st.known[3] == "Aspect of the Wild" and st.known[5] == "Aspect of the Pack", "no spellbook API: all six offered")
-
--- The dial layout from the profile: slots, names and the combat Hawk follow it.
+-- The dial layout from the profile: the snippet's slot names follow it.
 Nock.ForeverSpellbookNames = function() return { ["Aspect of the Hawk"] = 1, ["Aspect of the Cheetah"] = 2 } end
 A:UpdateKnown()
 Nock.db.profile.aspectRingOrder = { "cheetah", "monkey", "wild", "hawk", "pack", "beast" }
 local revBefore = st.knownRev
 A:OnConfig()
-ok(st.order[1] == "cheetah" and st.order[4] == "hawk", "layout published on state")
-ok(st.known[1] == "Aspect of the Cheetah" and st.known[4] == "Aspect of the Hawk" and st.short[1] == "Cheetah", "slots follow the layout")
-ok(st.knownRev > revBefore, "a layout change moves the rev (the view re-applies slot spells)")
-cursorX, cursorY = 500, 400
-pre(b, "LeftButton", true)
-cursorX, cursorY = 500, 460
-pre(b, "LeftButton", false)
-ok(b.attrs.macrotext == "/cast !Aspect of the Cheetah", "flick up now casts Cheetah")
-A:PLAYER_REGEN_DISABLED()
-ok(b.attrs.macrotext == "/cast !Aspect of the Hawk", "combat key still casts Hawk from its moved slot")
-A:PLAYER_REGEN_ENABLED()
+ok(st.order[1] == "cheetah" and st.known[1] == "Aspect of the Cheetah" and st.short[1] == "Cheetah", "slots follow the layout")
+ok(st.knownRev > revBefore and b.attrs.aspect1 == "Aspect of the Cheetah" and b.attrs.aspect4 == "Aspect of the Hawk", "the button's names follow the layout")
 ok(A.msgs.NOCK_ASPECT_RING_CONFIG == "OnConfig" and A.msgs.NOCK_VISUALS_CHANGED == "OnConfig", "settings and profile switches reach the ring")
+ok(A.msgs.NOCK_ASPECT_RING_CLOSE == "Close", "slot clicks close the ring by message")
+
+-- Spellbook API missing: cannot tell, every slot offered.
+Nock.ForeverSpellbookNames = function() return nil end
+Nock.db.profile.aspectRingOrder = nil
+A:OnConfig()
+ok(st.known[3] == "Aspect of the Wild" and b.attrs.aspect5 == "Aspect of the Pack", "no spellbook API: all six offered")
 
 -- The key from Nock's settings: a priority override on the key button.
 Nock.db.profile.aspectRingKey = "SHIFT-Q"
@@ -239,21 +265,22 @@ ok(binds.key == nil, "in combat the binding waits")
 combat = false
 A:PLAYER_REGEN_ENABLED()
 ok(binds.key == "F", "and lands when combat ends")
-Nock.db.profile.aspectRingOrder = nil
 Nock.db.profile.aspectRingKey = nil
 A:OnConfig()
 
--- /reload inside combat: enable touches no attribute until combat ends.
+-- /reload inside combat: nothing secure is built or written until it ends.
 frames.NockAspectRingButton = nil; _G.NockAspectRingButton = nil
+A._armed = nil
+local wrapsBefore = #wraps
 combat = true
 _G.ClearOverrideBindings = function() error("ADDON_ACTION_BLOCKED ClearOverrideBindings") end
-A:OnEnable()   -- would raise ADDON_ACTION_BLOCKED from the mock on any SetAttribute or binding call
+A:OnEnable()   -- would raise ADDON_ACTION_BLOCKED from the mocks on any secure call
 local b2 = frames.NockAspectRingButton
-ok(b2 and next(b2.attrs) == nil, "enabled in combat: no attribute touched")
+ok(b2 and next(b2.attrs) == nil and #wraps == wrapsBefore, "enabled in combat: no attribute, no wrap")
 combat = false
 _G.ClearOverrideBindings = function() end
 A:PLAYER_REGEN_ENABLED()
-ok(b2.attrs.useOnKeyDown == false, "armed for the ring once combat ends")
+ok(b2.attrs.useOnKeyDown == false and #wraps == wrapsBefore + 1 and b2.attrs.aspect1 ~= nil, "armed once combat ends")
 
 print(("forever_aspect_ring: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

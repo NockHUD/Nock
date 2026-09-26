@@ -20,7 +20,8 @@ local SLICE = 2 * math.pi / 6
 
 -- Its own UIParent layer (the Helpers click-layer precedent): a hidden HUD
 -- must not take the ring with it, and secure buttons stay out of the HUD
--- tree. Shown, moved and hidden only out of combat.
+-- tree. The secure slots make it protected, so the key's snippet shows, moves
+-- and hides it (Forever/AspectRing.lua, in combat too); this view paints.
 --
 -- Only creation happens here: a /reload in combat loads the addon under the
 -- lockdown, so every call on a secure button waits for SetupSlots (the first
@@ -71,7 +72,6 @@ function View:OnInitialize()
     self.slots[i] = b
     self.items[i] = { icon = nil, exp = 0, dur = 0, desat = false }
   end
-  self:RegisterEvent("PLAYER_REGEN_DISABLED")
   -- The name follows the React font settings live.
   self:RegisterMessage("NOCK_VISUALS_CHANGED", function() Nock.UI.ApplyReactTextLook(self.name) end)
 end
@@ -87,13 +87,6 @@ function View:SetupSlots()
     b:SetPoint("CENTER", self.layer, "CENTER", ox, oy)
   end
   self._setup = true
-end
-
--- Combat is about to lock the secure frames: hide now (this handler runs
--- before the lockdown); the module has closed the ring in its own handler.
-function View:PLAYER_REGEN_DISABLED()
-  self.layer:Hide()
-  self._open = false
 end
 
 -- Attributes per slot from state.aspectRing.known, out of combat only.
@@ -113,27 +106,25 @@ function View:ApplyKnown(st)
   self._knownRev = st.knownRev
 end
 
+-- The secure side, out of combat only and ahead of use (the ring can open
+-- in combat now, when none of it may be touched): the slots, their casts and
+-- the ring size (the layer's scale; the snippet divides its cursor spot by
+-- the same value).
+function View:SecureSetup(st)
+  if InCombatLockdown() then return end
+  if not self._setup then self:SetupSlots() end
+  if st.knownRev ~= self._knownRev then self:ApplyKnown(st) end
+  local scale = Nock.AspectRingScale(Nock.db and Nock.db.profile)
+  if scale ~= self._scale then
+    self.layer:SetScale(scale)
+    self._scale = scale
+  end
+end
+
 function View:Refresh(state)
   local st = state.aspectRing
-  if InCombatLockdown() then return end
-  if st.open ~= self._open then
-    if st.open then
-      if not self._setup then self:SetupSlots() end
-      if st.knownRev ~= self._knownRev then self:ApplyKnown(st) end
-      -- Ring size: the layer's own scale; its offsets are in scaled units,
-      -- so the cursor spot is divided back to keep the centre on it.
-      local scale = Nock.AspectRingScale(Nock.db and Nock.db.profile)
-      self.layer:SetScale(scale)
-      self.layer:ClearAllPoints()
-      self.layer:SetPoint("CENTER", UIParent, "BOTTOMLEFT", st.cx / scale, st.cy / scale)
-      self.layer:Show()
-    else
-      self.layer:Hide()
-    end
-    self._open = st.open
-  end
+  self:SecureSetup(st)
   if not st.open then return end
-  if st.knownRev ~= self._knownRev then self:ApplyKnown(st) end
 
   local active = state.player and state.player.aspect and state.player.aspect.spellId
   local activeKey = active and Nock.Spells.ASPECTS[active]

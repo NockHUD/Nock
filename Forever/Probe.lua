@@ -763,6 +763,98 @@ function Probe.TraitReport(api)
   return table.concat(L, "\n")
 end
 
+-- The secure-snippet probe (in-game only: every step is the client's).
+function Probe.SecureReport()
+  local L = {}
+  local function row(k, v) L[#L + 1] = ("%s: %s"):format(k, tostring(v)) end
+  row("in combat", InCombatLockdown and InCombatLockdown() or false)
+  row("loadstring_untainted", type(_G.loadstring_untainted))
+  row("SecureHandlerExecute", type(_G.SecureHandlerExecute))
+  row("SecureHandlerWrapScript", type(_G.SecureHandlerWrapScript))
+  local h = Probe._secureH
+  if not h and InCombatLockdown and InCombatLockdown() then
+    -- a secure frame built under lockdown comes out unprotected and every
+    -- snippet on it errors: the first run must be out of combat
+    row("not built yet", "run /nock probe secure once OUT of combat first (after every /reload)")
+    return table.concat(L, "\n")
+  end
+  if not h then
+    local okc, f = pcall(CreateFrame, "Frame", "NockProbeSecureHandler", UIParent, "SecureHandlerBaseTemplate")
+    row("handler frame", okc and "ok" or ("error " .. tostring(f)))
+    if not okc then return table.concat(L, "\n") end
+    h = f
+    Probe._secureH = h
+    -- GetMousePosition in a snippet is relative to the frame and nil while
+    -- the cursor is off it: the handler covers the whole screen
+    pcall(h.SetAllPoints, h, UIParent)
+  end
+  local okp, prot, explicit = pcall(h.IsProtected, h)
+  row("handler protected (protected, explicit)", okp and (tostring(prot) .. ", " .. tostring(explicit)) or "n/a")
+  -- 1. a plain Execute. The snippet bumps a counter the addon only READS
+  --    (an insecure SetAttribute on a protected frame is blocked in combat,
+  --    so nothing is reset; before/after tells whether it ran THIS time).
+  local combat = InCombatLockdown and InCombatLockdown() or false
+  local ranBefore = h:GetAttribute("nockRuns") or 0
+  local oke, err = pcall(_G.SecureHandlerExecute, h, [[ self:SetAttribute("nockRuns", (self:GetAttribute("nockRuns") or 0) + 1) ]])
+  row("Execute", oke and "no error" or ("error " .. tostring(err)))
+  row("Execute ran this time", (h:GetAttribute("nockRuns") or 0) > ranBefore)
+  -- 2. the cursor inside a snippet (what the ring's flick would read); the
+  --    handler covers the screen, so this is the cursor's screen fraction
+  local mBefore = h:GetAttribute("nockMouseRuns") or 0
+  local okm, merr = pcall(_G.SecureHandlerExecute, h, [[
+    local x, y = self:GetMousePosition()
+    self:SetAttribute("nockMx", x and string.format("%.3f,%.3f", x, y) or "nil")
+    self:SetAttribute("nockMouseRuns", (self:GetAttribute("nockMouseRuns") or 0) + 1)
+  ]])
+  if not okm then
+    row("GetMousePosition in a snippet", "error " .. tostring(merr))
+  else
+    row("GetMousePosition in a snippet", ((h:GetAttribute("nockMouseRuns") or 0) > mBefore)
+      and tostring(h:GetAttribute("nockMx")) or "did not run")
+  end
+  -- 3. a wrapped OnClick on a secure button: does the pre-snippet run and can
+  --    it set the button's macrotext (the in-combat cast path)?
+  local b = Probe._secureB
+  if not b and not (InCombatLockdown and InCombatLockdown()) then
+    local okb, bf = pcall(CreateFrame, "Button", "NockProbeSecureButton", UIParent, "SecureActionButtonTemplate")
+    if okb then
+      b = bf
+      Probe._secureB = b
+      -- a square to click with the MOUSE: wrapped handlers may only run on
+      -- a hardware click, not on b:Click() from addon code
+      b:SetSize(48, 48)
+      b:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+      b:RegisterForClicks("AnyDown", "AnyUp")
+      local t = b:CreateTexture(nil, "ARTWORK")
+      t:SetAllPoints(b)
+      t:SetColorTexture(0.9, 0.2, 0.9, 0.8)
+      local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+      fs:SetPoint("TOP", b, "BOTTOM", 0, -2)
+      fs:SetText("click me, then /nock probe secure")
+      local okw, werr = pcall(_G.SecureHandlerWrapScript, b, "OnClick", h, [[
+        self:SetAttribute("nockClicked", (self:GetAttribute("nockClicked") or 0) + 1)
+        self:SetAttribute("type", "macro")
+        self:SetAttribute("macrotext", "")
+      ]])
+      row("WrapScript", okw and "ok" or ("error " .. tostring(werr)))
+    else
+      row("secure button", "error " .. tostring(bf))
+    end
+  end
+  if b then
+    if not combat then
+      local before = b:GetAttribute("nockClicked") or 0
+      pcall(b.Click, b)
+      row("wrapped OnClick ran on b:Click()", (b:GetAttribute("nockClicked") or 0) > before)
+    end
+    row("clicks counted by the snippet (mouse on the pink square)", b:GetAttribute("nockClicked") or 0)
+    row("macrotext set from the snippet", b:GetAttribute("type") == "macro")
+  else
+    row("wrapped OnClick", "button not built (run once out of combat first)")
+  end
+  return table.concat(L, "\n")
+end
+
 function Probe:Show(which, rest)
   local text
   if which == "range" then self:RangeRecord(rest); return end
@@ -770,6 +862,46 @@ function Probe:Show(which, rest)
   -- `/nock probe idshape set|list`: re-filter the live buff row with the
   -- other ID-table shape (Forever/AuraRow.lua ID_SHAPE, unverified). Put a
   -- buff that is up on the hide list, then flip until it disappears.
+  -- `/nock probe ring`: the aspect ring's secure inputs vs the live screen
+  -- (the drawn ring landed away from the cursor, 2026-09-26).
+  if which == "ring" then
+    local b, h, layer = _G.NockAspectRingButton, _G.NockAspectRingScreen, _G.NockAspectRingLayer
+    local L = {}
+    local function row(k, v) L[#L + 1] = ("%s: %s"):format(k, tostring(v)) end
+    row("stored sw, sh", b and (tostring(b:GetAttribute("sw")) .. ", " .. tostring(b:GetAttribute("sh"))) or "no button")
+    row("live UIParent w, h", ("%.1f, %.1f"):format(UIParent:GetWidth(), UIParent:GetHeight()))
+    row("stored scale, dead", b and (tostring(b:GetAttribute("scale")) .. ", " .. tostring(b:GetAttribute("dead"))) or "-")
+    if h then
+      local l, bo, w, hh = h:GetRect()
+      row("header rect (l, b, w, h)", ("%s, %s, %s, %s"):format(tostring(l), tostring(bo), tostring(w), tostring(hh)))
+      row("header scale / effective", ("%s / %s"):format(tostring(h:GetScale()), tostring(h:GetEffectiveScale())))
+    end
+    row("UIParent effective scale", UIParent:GetEffectiveScale())
+    local cx, cy = GetCursorPosition()
+    local s = UIParent:GetEffectiveScale()
+    row("cursor in UIParent units", ("%.1f, %.1f"):format(cx / s, cy / s))
+    if layer then
+      local n = layer:GetNumPoints()
+      for i = 1, n do
+        local p, rel, rp, x, y = layer:GetPoint(i)
+        row("layer point " .. i, ("%s %s %s %.1f %.1f"):format(tostring(p), rel and rel:GetName() or "?", tostring(rp), x or 0, y or 0))
+      end
+      row("layer scale / effective", ("%s / %s"):format(tostring(layer:GetScale()), tostring(layer:GetEffectiveScale())))
+    end
+    local text = table.concat(L, "\n")
+    if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
+    return
+  end
+  -- `/nock probe secure`: do secure snippets run on this client now (dead on
+  -- 2026-09-24, loadstring_untainted = nil)? Each step is reported: the
+  -- restricted loader, an Execute that writes an attribute, a snippet that
+  -- reads the cursor (the in-combat aspect ring needs it) and a wrapped
+  -- OnClick. Run it out of combat AND in combat.
+  if which == "secure" then
+    local text = Probe.SecureReport()
+    if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
+    return
+  end
   -- `/nock probe usable [id]`: is a spell's usability plain or secret right
   -- now (run it in combat too)? Default Mongoose Bite; also what its grid
   -- tile holds and which secret-safe setters the client has.
