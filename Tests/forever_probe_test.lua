@@ -83,6 +83,48 @@ local rowRep = Probe.RowState()
 ok(rowRep:find("row enabled: true", 1, true) and rowRep:find("shown: true  visible: false  alpha: 1", 1, true), "row state: enabled, shown, visible, alpha")
 ok(rowRep:find("items: 1  lastN: 1", 1, true) and rowRep:find("slot1 shown: false  texture: 132347", 1, true), "row state: items and first slot")
 ok(rowRep:find("inCombat: false  hideOoc: false  opacityOoc: 0.5", 1, true), "row state: combat and ooc settings")
+-- The C_Traits walk behind `/nock probe talents`.
+do
+  local R = Probe.TraitReport
+  ok(R({}) == "C_Traits: missing", "no C_Traits: said so")
+  local T = {
+    GetConfigInfo = function(c) return { treeIDs = { 77 } } end,
+    GetTreeNodes = function(t) return { 1, 2 } end,
+    GetNodeInfo = function(c, n) return { entryIDs = { n * 10 }, activeRank = n == 2 and 1 or 0, maxRanks = 1 } end,
+    GetEntryInfo = function(c, e) return { definitionID = e + 1 } end,
+    GetDefinitionInfo = function(d) return { spellID = d == 21 and 555 or 444 } end,
+  }
+  local names = { [555] = "Lone Wolf", [444] = "Other" }
+  local SI = { GetSpecialization = function() return 2 end, GetSpecializationInfo = function() return 254 end }
+  local rep = R({ CT = { GetActiveConfigID = function() return 9 end }, T = T, SI = SI, name = function(id) return names[id] end })
+  ok(rep:find("active config: 9", 1, true) and rep:find("-- tree 77: 2 nodes", 1, true), "active loadout: its tree")
+  ok(rep:find("node 2  entry 20  spell 555  Lone Wolf  rank 1/1", 1, true) and rep:find("entries found: 2", 1, true), "a node line with the spell, name and rank")
+  -- no loadout yet: the spec's tree through the view loadout
+  local viewed
+  local CT = { GetActiveConfigID = function() return nil end, GetTraitTreeForSpec = function(s) return 88 end,
+               InitializeViewLoadout = function(s, lvl) viewed = { s, lvl } end }
+  local rep2 = R({ CT = CT, T = T, SI = SI, name = function(id) return names[id] end, viewID = -3 })
+  ok(viewed and viewed[1] == 254 and rep2:find("tree for spec 254: 88", 1, true) and rep2:find("view loadout: ok", 1, true), "no loadout: the spec tree via the view loadout")
+  ok(rep2:find("-- tree 88: 2 nodes", 1, true), "the view tree is walked")
+end
+
+-- `/nock probe talents`: the Forever talent dump (Lone Wolf, 2026-09-26).
+do
+  local R = Probe.TalentReport
+  ok(R(nil) == "C_SpecializationInfo.GetTalentInfo: missing", "no API: said so")
+  local rep = R(function(q)
+    if not q.tier then error("query.tier must be specified") end
+    if q.specializationIndex == 2 and q.tier == 7 and q.column == 2 then
+      return { name = "Lone Wolf", spellID = 1234567, talentID = 89, rank = 0, maxRank = 1 }
+    end
+    return nil
+  end)
+  ok(rep:find("spec 2  tier 7  col 2  Lone Wolf  spell 1234567  talent 89  rank 0/1", 1, true), "a talent line with its spell id and rank")
+  ok(rep:find("-- spec index 2: 1 talents", 1, true) and rep:find("talents found: 1", 1, true), "per-index counts and the total")
+  local rep2 = R(function() error("bad query") end)
+  ok(rep2:find("first error: ", 1, true) and rep2:find("bad query", 1, true), "an error is reported, not thrown")
+end
+
 local aurRep = Probe.AuraReport({ spellId = "SECRET", name = "Quick Shots", duration = 12 }, 6150, false, false)
 ok(aurRep:find("secret: true", 1, true) and aurRep:find("BySpell(6150): miss", 1, true), "a secret id is reported as such")
 

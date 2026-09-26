@@ -82,6 +82,7 @@ end
 function Checks.petMissing(reads)
   if not isEnabled("warnPetMissingEnabled") then return nil end
   if reads.petExists == true or reads.callPetKnown ~= true or reads.inCombat ~= true then return nil end
+  if reads.loneWolf == true then return nil end   -- no pet is the build, not a mistake
   return warn("petMissing", "amber", spellIcon(Nock.Spells.PET.CALL_PET) or 132161, "NO PET", nil)
 end
 
@@ -171,6 +172,7 @@ function Warnings:Reads(state)
   if type(r.happiness) ~= "number" then r.happiness = nil end
   r.inCombat = state.player and state.player.inCombat == true
   r.callPetKnown = self:CallPetKnown()
+  r.loneWolf = self:LoneWolf(r.inCombat)
   -- The toggles and the target come from state: the swing timer keeps both
   -- auto-attack edges, the range finder the target's presence and side.
   r.rangedOn = state.ranged and state.ranged.repeating == true
@@ -209,6 +211,70 @@ function Warnings:GrowlAutocast()
     end
   end
   return nil
+end
+
+-- Lone Wolf talented? Forever's talents are the retail-style trait tree
+-- (C_ClassTalents + C_Traits; the classic talent APIs answer nothing here,
+-- probed 2026-09-26): the active loadout's node holding the talent's spell
+-- id, rank > 0. The spellbook and an aura on you are the fallbacks. Talents
+-- only change out of combat, so the answer is read out of combat (at most
+-- every LONE_WOLF_RECHECK seconds) and held through a fight. `how` names the
+-- path that matched, for `/nock probe lonewolf`.
+local LONE_WOLF_RECHECK = 5
+function Warnings.LoneWolfFrom(id, traitRank, spellKnown, auraBySpell)
+  if type(id) ~= "number" then return false end
+  local r = traitRank and traitRank(id)
+  if type(r) == "number" and r > 0 then return true, "talent" end
+  if spellKnown and spellKnown(id) == true then return true, "spellbook" end
+  if auraBySpell and auraBySpell(id) then return true, "aura" end
+  return false
+end
+
+-- The rank of the active loadout's node whose entry is `spellID`. The node
+-- is found once per loadout (a 50-node walk) and then read directly.
+local traitNode = { config = nil, node = nil }
+function Warnings.TraitRank(spellID, CT, T)
+  if not (CT and CT.GetActiveConfigID and T and T.GetConfigInfo and T.GetTreeNodes and T.GetNodeInfo
+          and T.GetEntryInfo and T.GetDefinitionInfo) then return nil end
+  local okc, config = pcall(CT.GetActiveConfigID)
+  if not okc or not config then return nil end
+  if traitNode.config ~= config then
+    traitNode.config, traitNode.node = config, nil
+    local oki, info = pcall(T.GetConfigInfo, config)
+    for _, tree in ipairs(oki and type(info) == "table" and info.treeIDs or {}) do
+      local okn, nodes = pcall(T.GetTreeNodes, tree)
+      for _, nodeID in ipairs(okn and type(nodes) == "table" and nodes or {}) do
+        local okd, node = pcall(T.GetNodeInfo, config, nodeID)
+        for _, entryID in ipairs(okd and type(node) == "table" and node.entryIDs or {}) do
+          local oke, entry = pcall(T.GetEntryInfo, config, entryID)
+          local def = oke and type(entry) == "table" and entry.definitionID
+          local okf, d = false, nil
+          if def then okf, d = pcall(T.GetDefinitionInfo, def) end
+          if okf and type(d) == "table" and d.spellID == spellID then traitNode.node = nodeID end
+        end
+        if traitNode.node then break end
+      end
+      if traitNode.node then break end
+    end
+  end
+  if not traitNode.node then return nil end
+  local okr, node = pcall(T.GetNodeInfo, config, traitNode.node)
+  return okr and type(node) == "table" and P(node.activeRank) or nil
+end
+function Warnings.ResetTraitCache() traitNode.config, traitNode.node = nil, nil end
+
+function Warnings:LoneWolf(inCombat)
+  local now = GetTime()
+  if inCombat or (self._loneWolfAt and now - self._loneWolfAt < LONE_WOLF_RECHECK) then
+    return self._loneWolf == true
+  end
+  self._loneWolfAt = now
+  local AC, SB = Nock.AuraCache, _G.C_SpellBook
+  self._loneWolf, self._loneWolfHow = Warnings.LoneWolfFrom(Nock.Spells.LONE_WOLF,
+    function(id) return Warnings.TraitRank(id, _G.C_ClassTalents, _G.C_Traits) end,
+    SB and SB.IsSpellKnown and function(id) local okk, k = pcall(SB.IsSpellKnown, id); return okk and k end,
+    AC and AC.BySpell and function(id) return AC.BySpell("player", id) end)
+  return self._loneWolf == true
 end
 
 -- Call Pet is learned at 10; the spellbook says so on this client, the
@@ -322,7 +388,7 @@ Warnings.Catalog = {
     enabledKey  = "warnPetMissingEnabled",
     iconFn      = function() return spellIcon(Nock.Spells.PET.CALL_PET) or 132161 end,
     description = "You are fighting without your pet.",
-    logic       = "Fires when:\n• You are in combat\n• No pet is out\n• You know Call Pet\n\nQuiet out of combat, so a dismissed pet in town never nags.",
+    logic       = "Fires when:\n• You are in combat\n• No pet is out\n• You know Call Pet\n• You do not have Lone Wolf talented\n\nQuiet out of combat, so a dismissed pet in town never nags.",
   },
   {
     key         = "petUnhappy",

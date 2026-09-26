@@ -57,6 +57,50 @@ local m = C.petMissing(with({ petExists = false }))
 ok(m and m.severity == "amber" and m.icon == 1000 + 883, "no pet in combat: amber with Call Pet")
 ok(C.petMissing(with({ petExists = false, inCombat = false })) == nil, "no pet out of combat: quiet")
 ok(C.petMissing(with({ petExists = false, callPetKnown = false })) == nil, "Call Pet unknown: quiet")
+-- Lone Wolf (Forever MM talent: more damage with no pet): no pet is the build.
+ok(C.petMissing(with({ petExists = false, loneWolf = true })) == nil, "Lone Wolf talented: quiet")
+ok(C.petMissing(with({ petExists = false, loneWolf = false })) ~= nil, "Lone Wolf not talented: still warns")
+do
+  local LW, ID = W.LoneWolfFrom, 415370
+  ok(Nock.Spells.LONE_WOLF == ID, "Lone Wolf by its spell id (read from the talent tree)")
+  ok(select(2, LW(ID, function(id) return id == ID and 1 or 0 end)) == "talent", "talented: the loadout node has a rank")
+  ok(LW(ID, function() return 0 end) == false, "a node with rank 0 is not talented")
+  ok(select(2, LW(ID, nil, function(id) return id == ID end)) == "spellbook", "fallback: the spell is known")
+  ok(select(2, LW(ID, nil, nil, function(id) return id == ID and {} or nil end)) == "aura", "fallback: an aura on you")
+  ok(LW(ID) == false and LW(nil, function() return 1 end) == false, "nothing to go on: not talented")
+
+  -- The trait walk: the active loadout's node holding the spell, found once.
+  local walks, rank = 0, 1
+  local CT = { GetActiveConfigID = function() return 42 end }
+  local T = {
+    GetConfigInfo = function() return { treeIDs = { 1091 } } end,
+    GetTreeNodes = function() walks = walks + 1; return { 105006, 105007 } end,
+    GetNodeInfo = function(_, n) return { entryIDs = { n + 24664 }, activeRank = n == 105007 and rank or 0 } end,
+    GetEntryInfo = function(_, e) return { definitionID = e } end,
+    GetDefinitionInfo = function(d) return { spellID = d == 129671 and ID or 19454 } end,
+  }
+  W.ResetTraitCache()
+  ok(W.TraitRank(ID, CT, T) == 1, "trait walk: Lone Wolf's node, rank 1")
+  rank = 0
+  ok(W.TraitRank(ID, CT, T) == 0 and walks == 1, "the node is remembered: no second walk, the rank re-read")
+  CT.GetActiveConfigID = function() return 43 end
+  W.TraitRank(ID, CT, T)
+  ok(walks == 2, "a new loadout walks again")
+  ok(W.TraitRank(ID, nil, T) == nil and W.TraitRank(99, { GetActiveConfigID = function() return 44 end }, T) == nil, "no API or no such talent: nil")
+  W.ResetTraitCache()
+
+  -- The module's cached read: decided out of combat, held through a fight.
+  local known = true
+  _G.C_SpellBook = { IsSpellKnown = function(id) return id == ID and known end }
+  W._loneWolfAt = nil
+  ok(W:LoneWolf(false) == true and W._loneWolfHow == "spellbook", "out of combat: read (spellbook fallback here)")
+  known = false
+  ok(W:LoneWolf(true) == true, "in combat: the out-of-combat answer holds")
+  W._loneWolfAt = -100
+  ok(W:LoneWolf(false) == false, "out of combat again after the recheck: re-read (untalented)")
+  _G.C_SpellBook = nil
+  W._loneWolf, W._loneWolfAt = nil, nil
+end
 
 -- pet unhappy
 ok(C.petUnhappy(base) == nil, "happy: quiet")

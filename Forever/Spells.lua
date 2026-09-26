@@ -34,6 +34,11 @@ local Spells = {
     MEND_PET = 136, FEED_PET = 6991, FEED_PET_EFFECT = 1539,
     REVIVE_PET = 982, DISMISS_PET = 2641, CALL_PET = 883, TAME_BEAST = 1515,
   },
+  -- Lone Wolf (Marksmanship talent, new on Forever: more damage while no pet
+  -- is active; the forever-hunter wiki). Spell id read from the talent tree
+  -- with `/nock probe talents` (2026-09-26: node 105007, tree 1091). The
+  -- no-pet warning stands down while it is talented (Forever/Warnings.lua).
+  LONE_WOLF = 415370,
 }
 Nock.Spells = Spells
 

@@ -673,6 +673,96 @@ function Probe:FontPreview(rest)
   self._fontPreview = f
 end
 
+-- The talent dump: spec index 0..3 (0 = omitted), tier 1..12, column 1..4.
+-- The first error per index is kept (the query's rules show in it). Pure
+-- over `getInfo` so it tests without a client.
+function Probe.TalentReport(getInfo)
+  local L = {}
+  if type(getInfo) ~= "function" then return "C_SpecializationInfo.GetTalentInfo: missing" end
+  local total = 0
+  for spec = 0, 3 do
+    local n, firstErr = 0, nil
+    for tier = 1, 12 do
+      for col = 1, 4 do
+        local q = { tier = tier, column = col }
+        if spec > 0 then q.specializationIndex = spec end
+        local okc, r = pcall(getInfo, q)
+        if not okc then
+          firstErr = firstErr or tostring(r)
+        elseif type(r) == "table" and type(r.name) == "string" and r.name ~= "" then
+          n = n + 1
+          L[#L + 1] = ("spec %d  tier %d  col %d  %s  spell %s  talent %s  rank %s/%s"):format(
+            spec, tier, col, r.name, tostring(r.spellID), tostring(r.talentID), tostring(r.rank), tostring(r.maxRank))
+        end
+      end
+    end
+    total = total + n
+    L[#L + 1] = ("-- spec index %d: %d talents%s"):format(spec, n, firstErr and ("  (first error: " .. firstErr .. ")") or "")
+  end
+  L[#L + 1] = ("talents found: %d"):format(total)
+  return table.concat(L, "\n")
+end
+
+-- The retail-style talent tree (C_ClassTalents + C_Traits): the active
+-- loadout's trees, or the spec's tree through the view-only loadout when no
+-- loadout exists yet. One line per node entry: spell id, name, rank.
+-- `api` = { CT = C_ClassTalents, T = C_Traits, SI = C_SpecializationInfo,
+-- name = fn(spellID), viewID = Constants.TraitConsts.VIEW_TRAIT_CONFIG_ID }.
+function Probe.TraitReport(api)
+  local L = {}
+  local CT, T, SI = api.CT, api.T, api.SI
+  if not (T and T.GetTreeNodes and T.GetNodeInfo) then return "C_Traits: missing" end
+  local function call(f, ...)
+    if type(f) ~= "function" then return nil, "missing" end
+    local okc, a, b = pcall(f, ...)
+    if not okc then return nil, tostring(a) end
+    return a, b
+  end
+  local specIndex = SI and call(SI.GetSpecialization)
+  local specID = specIndex and SI and call(SI.GetSpecializationInfo, specIndex)
+  L[#L + 1] = ("spec index %s  spec id %s"):format(tostring(specIndex), tostring(specID))
+  local configID, why = CT and call(CT.GetActiveConfigID)
+  L[#L + 1] = ("active config: %s%s"):format(tostring(configID), why and ("  (" .. why .. ")") or "")
+  local trees = {}
+  if configID then
+    local info = call(T.GetConfigInfo, configID)
+    for _, t in ipairs(type(info) == "table" and info.treeIDs or {}) do trees[#trees + 1] = t end
+  end
+  if #trees == 0 and specID and CT then
+    local tree, terr = call(CT.GetTraitTreeForSpec, specID)
+    L[#L + 1] = ("tree for spec %s: %s%s"):format(tostring(specID), tostring(tree), terr and ("  (" .. terr .. ")") or "")
+    if tree then
+      trees[1] = tree
+      if not configID and api.viewID then
+        local _, verr = call(CT.InitializeViewLoadout, specID, 100)
+        configID = api.viewID
+        L[#L + 1] = ("view loadout: %s"):format(verr and ("error " .. verr) or "ok")
+      end
+    end
+  end
+  local n = 0
+  for _, tree in ipairs(trees) do
+    local nodes = call(T.GetTreeNodes, tree) or {}
+    L[#L + 1] = ("-- tree %s: %d nodes"):format(tostring(tree), #nodes)
+    for _, nodeID in ipairs(nodes) do
+      local node = call(T.GetNodeInfo, configID, nodeID)
+      if type(node) == "table" then
+        for _, entryID in ipairs(node.entryIDs or {}) do
+          local entry = call(T.GetEntryInfo, configID, entryID)
+          local def = type(entry) == "table" and entry.definitionID and call(T.GetDefinitionInfo, entry.definitionID)
+          local sid = type(def) == "table" and def.spellID or nil
+          local nm = (type(def) == "table" and def.overrideName) or (sid and api.name and api.name(sid)) or "?"
+          n = n + 1
+          L[#L + 1] = ("node %s  entry %s  spell %s  %s  rank %s/%s"):format(tostring(nodeID), tostring(entryID),
+            tostring(sid), tostring(nm), tostring(node.activeRank), tostring(node.maxRanks))
+        end
+      end
+    end
+  end
+  L[#L + 1] = ("entries found: %d"):format(n)
+  return table.concat(L, "\n")
+end
+
 function Probe:Show(which, rest)
   local text
   if which == "range" then self:RangeRecord(rest); return end
@@ -680,6 +770,30 @@ function Probe:Show(which, rest)
   -- `/nock probe idshape set|list`: re-filter the live buff row with the
   -- other ID-table shape (Forever/AuraRow.lua ID_SHAPE, unverified). Put a
   -- buff that is up on the hide list, then flip until it disappears.
+  -- `/nock probe talents`: every talent C_SpecializationInfo.GetTalentInfo
+  -- answers for, under each spec index (0 = none given), with its spell id
+  -- and rank. How the Forever tree is served is unprobed (Lone Wolf, 2026-09-26).
+  if which == "talents" then
+    local TC = _G.Constants and _G.Constants.TraitConsts
+    local text = Probe.TraitReport({
+      CT = _G.C_ClassTalents, T = _G.C_Traits, SI = _G.C_SpecializationInfo,
+      name = function(id) return Nock.Flavor.Plain(Nock.API.SpellName(id)) end,
+      viewID = TC and TC.VIEW_TRAIT_CONFIG_ID or -3,
+    }) .. "\n\n" .. Probe.TalentReport(_G.C_SpecializationInfo and _G.C_SpecializationInfo.GetTalentInfo)
+    if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
+    return
+  end
+  -- `/nock probe lonewolf`: is Lone Wolf seen as talented, and by which path
+  -- (spellbook / talent / aura)? Out of combat.
+  if which == "lonewolf" then
+    local W = Nock:GetModule("Warnings", true)
+    if not (W and W.LoneWolf) then return end
+    W._loneWolfAt = nil
+    local on = W:LoneWolf(false)
+    Nock:Print(("Lone Wolf: %s%s"):format(on and "talented" or "not seen",
+      on and (" (via " .. tostring(W._loneWolfHow) .. ")") or ""))
+    return
+  end
   if which == "idshape" then
     local AR = Nock.ForeverAuraRow
     if not AR then return end
