@@ -15,10 +15,14 @@ local casting, channel
 _G.UnitCastingInfo = function(u) if u == "player" and casting then return unpack(casting) end end
 _G.UnitChannelInfo = function(u) if u == "player" and channel then return unpack(channel) end end
 
-local Nock = { Flavor = { forever = true, Plain = function(v) return v end }, Spells = { AUTO_SHOT = 75 } }
+local hideCalls = {}
+local Nock = { Flavor = { forever = true, Plain = function(v) return v end }, Spells = { AUTO_SHOT = 75 },
+               db = { profile = { hideBlizzardCastBar = true } },
+               UI = { SetBlizzardCastBarHidden = function(h) hideCalls[#hideCalls + 1] = h; return true end } }
 local module
-function Nock:NewModule(name) module = { name = name, events = {} }
+function Nock:NewModule(name) module = { name = name, events = {}, msgs = {} }
   function module:RegisterEvent(ev, h) self.events[ev] = h or ev end
+  function module:RegisterMessage(m, h) self.msgs[m] = h or m end
   return module end
 function Nock:GetModule() return nil end
 _G.LibStub = function() return { GetAddon = function() return Nock end } end
@@ -27,6 +31,12 @@ dofile("Forever/CastBar.lua")
 
 ok(module and module.name == "CastBar", "module CastBar")
 module:OnEnable()
+-- Hide Blizzard's cast bar on Forever too (the shared hideBlizzardCastBar).
+ok(hideCalls[1] == true, "enable: Blizzard's bar hidden when the setting is on")
+ok(module.msgs.NOCK_VISUALS_CHANGED == "ApplyBlizzardCastBarVisibility", "a settings change re-applies it")
+Nock.db.profile.hideBlizzardCastBar = false
+module:ApplyBlizzardCastBarVisibility()
+ok(hideCalls[2] == false, "setting off: restored")
 local st = Nock.state.player
 local function fire(ev, unit, ...) local h = module.events[ev]; if not h then return end; module[type(h) == "string" and h or ev](module, ev, unit, ...) end
 

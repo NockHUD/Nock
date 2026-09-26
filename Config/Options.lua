@@ -6379,6 +6379,9 @@ local function buildOptionsTable()
     sizeArgs.castBarNonCombatCasts =
       castBarSharedArgs("(same setting as General → Cast bar)").castBarNonCombatCasts
     sizeArgs.castBarNonCombatCasts.order = 25.5
+    sizeArgs.hideBlizzardCastBar =
+      castBarSharedArgs("(same setting as General → Cast bar)").hideBlizzardCastBar
+    sizeArgs.hideBlizzardCastBar.order = 25.6
     sizeArgs.reactShowGrid     = reactToggle("reactShowGrid",     "Cooldown grid",   "The 3-row cooldown grid under the cluster.", 26)
     sizeArgs.reactShowAspectIcon = reactOptInToggle("reactShowAspectIcon",
       "Aspect corner icon",

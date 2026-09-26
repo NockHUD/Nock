@@ -521,6 +521,8 @@ ok(cCast and cCast.args.castBarAutoShotColor and cCast.args.castBarAutoShotColor
    and cCast.args.castBarAutoShotColor.order > cCast.args.castBarColor.order,
    "classic Cast Bar: Auto Shot wind-up color picker follows the fill color")
 ok(raSize.castBarNonCombatCasts, "react Size & Elements mirrors non-combat casts")
+ok(raSize.hideBlizzardCastBar and raSize.hideBlizzardCastBar.type == "toggle"
+   and raSize.hideBlizzardCastBar.desc:find("same setting", 1, true), "react Size & Elements mirrors Hide Blizzard's cast bar (Forever has no General cast bar group)")
 ok(raSize.castBarNonCombatCasts
    and raSize.castBarNonCombatCasts.desc:find("same setting", 1, true),
    "react mirror desc names its canonical home")
@@ -647,7 +649,7 @@ onlyKeys(ra, { "intro", "hudMode", "useLook", "tabSize", "tabBars", "tabRange", 
   "react root")
 onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "elementsNote",
   "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview", "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
-  "reactShowCastBar", "reactShowAutoShotCast", "reactShowGrid", "reactShowAspectIcon", "reactShowMarkIcon",
+  "reactShowCastBar", "reactShowAutoShotCast", "hideBlizzardCastBar", "reactShowGrid", "reactShowAspectIcon", "reactShowMarkIcon",
   "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY",
   "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH",
   "orderHeader", "order_reset", "castBarNonCombatCasts" }, "react tabSize",

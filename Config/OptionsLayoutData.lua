@@ -244,7 +244,7 @@ L.TABS = {
       { key = "sizeCard", name = "Size", icon = { glyph = "expand" }, rows = { "reactWidth", "reactScale" } },
       { key = "elementsCard", name = "Elements", icon = { spell = C.RAPID_FIRE }, desc = "What the cluster stacks, top to bottom.", rows = { "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview", "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactShowCastBar", "reactShowGrid" } },
       { key = "manaCard", name = "Mana", icon = { spell = 34074 }, rows = { "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc" } },
-      { key = "castBarCard", name = "Cast bar", icon = { spell = C.STEADY_SHOT }, rows = { "reactShowAutoShotCast", "castBarNonCombatCasts" } },
+      { key = "castBarCard", name = "Cast bar", icon = { spell = C.STEADY_SHOT }, rows = { "reactShowAutoShotCast", "castBarNonCombatCasts", "hideBlizzardCastBar" } },
       { key = "cornersCard", name = "Corners", icon = { spell = 13165 }, desc = "Aspect and Hunter's Mark flanking the cluster.", rows = { "reactShowAspectIcon", "reactShowMarkIcon", "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY" } },
       { key = "barHeightsCard", name = "Bar heights", icon = { glyph = "expand" }, desc = "Each bar's height in the cluster; dual wield splits the melee bar's in two.", rows = { "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH" } },
       { key = "orderCard", name = "Order", icon = { glyph = "stack" }, actions = { "order_reset" }, rows = { "order_lbl_1", "order_up_1", "order_dn_1", "order_lbl_2", "order_up_2", "order_dn_2", "order_lbl_3", "order_up_3", "order_dn_3", "order_lbl_4", "order_up_4", "order_dn_4", "order_reset" } },

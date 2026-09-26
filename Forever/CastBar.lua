@@ -66,6 +66,16 @@ function CastBar:OnEnable()
   self:RegisterEvent("UNIT_SPELLCAST_FAILED", "OnCastFailed")
   self:RegisterEvent("UNIT_SPELLCAST_FAILED_QUIET", "OnCastFailed")
   self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", "OnCastFailed")
+  -- Hide Blizzard's cast bar (hideBlizzardCastBar, shared with TBC).
+  self:RegisterMessage("NOCK_VISUALS_CHANGED", "ApplyBlizzardCastBarVisibility")
+  self:ApplyBlizzardCastBarVisibility()
+end
+
+function CastBar:ApplyBlizzardCastBarVisibility()
+  local p = Nock.db and Nock.db.profile
+  if not Nock.UI.SetBlizzardCastBarHidden(p and p.hideBlizzardCastBar == true) then
+    Nock:Print("Couldn't re-enable the Blizzard cast bar live — /reload to restore it.")
+  end
 end
 
 -- A spell-data bar has no client record and no STOP of its own. Its own

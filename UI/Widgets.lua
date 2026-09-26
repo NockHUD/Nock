@@ -1081,6 +1081,41 @@ function Nock.UI.FeedGcdSwipe(slot, spellId, own)
   if Nock.UI.IsGcdReading(s, d) then g:SetCooldown(s, d) else g:Clear() end
 end
 
+-- Hide / restore Blizzard's player cast bar (hideBlizzardCastBar), shared by
+-- the TBC (Modules/CastBar.lua) and Forever (Forever/CastBar.lua) cast bar
+-- modules. Hiding is UnregisterAllEvents + Hide, plus an OnShow guard: a
+-- modern client (Edit Mode) may show the bar again. Restoring re-runs the
+-- bar's own OnLoad (Classic-era global or the mixin method) for its events;
+-- no Show, the bar shows itself on the next cast. Only what was hidden this
+-- session is ever restored. Returns false when a restore found no OnLoad
+-- (the caller tells the user a /reload brings it back), true otherwise.
+local blizzCastHidden = false
+function Nock.UI.SetBlizzardCastBarHidden(hide)
+  local frame = _G.PlayerCastingBarFrame or _G.CastingBarFrame
+  if not frame then return true end
+  if hide then
+    if not blizzCastHidden then
+      blizzCastHidden = true
+      frame:UnregisterAllEvents()
+      frame:Hide()
+      if not frame._nockShowGuard and frame.HookScript then
+        frame._nockShowGuard = true
+        frame:HookScript("OnShow", function(f) if blizzCastHidden then f:Hide() end end)
+      end
+    end
+    return true
+  end
+  if not blizzCastHidden then return true end
+  blizzCastHidden = false
+  if type(_G.CastingBarFrame_OnLoad) == "function" then
+    -- Classic-era args, matching CastingBarFrame.xml's player bar OnLoad.
+    return pcall(_G.CastingBarFrame_OnLoad, frame, "player", true, false)
+  elseif type(frame.OnLoad) == "function" then
+    return pcall(frame.OnLoad, frame)
+  end
+  return false
+end
+
 function Nock.UI.PairIconCoords(tileW, tileH, zoomPct)
   local half = (tileW or 0) / 2
   local h = tileH or 0

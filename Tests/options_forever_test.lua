@@ -125,7 +125,7 @@ for _, p in ipairs({
   "hud.react.tabBars.reactDirAuto", "hud.react.tabBars.reactDirMelee",
   "hud.react.tabSize.reactShowAutoBar", "hud.react.tabSize.reactShowMeleeBar", "hud.react.tabSize.reactShowManaBar",
   "hud.react.tabSize.reactScale", "hud.react.tabSize.reactWidth", "hud.react.tabSize.order_up_1",
-  "hud.react.tabSize.reactShowCastBar", "hud.react.tabSize.castBarCard", "hud.react.tabSize.reactShowGrid",
+  "hud.react.tabSize.reactShowCastBar", "hud.react.tabSize.castBarCard", "hud.react.tabSize.hideBlizzardCastBar", "hud.react.tabSize.reactShowGrid",
   "hud.react.tabSize.reactCastH", "hud.react.tabSkin.reactColorCastFill",
   "hud.react.tabSize.reactShowRangeBar", "hud.react.tabSize.reactShowAspectIcon", "hud.react.tabSize.reactShowMarkIcon",
   "hud.react.tabSize.cornersCard", "hud.react.tabSize.reactCornerIconSize", "hud.react.tabProcs.reactBuffIconSize", "hud.react.tabProcs.reactBuffRowsF", "hud.react.tabProcs.procNowRefresh", "hud.react.tabProcs.procPinAdd", "hud.react.tabProcs.procHideAdd", "hud.react.tabSkin.reactColorRangeSweet",

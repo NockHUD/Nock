@@ -242,38 +242,14 @@ function CastBar:OnEnable()
 end
 
 -- Hide/restore the default Blizzard player cast bar (shared setting "Hide
--- Blizzard's cast bar"). Hiding is the standard UnregisterAllEvents + Hide.
--- Restoring re-runs the frame's own OnLoad to get its events back; the
--- Anniversary client is modernized, so both the frame and its OnLoad are
--- resolved defensively (retail 10.0 renamed CastingBarFrame to
--- PlayerCastingBarFrame and moved OnLoad onto the mixin). If neither restore
--- path exists the events stay dropped until /reload — say so in chat rather
--- than leave the bar silently dead.
+-- Blizzard's cast bar"): Nock.UI.SetBlizzardCastBarHidden (UI/Widgets.lua),
+-- shared with Forever/CastBar.lua. If the restore finds no OnLoad the events
+-- stay dropped until /reload -- say so in chat rather than leave the bar
+-- silently dead.
 function CastBar:ApplyBlizzardCastBarVisibility()
-  local frame = _G.PlayerCastingBarFrame or _G.CastingBarFrame
-  if not frame then return end
   local p = Nock.db and Nock.db.profile
-  if p and p.hideBlizzardCastBar == true then
-    if not self._blizzBarHidden then
-      self._blizzBarHidden = true
-      frame:UnregisterAllEvents()
-      frame:Hide()
-    end
-  elseif self._blizzBarHidden then
-    -- Only restore what we hid this session; never poke the frame otherwise.
-    self._blizzBarHidden = nil
-    local restored = false
-    if type(_G.CastingBarFrame_OnLoad) == "function" then
-      -- Classic-era args, matching CastingBarFrame.xml's player bar OnLoad.
-      restored = pcall(_G.CastingBarFrame_OnLoad, frame, "player", true, false)
-    elseif type(frame.OnLoad) == "function" then
-      restored = pcall(frame.OnLoad, frame)
-    end
-    -- No Show() here: the bar shows itself on the next cast. Forcing it now
-    -- would flash an empty bar with nothing driving its fade-out.
-    if not restored then
-      self:Print("Couldn't re-enable the Blizzard cast bar live — /reload to restore it.")
-    end
+  if not Nock.UI.SetBlizzardCastBarHidden(p and p.hideBlizzardCastBar == true) then
+    self:Print("Couldn't re-enable the Blizzard cast bar live — /reload to restore it.")
   end
 end
 
