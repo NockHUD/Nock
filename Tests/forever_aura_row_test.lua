@@ -39,11 +39,17 @@ function Cont:SetFlowLayoutAxis(a) self.axis = a end
 function Cont:SetFlowLayoutGrowthDirection(h, v) self.grow = { h, v } end
 function Cont:SetFlowLayoutAnchorPoint(p) self.anchor = p end
 function Cont:AddAuraGroup(k, f, o)
-  self.group = { key = k, filter = f, opts = o }
-  self.buttons = {}
-  for i = 1, 2 do self.buttons[i] = setmetatable({}, Btn); o.initializeFrame(self.buttons[i]) end
+  self.groups = self.groups or {}
+  self.order = self.order or {}
+  self.groups[k] = { key = k, filter = f, opts = o, buttons = {} }
+  self.order[#self.order + 1] = k
+  self.group = self.group or self.groups[k]   -- the first group: the short row
+  self.buttons = self.buttons or self.groups[k].buttons
+  for i = 1, 2 do self.groups[k].buttons[i] = setmetatable({}, Btn); o.initializeFrame(self.groups[k].buttons[i]) end
 end
-function Cont:GetAuraGroupFrame(k, i) return self.buttons and self.buttons[i] or nil end
+function Cont:GetAuraGroupFrame(k, i) local g = self.groups and self.groups[k]; return g and g.buttons[i] or nil end
+function Cont:SetAuraGroupCandidateFilters(k, f) self.refiltered = self.refiltered or {}; self.refiltered[k] = f end
+function Cont:UpdateAllAuras() self.reread = (self.reread or 0) + 1 end
 function Cont:SetEnabled(e) self.enabled = e end
 function Cont:Show() self.shown = true end
 function Cont:Hide() self.shown = false end
@@ -139,6 +145,90 @@ do
   local b3 = setmetatable({}, Btn)
   R.Style(b3, 24)
   ok(b3.durationText and b3.durationOptions == nil, "no formatter API: the client's default text")
+end
+
+-- Hide + pin lists (user, 2026-09-26): the hide list drops IDs from the
+-- short row; pinned IDs get their own any-caster, uncapped group after it
+-- and are dropped from the short row so nothing shows twice.
+do
+  ok(next(R.IdTable(nil)) == nil and next(R.IdTable({})) == nil, "no list -> empty ID table")
+  local s = R.IdTable({ 5, "7", "x", 5 })
+  ok(s[5] == true and s[7] == true and s.x == nil, "set shape: numbers and numeric strings, junk skipped")
+  local l = R.IdTable({ 5, "7", 5 }, "list")
+  ok(#l == 2 and l[1] == 5 and l[2] == 7, "list shape: ordered, duplicates folded")
+
+  local short, pinned = R.Filters(nil, nil)
+  ok(short.maxDuration == 60 and short.excludeSpellIDs == nil, "no lists: the short row as before")
+  ok(pinned.includeSpellIDs and next(pinned.includeSpellIDs) == nil, "no pins: the pinned group includes nothing")
+  short, pinned = R.Filters({ 100 }, { 200 })
+  ok(short.maxDuration == 60 and short.excludeSpellIDs[100] and short.excludeSpellIDs[200], "short row excludes hidden AND pinned IDs")
+  ok(pinned.includeSpellIDs[200] and not pinned.includeSpellIDs[100] and pinned.maxDuration == nil, "pinned group: the pins only, no duration cap")
+
+  _G.CreateFrame = function(kind, name, parent, template) return setmetatable({ kind = kind, parent = parent }, Cont) end
+  local c2 = R.Create(panel, 26, -1, { 100 }, { 200 })
+  ok(c2.order[1] == "short" and c2.order[2] == "pinned", "two groups, the pinned one after the short row")
+  local pg = c2.groups.pinned
+  ok(pg.filter == "HELPFUL" and pg.opts.maxFrameCount == R.PIN_FRAMES, "pinned: any caster, its own frame cap")
+  ok(pg.opts.candidateFilters.includeSpellIDs[200] and c2.groups.short.opts.candidateFilters.excludeSpellIDs[100], "Create applies both lists")
+  ok(pg.opts.layout.elementWidth == 26 and pg.buttons[1].time ~= nil, "pinned tiles in the same look")
+  local n = 0
+  R.EachButton(c2, function() n = n + 1 end)
+  ok(n == 4, "EachButton walks both groups")
+
+  ok(R.ApplyFilters(c2, { 300 }, {}) == true, "re-filter accepted")
+  ok(c2.refiltered.short.excludeSpellIDs[300] and next(c2.refiltered.pinned.includeSpellIDs) == nil, "re-filter reaches both groups")
+  ok(c2.reread == 1, "re-filter makes the container re-read the auras already up")
+  ok(R.lastApply == "short filters ok; pinned filters ok; refresh ok", "the apply outcome is kept for the probe")
+
+  -- A client that refuses the pinned group keeps the short row.
+  _G.CreateFrame = function(kind)
+    local x = setmetatable({ kind = kind }, Cont)
+    x.AddAuraGroup = function(self, k, f, o)
+      if k == "pinned" then error("nope") end
+      return Cont.AddAuraGroup(self, k, f, o)
+    end
+    return x
+  end
+  local c3 = R.Create(panel, 26, -1, nil, { 200 })
+  ok(c3 and c3.groups.short and not c3.groups.pinned and c3._nockPinned == nil, "pinned group refused -> short row stands")
+  ok(R.ApplyFilters(c3, nil, { 200 }) == true and c3.refiltered.pinned == nil, "re-filter skips the missing pinned group")
+end
+
+-- The settings' "Buffs up now" list and the add form (user, 2026-09-26).
+do
+  ok(R.ShownByRule({ sourceUnit = "player", duration = 12 }) == true, "own 12 s proc: shown by the row itself")
+  ok(R.ShownByRule({ sourceUnit = "player", duration = 0 }) == false, "own permanent aura (an aspect): not shown")
+  ok(R.ShownByRule({ sourceUnit = "player", duration = 3600 }) == false, "own hour-long buff (a flask): not shown")
+  ok(R.ShownByRule({ sourceUnit = "party1", duration = 10 }) == false, "someone else's buff: not shown")
+
+  local auras = {
+    { spellId = 13165, name = "Aspect of the Hawk", icon = 1, sourceUnit = "player", duration = 0 },
+    { spellId = 6150, name = "Quick Shots", icon = 2, sourceUnit = "player", duration = 12 },
+    { spellId = 3045, name = "Rapid Fire", icon = 3, sourceUnit = "player", duration = 15 },
+    { spellId = 6150, name = "Quick Shots", icon = 2, sourceUnit = "player", duration = 12 },
+    { spellId = 99, name = "Some Debuff", isHelpful = false },
+    { spellId = 28520, name = "Flask of Relentless Assault", icon = 4, sourceUnit = "player", duration = 7200 },
+  }
+  local c = R.Candidates(auras, { 28520 }, { 3045 })
+  ok(#c == 4, "helpful auras, one line per id, debuffs left out")
+  ok(c[1].name == "Quick Shots" and c[2].name == "Rapid Fire" and c[1].rule and c[2].rule, "the ones the row shows come first, by name")
+  ok(c[3].name == "Aspect of the Hawk" and not c[3].rule, "then the rest, by name")
+  ok(c[2].hidden == true and c[4].pinned == true and c[1].pinned == false and c[1].hidden == false, "pinned / hidden marked")
+  ok(#R.Candidates(nil, nil, nil) == 0, "no auras -> empty list")
+
+  local byAura = function(n) if n == "Quick Shots" then return { spellId = 6150 } end end
+  local bySpell = function(n) if n == "Rapid Fire" then return 3045 end end
+  ok(R.ResolveEntry(" 6150 ", byAura, bySpell) == 6150, "digits are the id")
+  ok(R.ResolveEntry("Quick Shots", byAura, bySpell) == 6150, "a name up now resolves to the aura's own id")
+  ok(R.ResolveEntry("Rapid Fire", byAura, bySpell) == 3045, "otherwise a spell name")
+  ok(R.ResolveEntry("Nope", byAura, bySpell) == nil and R.ResolveEntry("  ", byAura, bySpell) == nil, "unknown or empty -> nil")
+
+  local src = { 1, 2 }
+  local l = R.ListWith(src, 3, true)
+  ok(#l == 3 and l[3] == 3 and #src == 2, "add returns a new list")
+  ok(#R.ListWith(l, 3, true) == 3, "adding twice keeps one")
+  l = R.ListWith(l, 1, false)
+  ok(#l == 2 and l[1] == 2 and l[2] == 3, "remove drops the id")
 end
 
 ok(R.LineHeight(26) == 26 + R.LINE_GAP + R.PET_ICON, "line height: default pet line")

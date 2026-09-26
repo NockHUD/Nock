@@ -278,10 +278,18 @@ ok(raSize.reactCornerIconX and raSize.reactCornerIconX.max == 120
    "react: corner offset sliders span up to 120px")
 ok(raSize.reactCornerIconSize.order > raSize.reactShowMarkIcon.order,
    "react: corner geometry sits under the corner toggles in Size & Elements")
-ok(raSize.reactBuffIconSize and raSize.reactBuffIconSize.type == "range"
-   and raSize.reactBuffIconSize.min == 16 and raSize.reactBuffIconSize.max == 40
-   and raSize.reactBuffIconSize.hidden() == true and raSize.reactBuffRowsF.hidden() == true,
-   "react tabSize: the buff-row size and switch exist and are hidden on TBC")
+-- Forever's own Buff Row tab (tabProcs): the row's switch and size, the
+-- buffs up now, the pin and hide lists. Hidden on TBC, tab and rows.
+local raProcs = ra.tabProcs and ra.tabProcs.args or {}
+ok(ra.tabProcs and ra.tabProcs.type == "group" and ra.tabProcs.hidden() == true, "react: the Forever Buff Row tab exists, hidden on TBC")
+ok(raProcs.reactBuffIconSize and raProcs.reactBuffIconSize.type == "range"
+   and raProcs.reactBuffIconSize.min == 16 and raProcs.reactBuffIconSize.max == 40
+   and raProcs.reactBuffIconSize.hidden() == true and raProcs.reactBuffRowsF.hidden() == true,
+   "react tabProcs: the buff-row size and switch exist and are hidden on TBC")
+ok(raSize.reactBuffIconSize == nil and raSize.reactBuffRowsF == nil, "react tabSize: the buff-row rows moved out")
+for _, k in ipairs({ "procNowRefresh", "procNowNote", "procPinAdd", "procPinAddBtn", "procPinNote", "procHideAdd", "procHideAddBtn", "procHideNote" }) do
+  ok(raProcs[k] and raProcs[k].hidden() == true, "react tabProcs: " .. k .. " hidden on TBC")
+end
 
 -- The DO NOT RELEASE banner preview button: sits in the warnings tab's
 -- Preview section beside the sample-squares button (the banner is not a
@@ -635,12 +643,12 @@ onlyKeys(classicChild("rotation").args,
 -- React subtab whitelists: the dynamic rebuilders write keys by prefix into
 -- their OWN subtab table — a key surfacing anywhere else means a rebuilder
 -- is still aiming at the react root (it would render on the landing page).
-onlyKeys(ra, { "intro", "hudMode", "useLook", "tabSize", "tabBars", "tabRange", "tabGrid", "tabBuff", "tabSkin" },
+onlyKeys(ra, { "intro", "hudMode", "useLook", "tabSize", "tabBars", "tabRange", "tabGrid", "tabBuff", "tabProcs", "tabSkin" },
   "react root")
 onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "elementsNote",
   "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview", "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
   "reactShowCastBar", "reactShowAutoShotCast", "reactShowGrid", "reactShowAspectIcon", "reactShowMarkIcon",
-  "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY", "reactBuffRowsF", "reactBuffIconSize",
+  "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY",
   "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH",
   "orderHeader", "order_reset", "castBarNonCombatCasts" }, "react tabSize",
   { "order_lbl_", "order_up_", "order_dn_" })

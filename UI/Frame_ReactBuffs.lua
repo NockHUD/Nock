@@ -102,7 +102,9 @@ function ReactBuffs:OnInitialize()
   -- loads it): the client's aura container draws the player's short own
   -- buffs, procs included, centred on the bottom line (Forever/AuraRow.lua).
   if Nock.Flavor and Nock.Flavor.forever and Nock.ForeverAuraRow then
-    self._auraRow = Nock.ForeverAuraRow.Create(panel, REACT.ICON, REACT.GAP)
+    local p = Nock.db and Nock.db.profile
+    self._auraRow = Nock.ForeverAuraRow.Create(panel, REACT.ICON, REACT.GAP,
+      p and p.foreverBuffHide, p and p.reactBuffCustom)
     -- With the container in place the ledger tiles (pet only) become a
     -- smaller centred line above it: the row grows upward, the glue holds
     -- its bottom edge.
@@ -451,8 +453,22 @@ function ReactBuffs:ApplyAuraRowScale()
   pcall(self._auraRow.SetScale, self._auraRow, row / REACT.ICON)
 end
 
+-- Forever: the hide / pin lists into the container's filters. Out of combat
+-- only, like the scale; a change made in combat lands on PLAYER_REGEN_ENABLED.
+function ReactBuffs:ApplyAuraRowFilters()
+  if not self._auraRow then return end
+  if InCombatLockdown and InCombatLockdown() then
+    self._filtersPending = true
+    return
+  end
+  self._filtersPending = false
+  local p = Nock.db and Nock.db.profile
+  Nock.ForeverAuraRow.ApplyFilters(self._auraRow, p and p.foreverBuffHide, p and p.reactBuffCustom)
+end
+
 function ReactBuffs:OnRegenEnabled()
   if self._scalePending then self:ApplyAuraRowScale() end
+  if self._filtersPending then self:ApplyAuraRowFilters() end
 end
 
 function ReactBuffs:OnVisualsChanged()
@@ -470,13 +486,11 @@ function ReactBuffs:OnVisualsChanged()
   -- nothing is read back from them). They stay at the reference size inside
   -- the container; the container's scale does the sizing.
   if AR then
-    pcall(function()
-      for i = 1, AR.MAX_FRAMES do
-        local b = self._auraRow:GetAuraGroupFrame(AR.GROUP, i)
-        if b and b.time then Nock.UI.SetReactSlotSize(b, REACT.ICON) end
-      end
+    AR.EachButton(self._auraRow, function(b)
+      if b.time then Nock.UI.SetReactSlotSize(b, REACT.ICON) end
     end)
     self:ApplyAuraRowScale()
+    self:ApplyAuraRowFilters()
   end
   -- Re-anchor unconditionally: reactCastH feeds the welded lift and reactWidth
   -- feeds the free row's explicit width, and both arrive through this message.

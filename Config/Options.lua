@@ -6406,27 +6406,173 @@ local function buildOptionsTable()
     sizeArgs.reactCornerIconY = cornerGeo("reactCornerIconY",
       "Corner icon distance up",
       "Gap between the cluster's top edge and the bottom of each corner icon. The default clears the buff row.", 28.3, 0, 120)
-    -- Forever only: Forever drops the Buff tab, so the row's switch and its
-    -- size live here. Built on both flavours (the layout data names them) and
-    -- hidden on TBC. The switch writes the same key as the Buff tab's master.
+    -- Forever only: the Buff Row tab (TBC's lists TBC buffs and stays hidden
+    -- there). The row is client-drawn (Forever/AuraRow.lua): the switch and
+    -- size, the buffs up now with Pin / Hide, and the two lists. Built on both
+    -- flavours (the layout data names the keys) and hidden on TBC; the switch
+    -- writes the same key as the TBC tab's master.
     local notForever = function() return not (Nock.Flavor and Nock.Flavor.forever) end
-    sizeArgs.reactBuffRowsF = {
+    local procArgs = {}
+    local procDep = function() return notReact() or Nock.db.profile.reactBuffRows == false end
+    procArgs.reactBuffRowsF = {
       type = "toggle", name = "Buff row",
       desc = "Your short buffs and procs in a row above the cluster, your pet's in a smaller line over it.",
-      order = 28.4, width = "full",
+      order = 1, width = "full",
       hidden = notForever, disabled = notReact,
       get = function() return Nock.db.profile.reactBuffRows ~= false end,
       set = function(_, v) visualsSet(_, "reactBuffRows", v and true or false) end,
     }
-    sizeArgs.reactBuffIconSize = {
+    procArgs.reactBuffIconSize = {
       type = "range", name = "Buff icon size",
       desc = "Edge length of the buff row's icons, in pixels; the pet line scales with it.",
-      min = 16, max = 40, step = 1, order = 28.5,
-      hidden = notForever,
-      disabled = function() return notReact() or Nock.db.profile.reactBuffRows == false end,
+      min = 16, max = 40, step = 1, order = 2,
+      hidden = notForever, disabled = procDep,
       get = function() return Nock.db.profile.reactBuffIconSize or 26 end,
       set = function(_, v) visualsSet(_, "reactBuffIconSize", v) end,
     }
+    do
+      -- The stores: reactBuffCustom (TBC's custom proc IDs) is the pin list
+      -- here, foreverBuffHide the hide list. An id sits on one of them at most.
+      local PIN, HIDE = "reactBuffCustom", "foreverBuffHide"
+      local function AR() return Nock.ForeverAuraRow end
+      local function inCombat() return InCombatLockdown and InCombatLockdown() or false end
+      local function setList(key, id, add)
+        local R = AR()
+        if not R then return end
+        local p = Nock.db.profile
+        p[key] = R.ListWith(p[key], id, add)
+        if add then
+          local other = (key == PIN) and HIDE or PIN
+          p[other] = R.ListWith(p[other], id, false)
+        end
+        Nock:SendMessage("NOCK_VISUALS_CHANGED")
+        Nock:RebuildOptionsArgs()
+      end
+      local function lbl(text, order, icon)
+        local n = { type = "description", name = text, order = order, width = 1.0, fontSize = "medium", hidden = notForever }
+        local W = Nock.OptionsWalk
+        if W and W.SetMeta then W.SetMeta(n, "icon", icon); W.SetMeta(n, "seq", order) end
+        return n
+      end
+      -- The buffs on you right now, read out of combat (AuraCache records).
+      local function aurasNow()
+        local AC, out = Nock.AuraCache, {}
+        if inCombat() or not (AC and AC.ForEach) then return out end
+        pcall(AC.ForEach, "player", function(a) out[#out + 1] = a end)
+        return out
+      end
+      local function auraByName(n)
+        local AC = Nock.AuraCache
+        if inCombat() or not (AC and AC.ByName) then return nil end
+        return AC.ByName("player", n)
+      end
+      local function spellByName(n)
+        local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(n)
+        return type(info) == "table" and info.spellID or nil
+      end
+
+      procArgs.procNowRefresh = {
+        type = "execute", name = "Refresh", order = 10,
+        desc = "Read the buffs on you again (out of combat).",
+        hidden = notForever, disabled = function() return procDep() or inCombat() end,
+        func = function() Nock:RebuildOptionsArgs() end,
+      }
+      procArgs.procNowNote = {
+        type = "description", fontSize = "medium", order = 11, hidden = notForever,
+        name = function()
+          if inCombat() then return "Leave combat to list your buffs." end
+          return "No buffs on you. Get one up, then Refresh."
+        end,
+      }
+      local function addForm(prefix, key, order, verb)
+        local stage = {}
+        procArgs[prefix .. "Add"] = {
+          type = "input", name = "Name or id", order = order, hidden = notForever, disabled = procDep,
+          desc = "A buff on you right now, by name, gives its exact aura id; otherwise a spell name or a spell id.",
+          get = function() return stage.text or "" end,
+          set = function(_, v) stage.text = v end,
+        }
+        procArgs[prefix .. "AddBtn"] = {
+          type = "execute", name = verb, order = order + 0.1, hidden = notForever,
+          desc = "Add it to the list above.",
+          disabled = function()
+            local R = AR()
+            return procDep() or not R or R.ResolveEntry(stage.text, auraByName, spellByName) == nil
+          end,
+          func = function()
+            local R = AR()
+            local id = R and R.ResolveEntry(stage.text, auraByName, spellByName)
+            if not id then return end
+            stage.text = ""
+            setList(key, id, true)
+          end,
+        }
+      end
+      addForm("procPin", PIN, 40, "Pin")
+      addForm("procHide", HIDE, 60, "Hide")
+      procArgs.procPinNote = {
+        type = "description", fontSize = "medium", order = 30, hidden = notForever,
+        name = "Nothing pinned yet.",
+      }
+      procArgs.procHideNote = {
+        type = "description", fontSize = "medium", order = 50, hidden = notForever,
+        name = "Nothing hidden yet.",
+      }
+
+      local function rebuildProcArgs()
+        for k in pairs(procArgs) do
+          if type(k) == "string" and (k:sub(1, 8) == "procNow_" or k:sub(1, 8) == "procPin_" or k:sub(1, 9) == "procHide_") then
+            procArgs[k] = nil
+          end
+        end
+        local R = AR()
+        if not R then return end
+        local p = Nock.db and Nock.db.profile or {}
+        -- Buffs up now: icon · name, id and what the row does with it | Pin | Hide.
+        local now = R.Candidates(aurasNow(), p[PIN], p[HIDE])
+        for i, c in ipairs(now) do
+          local o = 12 + i * 0.01
+          local state = c.pinned and "pinned" or c.hidden and "hidden" or c.rule and "shown" or "not shown"
+          procArgs["procNow_" .. i .. "_lbl"] = lbl(("%s  |cff808080%d · %s|r"):format(c.name, c.id, state), o, c.icon)
+          local id, pinned, hidden = c.id, c.pinned, c.hidden
+          procArgs["procNow_" .. i .. "_pin"] = {
+            type = "execute", name = pinned and "Unpin" or "Pin", order = o + 0.001, width = 0.5,
+            desc = "Always show this buff, whatever its duration.",
+            hidden = notForever, disabled = procDep,
+            func = function() setList(PIN, id, not pinned) end,
+          }
+          procArgs["procNow_" .. i .. "_hide"] = {
+            type = "execute", name = hidden and "Unhide" or "Hide", order = o + 0.002, width = 0.5,
+            desc = "Never show this buff.",
+            hidden = notForever, disabled = procDep,
+            func = function() setList(HIDE, id, not hidden) end,
+          }
+        end
+        local nNow = #now
+        procArgs.procNowNote.hidden = function() return notForever() or (nNow > 0 and not inCombat()) end
+        -- The two lists: icon · name and id | X.
+        local function listRows(prefix, key, note, base)
+          local list = p[key] or {}
+          for i = 1, #list do
+            local id = tonumber(list[i])
+            if id then
+              local o = base + i * 0.01
+              procArgs[prefix .. i .. "_lbl"] = lbl(("%s  |cff808080%d|r"):format(optSpellName(id) or ("Spell " .. id), id), o, { spell = id })
+              procArgs[prefix .. i .. "_rm"] = {
+                type = "execute", name = "X", desc = "Remove from the list.", order = o + 0.001, width = 0.3,
+                hidden = notForever,
+                func = function() setList(key, id, false) end,
+              }
+            end
+          end
+          procArgs[note].hidden = function() return notForever() or #(Nock.db.profile[key] or {}) > 0 end
+        end
+        listRows("procPin_", PIN, "procPinNote", 31)
+        listRows("procHide_", HIDE, "procHideNote", 51)
+      end
+      rebuildProcArgs()
+      ARG_REBUILDERS[#ARG_REBUILDERS + 1] = rebuildProcArgs
+    end
 
     -- Bar order editor: the fixed 4-item cousin of the CD-row editor below.
     -- The four rows are STATIC args whose names re-read the effective order on
@@ -7361,6 +7507,7 @@ local function buildOptionsTable()
         tabRange = { type = "group", name = "Range Bar",       order = 30, args = rangeArgs },
         tabGrid  = { type = "group", name = "Cooldown Grid",   order = 40, args = gridArgs },
         tabBuff  = { type = "group", name = "Buff Row",        order = 50, args = buffArgs },
+        tabProcs = { type = "group", name = "Buff Row",        order = 51, args = procArgs, hidden = notForever },
         tabSkin  = { type = "group", name = "Skin",            order = 60, args = skinArgs },
       },
     }

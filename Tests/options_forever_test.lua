@@ -125,7 +125,7 @@ for _, p in ipairs({
   "hud.react.tabSize.reactShowCastBar", "hud.react.tabSize.castBarCard", "hud.react.tabSize.reactShowGrid",
   "hud.react.tabSize.reactCastH", "hud.react.tabSkin.reactColorCastFill",
   "hud.react.tabSize.reactShowRangeBar", "hud.react.tabSize.reactShowAspectIcon", "hud.react.tabSize.reactShowMarkIcon",
-  "hud.react.tabSize.cornersCard", "hud.react.tabSize.reactCornerIconSize", "hud.react.tabSize.reactBuffIconSize", "hud.react.tabSize.reactBuffRowsF", "hud.react.tabSize.buffRowCard", "hud.react.tabSkin.reactColorRangeSweet",
+  "hud.react.tabSize.cornersCard", "hud.react.tabSize.reactCornerIconSize", "hud.react.tabProcs.reactBuffIconSize", "hud.react.tabProcs.reactBuffRowsF", "hud.react.tabProcs.procNowRefresh", "hud.react.tabProcs.procPinAdd", "hud.react.tabProcs.procHideAdd", "hud.react.tabSkin.reactColorRangeSweet",
   "hud.react.tabSize.reactManaTick", "hud.react.tabSize.reactManaTickDirCombat",
   "hud.react.tabSize.reactAutoH", "hud.react.tabSize.barHeightsCard", "hud.react.tabSkin.reactColorAutoFill", "hud.react.tabSkin.reactFont", "hud.react.tabSkin.reactBarTexture",
   "general.scale", "general.lockAll", "general.minimapIcon", "general.grpMedia", "general.grpVisibility", "general.editGridShow",
@@ -183,6 +183,63 @@ ok(drawn and #drawn.rows == 1 and drawn.rows[1].label == "Spell-queue mark" and 
 ok(drawn and not drawn.one, "drawn skin table: the surviving line is drawn WITH its label (2026-09-23: it drew colour + width and nothing to say what for)")
 
 ok(nodeAt(opts, "general.runWizard") and nodeAt(opts, "general.runWizardGuided"), "Forever keeps both wizard buttons")
+
+-- The Buff Row tab on Forever (user, 2026-09-26): the row's switch and size,
+-- the buffs up now with Pin / Hide (read out of combat), and the pin and
+-- hide lists as icon tables with an add form.
+do
+  Nock.Flavor.forever = true
+  dofile("Forever/AuraRow.lua")
+  local auras = {
+    { spellId = 6150, name = "Quick Shots", icon = 11, sourceUnit = "player", duration = 12 },
+    { spellId = 28520, name = "Flask of Relentless Assault", icon = 12, sourceUnit = "player", duration = 7200 },
+  }
+  Nock.AuraCache = {
+    ForEach = function(_, fn) for _, a in ipairs(auras) do fn(a) end end,
+    ByName = function(_, n) for _, a in ipairs(auras) do if a.name == n then return a end end end,
+  }
+  local combat = false
+  _G.InCombatLockdown = function() return combat end
+  local p = Nock.db.profile
+  p.reactBuffCustom, p.foreverBuffHide, p.hudMode = { 28520 }, {}, "react"
+  Nock:RebuildOptionsArgs()
+  local t = nodeAt(opts, "hud.react.tabProcs")
+  ok(t and t.hidden() == false, "buff row tab shown on Forever")
+  for _, k in ipairs({ "buffRowCard", "buffsUpNowCard", "pinnedBuffsCard", "hiddenBuffsCard" }) do
+    ok(t and t.args[k] and t.args[k].type == "header" and not t.args[k].hidden, "buff row tab: card " .. k)
+  end
+  local a = t.args
+  ok(a.procNow_1_lbl and a.procNow_1_lbl.name:find("Quick Shots", 1, true) and a.procNow_1_lbl.name:find("6150", 1, true)
+     and a.procNow_1_lbl.name:find("shown", 1, true), "buffs up now: Quick Shots first, with its id and 'shown'")
+  ok(a.procNow_2_lbl and a.procNow_2_lbl.name:find("pinned", 1, true) and a.procNow_2_pin.name == "Unpin", "a pinned buff says so and offers Unpin")
+  ok(a.procNow_1_hide.name == "Hide" and a.procNowNote.hidden() == true, "Hide offered; the empty note hidden while buffs are listed")
+  ok(a.procPin_1_lbl and a.procPin_1_lbl.name:find("28520", 1, true) and a.procPin_1_rm.name == "X", "pinned list: a row with its remove button")
+  ok(a.procPinNote.hidden() == true and a.procHideNote.hidden() == false, "empty-list notes: pinned has rows, hidden says nothing hidden")
+  -- Hide from the buffs-up-now list: stored, the tab rebuilt.
+  a.procNow_1_hide.func()
+  ok(p.foreverBuffHide[1] == 6150, "Hide writes the hide list")
+  a = nodeAt(opts, "hud.react.tabProcs").args
+  ok(a.procNow_1_hide.name == "Unhide" and a.procHide_1_lbl and a.procHide_1_lbl.name:find("6150", 1, true), "rebuilt: Unhide offered, the hidden list shows it")
+  -- Pinning a hidden id moves it: one list at a time.
+  a.procNow_1_pin.func()
+  ok(p.reactBuffCustom[2] == 6150 and #p.foreverBuffHide == 0, "pin takes the id off the hide list")
+  -- The add form: a name up now resolves to the aura's own id.
+  a = nodeAt(opts, "hud.react.tabProcs").args
+  a.procHideAdd.set(nil, "Flask of Relentless Assault")
+  ok(a.procHideAddBtn.disabled() == false, "add enabled for a resolvable name")
+  a.procHideAddBtn.func()
+  ok(p.foreverBuffHide[1] == 28520 and a.procHideAdd.get() == "", "added by name, the field cleared")
+  a = nodeAt(opts, "hud.react.tabProcs").args
+  a.procHideAdd.set(nil, "Not A Buff")
+  ok(a.procHideAddBtn.disabled() == true, "add disabled for an unknown name")
+  -- In combat nothing is read: the list empties, the note says why.
+  combat = true
+  Nock:RebuildOptionsArgs()
+  a = nodeAt(opts, "hud.react.tabProcs").args
+  ok(a.procNow_1_lbl == nil and a.procNowNote.hidden() == false and a.procNowNote.name() == "Leave combat to list your buffs.", "in combat: no list, the note explains")
+  combat = false
+  Nock.Flavor.forever = false
+end
 
 print(("options_forever: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

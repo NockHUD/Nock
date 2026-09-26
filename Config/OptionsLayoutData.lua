@@ -246,10 +246,19 @@ L.TABS = {
       { key = "castBarCard", name = "Cast bar", icon = { spell = C.STEADY_SHOT }, rows = { "reactShowAutoShotCast", "castBarNonCombatCasts" } },
       { key = "cornersCard", name = "Corners", icon = { spell = 13165 }, desc = "Aspect and Hunter's Mark flanking the cluster.", rows = { "reactShowAspectIcon", "reactShowMarkIcon", "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY" } },
       { key = "barHeightsCard", name = "Bar heights", icon = { glyph = "expand" }, desc = "Each bar's height in the cluster; dual wield splits the melee bar's in two.", rows = { "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH" } },
-      { key = "buffRowCard", name = "Buff row", icon = { glyph = "stack" }, forever = true, desc = "Your short buffs and procs above the cluster.", rows = { "reactBuffRowsF", "reactBuffIconSize" } },
       { key = "orderCard", name = "Order", icon = { glyph = "stack" }, actions = { "order_reset" }, rows = { "order_lbl_1", "order_up_1", "order_dn_1", "order_lbl_2", "order_up_2", "order_dn_2", "order_lbl_3", "order_up_3", "order_dn_3", "order_lbl_4", "order_up_4", "order_dn_4", "order_reset" } },
     },
     rename = { showAutoShotBar = "Auto Shot bar", showMeleeBar = "Melee swing timer", showGcdBar = "GCD bar", showManaBar = "Mana bar", rotationHelperEnabled = "Rotation helper", showWindupMark = "Wind-up mark", editGridShow = "Grid while unlocked", showAutoShotCast = "Auto Shot in cast bar", castBarNonCombatCasts = "Non-combat casts", backgroundEnabled = "Background", consumeBannerEnabled = "Pill while eating or drinking", playerEnabled = "Player buffs panel", petEnabled = "Pet buffs panel", trackerEnabled = "Tracker section", clickerEnabled = "Tank buttons", showCompleted = "Stocked items too", repairEnabled = "Repair reminder", weaveBindEnabled = "Weave bind", tonkDialEnabled = "Countdown dial", practiceToast = "Toast", practiceTimelineOkMarks = "OK marks too", releaseBarEnabled = "Retry-Timer", fluffyShowAutoShotCast = "Auto Shot wind-up as a cast", shotBarsShowMulti = "Multi-Shot window", shotBarsShowArcane = "Arcane Shot window", shotBarsShowRaptor = "Melee weave lane", autoShotDelayEnabled = "Auto Shot delay (experimental)", reactColorAutoFill = "Auto Shot fill", reactColorAutoShotFill = "Cast: Auto Shot wind-up" },
+  },
+  {
+    path = "hud.react.tabProcs",
+    forever = true,
+    cards = {
+      { key = "buffRowCard", name = "Buff row", icon = { glyph = "stack" }, desc = "Every buff you cast on yourself lasting 60 s or less; pin longer ones, hide ones you don't want.", rows = { "reactBuffRowsF", "reactBuffIconSize" } },
+      { key = "buffsUpNowCard", name = "Buffs up now", icon = { glyph = "sparkle" }, desc = "The buffs on you right now (read out of combat) and what the row does with each.", actions = { "procNowRefresh" }, table = { cols = { { "Pin" }, { "Hide" } }, rows = { { "procNow_*", { ["Pin"] = "_pin", ["Hide"] = "_hide" } } } }, rows = { "procNowRefresh", "procNowNote", "procNow_*" } },
+      { key = "pinnedBuffsCard", name = "Pinned buffs", icon = { glyph = "plus" }, desc = "Always shown after the short buffs, however long they last and whoever cast them.", form = { "procPinAdd", "procPinAddBtn" }, table = { cols = { { "" } }, rows = { { "procPin_*", { [""] = "_rm" } } } }, rows = { "procPinNote", "procPin_*", "procPinAdd", "procPinAddBtn" } },
+      { key = "hiddenBuffsCard", name = "Hidden buffs", icon = { glyph = "eyeoff" }, desc = "Short buffs the row never shows. A change made in combat applies when it ends.", form = { "procHideAdd", "procHideAddBtn" }, table = { cols = { { "" } }, rows = { { "procHide_*", { [""] = "_rm" } } } }, rows = { "procHideNote", "procHide_*", "procHideAdd", "procHideAddBtn" } },
+    },
   },
   {
     path = "hud.react.tabGrid",

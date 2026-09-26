@@ -677,6 +677,34 @@ function Probe:Show(which, rest)
   local text
   if which == "range" then self:RangeRecord(rest); return end
   if which == "fonts" then self:FontPreview(rest); return end
+  -- `/nock probe idshape set|list`: re-filter the live buff row with the
+  -- other ID-table shape (Forever/AuraRow.lua ID_SHAPE, unverified). Put a
+  -- buff that is up on the hide list, then flip until it disappears.
+  if which == "idshape" then
+    local AR = Nock.ForeverAuraRow
+    if not AR then return end
+    AR.lastApply = nil
+    if rest == "set" or rest == "list" then
+      AR.ID_SHAPE = rest
+      Nock:SendMessage("NOCK_VISUALS_CHANGED")
+    end
+    local p = Nock.db and Nock.db.profile or {}
+    local function ids(t)
+      local out = {}
+      for i = 1, #(t or {}) do out[#out + 1] = tostring(t[i]) end
+      return #out > 0 and table.concat(out, ", ") or "(empty)"
+    end
+    local lines = {
+      ("ID shape: %s"):format(AR.ID_SHAPE),
+      ("hidden: %s"):format(ids(p.foreverBuffHide)),
+      ("pinned: %s"):format(ids(p.reactBuffCustom)),
+      ("in combat: %s"):format(tostring(InCombatLockdown and InCombatLockdown() or false)),
+      ("apply: %s"):format(AR.lastApply or "not run (no row, in combat, or no shape given)"),
+    }
+    local text = table.concat(lines, "\n")
+    if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
+    return
+  end
   if which == "spells" then text = self:SpellbookReport()
   elseif which == "frames" then text = self:FramesReport()
   elseif which == "container" then

@@ -778,7 +778,8 @@ Nock.Defaults = {
     -- by drag / nudge pad in /nock unlock; the pad's reset re-welds.
     reactBuffRowPos      = false,
     reactBuffDisabled    = {},          -- ["mendPet"|"feedPet"|"intimidation"|"lotp"|"feign"|"misdirect"|"grace"|"windfury"|"frenzy"|"movein"|"weave"] = true → hide
-    reactBuffCustom      = {},          -- extra proc buff spellIDs (array), exact-ID matched like IMPORTANT_IDS
+    reactBuffCustom      = {},          -- extra proc buff spellIDs (array), exact-ID matched like IMPORTANT_IDS; on Forever the PINNED buffs (Forever/AuraRow.lua)
+    foreverBuffHide      = {},          -- Forever: aura spellIDs (array) the client-drawn buff row never shows
     -- React corner status icons (UI/Frame_ReactCorners.lua): the reference
     -- WeakAura's aspect (top-left) and Hunter's Mark (top-right) flanking the
     -- cluster. Off by default — the Aspect warning already covers the first
