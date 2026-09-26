@@ -404,9 +404,43 @@ function Cooldowns:OnEnable()
   self:RegisterEvent("UNIT_SPELLCAST_START")
   self:RegisterEvent("PLAYER_STARTED_MOVING", "OnMoveOrSwing")
   self:RegisterEvent("PLAYER_SWING", "OnMoveOrSwing")
+  -- usability (dim while unavailable, the no-mana tint, reactive spells);
+  -- AceEvent hard-errors on an event the client lacks
+  pcall(self.RegisterEvent, self, "SPELL_UPDATE_USABLE", "ScanUsable")
   self:RegisterMessage("NOCK_SNAPSHOT", "Seed")
   self:RegisterMessage("NOCK_RESCAN", "Rescan")
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "OnConfigChanged")
+end
+
+-- Usability for every spell tile, the TBC module's contract: s.usable /
+-- s.noMana (booleans, nil = cannot say) and s.reactive (Mongoose Bite and
+-- the like: greyed while unusable whatever reactTileDim says). A secret read
+-- (in combat, if the client hides it) is nil: the tile keeps its ready look.
+-- Event-driven (SPELL_UPDATE_USABLE, cooldown updates, rescans), never per tick.
+function Cooldowns.UsableRead(usable, noMana)
+  local u, m = Nock.Flavor.Plain(usable), Nock.Flavor.Plain(noMana)
+  if type(u) ~= "boolean" then u = nil end
+  if type(m) ~= "boolean" then m = nil end
+  if u == nil then m = nil end
+  return u, m
+end
+
+function Cooldowns:ScanUsable()
+  local API = Nock.API
+  if not (API and API.SpellUsable and API.IsReactiveSpell) then return end
+  for _, e in ipairs(self._tracked or {}) do
+    local s = Nock.state.cooldowns[e.key]
+    local id = s and s.spellId
+    if id then
+      s.usable, s.noMana = Cooldowns.UsableRead(API.SpellUsable(id))
+      if s._reactiveFor ~= id then
+        s.reactive = API.IsReactiveSpell(id)
+        s._reactiveFor = id
+      end
+    elseif s then
+      s.usable, s.noMana, s.reactive, s._reactiveFor = nil, nil, nil, nil
+    end
+  end
 end
 
 -- Own casts stamp the ledger (plain on Forever). While cooldowns are readable
@@ -426,6 +460,7 @@ function Cooldowns:UNIT_SPELLCAST_SUCCEEDED(event, unit, castGUID, spellID)
 end
 
 function Cooldowns:SPELL_UPDATE_COOLDOWN()
+  self:ScanUsable()
   local id, read = self._learnPending, self._learnRead
   if not id or Nock.Restricted("cooldowns") then return end
   self._learnPending, self._learnRead = nil, nil
@@ -454,6 +489,7 @@ end
 -- Out of combat: the API is the truth; the ledger is reconciled to it.
 function Cooldowns:Rescan()
   self:UpdateKnown()
+  self:ScanUsable()
   if Nock.Restricted("cooldowns") then return end
   for _, e in ipairs(self._tracked) do
     local id = ledgerId(e)

@@ -91,6 +91,45 @@ else
   function API.SpellCooldownDuration() return nil end
 end
 
+-- Usability ------------------------------------------------------------------
+-- (usable, noMana) raw: on Forever they may be secret in combat, so callers
+-- Plain() them. nil, nil where the client has neither form.
+local cIsSpellUsable = CS and CS.IsSpellUsable
+local gIsUsableSpell = _G.IsUsableSpell
+if cIsSpellUsable then
+  function API.SpellUsable(id) return cIsSpellUsable(id) end
+elseif gIsUsableSpell then
+  function API.SpellUsable(id) return gIsUsableSpell(id) end
+else
+  function API.SpellUsable() return nil, nil end
+end
+
+-- Reactive spells: off cooldown yet usable only after an event (a dodge,
+-- a parry), so the grid greys them while they cannot be pressed whatever
+-- reactTileDim says (Mongoose Bite on the ready tile read as "available",
+-- Shekza, 2026-09-26). Matched by the client's own NAME of the rank-1 id,
+-- so every rank and every locale match. Pure over API.SpellName.
+API.REACTIVE_SPELLS = { 1495, 19306 }   -- Mongoose Bite, Counterattack
+-- The name set is built once; while the client has not loaded the names
+-- yet (right after login) it is retried at most every 10 s, not per call.
+local reactiveNames, reactiveRetryAt = {}, nil
+function API.IsReactiveSpell(id)
+  if type(id) ~= "number" then return false end
+  local now = _G.GetTime and GetTime() or 0
+  if not next(reactiveNames) and (not reactiveRetryAt or now >= reactiveRetryAt) then
+    reactiveRetryAt = now + 10
+    for _, rid in ipairs(API.REACTIVE_SPELLS) do
+      local n = API.SpellName and API.SpellName(rid)
+      if Nock.Flavor and Nock.Flavor.Plain then n = Nock.Flavor.Plain(n) end
+      if type(n) == "string" and n ~= "" then reactiveNames[n] = true end
+    end
+  end
+  if not next(reactiveNames) then return false end
+  local n = API.SpellName and API.SpellName(id)
+  if Nock.Flavor and Nock.Flavor.Plain then n = Nock.Flavor.Plain(n) end
+  return type(n) == "string" and reactiveNames[n] == true
+end
+
 -- AddOns -------------------------------------------------------------------
 local cIsAddOnLoaded = CA and CA.IsAddOnLoaded
 local gIsAddOnLoaded = _G.IsAddOnLoaded

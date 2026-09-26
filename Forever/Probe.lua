@@ -770,6 +770,36 @@ function Probe:Show(which, rest)
   -- `/nock probe idshape set|list`: re-filter the live buff row with the
   -- other ID-table shape (Forever/AuraRow.lua ID_SHAPE, unverified). Put a
   -- buff that is up on the hide list, then flip until it disappears.
+  -- `/nock probe usable [id]`: is a spell's usability plain or secret right
+  -- now (run it in combat too)? Default Mongoose Bite; also what its grid
+  -- tile holds and which secret-safe setters the client has.
+  if which == "usable" then
+    local id = tonumber(rest) or 1495
+    local isSecret = _G.issecretvalue
+    local okc, u, m = pcall(Nock.API.SpellUsable, id)
+    local function show(v)
+      if isSecret and isSecret(v) then return "SECRET" end
+      return tostring(v)
+    end
+    local L = {
+      ("spell %d (%s)  in combat: %s"):format(id, tostring(Nock.Flavor.Plain(Nock.API.SpellName(id))),
+        tostring(InCombatLockdown and InCombatLockdown() or false)),
+      okc and ("usable: %s  noMana: %s"):format(show(u), show(m)) or ("error: " .. tostring(u)),
+      ("reactive: %s"):format(tostring(Nock.API.IsReactiveSpell(id))),
+    }
+    for key, s in pairs(Nock.state and Nock.state.cooldowns or {}) do
+      if s.spellId and Nock.API.IsReactiveSpell(s.spellId) then
+        L[#L + 1] = ("tile %s: spell %s  usable %s  reactive %s"):format(key, tostring(s.spellId), tostring(s.usable), tostring(s.reactive))
+      end
+    end
+    local tex = UIParent and UIParent.CreateTexture and UIParent:CreateTexture()
+    L[#L + 1] = ("SetVertexColorFromBoolean: %s  SetAlphaFromBoolean: %s"):format(
+      tostring(tex and tex.SetVertexColorFromBoolean ~= nil), tostring(tex and tex.SetAlphaFromBoolean ~= nil))
+    if tex then tex:Hide() end
+    local text = table.concat(L, "\n")
+    if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
+    return
+  end
   -- `/nock probe talents`: every talent C_SpecializationInfo.GetTalentInfo
   -- answers for, under each spec index (0 = none given), with its spell id
   -- and rank. How the Forever tree is served is unprobed (Lone Wolf, 2026-09-26).

@@ -326,5 +326,18 @@ local k4 = Nock.UI.ReactLookKey(look({ ready = true, usable = false }, false, { 
 local k5 = Nock.UI.ReactLookKey(look({ ready = true, usable = true },  false, { tint = "off", dim = true }))
 ok(k1 ~= k2 and k1 == k3 and k4 ~= k5, "the look key changes with the range / dim and is stable otherwise")
 
+-- Reactive spells (Mongoose Bite): greyed while unusable whatever the dim toggle.
+do
+  local Look = Nock.UI.ReactSlotLook
+  local r = Look({ ready = true, reactive = true, usable = false }, nil, { dim = false })
+  ok(r.vis == "ready" and r.desat == true and r.alpha == 0.6, "reactive + unusable: greyed with dim off")
+  r = Look({ ready = true, reactive = true, usable = true }, nil, { dim = false })
+  ok(r.desat == false and r.alpha == 1, "reactive + usable (after a dodge): bright")
+  r = Look({ ready = true, reactive = true, usable = nil }, nil, { dim = false })
+  ok(r.desat == false and r.alpha == 1, "reactive, usability unknown (secret): the ready look stays")
+  r = Look({ ready = true, reactive = false, usable = false }, nil, { dim = false })
+  ok(r.desat == false and r.alpha == 1, "a normal unusable spell with dim off: unchanged (opt-in)")
+end
+
 print(("react_slot_paint: %d passed, %d failed"):format(pass, fail))
 if fail > 0 then os.exit(1) end

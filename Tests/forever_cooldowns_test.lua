@@ -339,5 +339,27 @@ do
   Nock.AuraCache = nil
 end
 
+-- Usability on Forever (dim while unavailable, no-mana tint, reactive spells).
+do
+  local UR = CD.UsableRead
+  local u, m = UR(true, false)
+  ok(u == true and m == false, "plain reads pass through")
+  u, m = UR("SECRET", "SECRET")
+  ok(u == nil and m == nil, "a secret read is nil: the tile keeps its ready look")
+  u, m = UR(nil, true)
+  ok(u == nil and m == nil, "no usable answer: no mana answer either")
+  local usable = { [3044] = true }
+  Nock.API.SpellUsable = function(id) return usable[id] == true, false end
+  Nock.API.IsReactiveSpell = function(id) return id == 3044 end
+  CD:ScanUsable()
+  local arc = st.cooldowns.Arc
+  ok(arc.usable == true and arc.noMana == false and arc.reactive == true, "ScanUsable publishes usable / noMana / reactive")
+  usable[3044] = false
+  CD:SPELL_UPDATE_COOLDOWN()
+  ok(arc.usable == false, "re-read on a cooldown update")
+  ok(CD.events.SPELL_UPDATE_USABLE == "ScanUsable", "SPELL_UPDATE_USABLE drives it")
+  Nock.API.SpellUsable, Nock.API.IsReactiveSpell = nil, nil
+end
+
 print(("forever_cooldowns: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

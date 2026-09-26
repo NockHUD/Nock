@@ -325,7 +325,18 @@ function Cooldowns:RebuildLists()
       byKey[e.key] = e
     end
   end
-  for _, e in ipairs(tracked) do ensureStateSlot(e.key) end
+  for _, e in ipairs(tracked) do
+    ensureStateSlot(e.key)
+    -- reactive (Mongoose Bite): a property of the tile's spell, settled here
+    -- once so the scans only revisit it when a slot's spell moves (Spec)
+    if e.type == "spell" and e.id then
+      local s = Nock.state.cooldowns[e.key]
+      if s._reactiveFor ~= e.id then
+        s.reactive = Nock.API and Nock.API.IsReactiveSpell and Nock.API.IsReactiveSpell(e.id) or false
+        s._reactiveFor = e.id
+      end
+    end
+  end
   self._tracked      = tracked
   self._entryByKey   = byKey
 end
@@ -716,8 +727,12 @@ function Cooldowns:ScanUsable()
     if id then
       s.usable, s.noMana = spellUsable(id)
       if entry.needsPet and pet == false then s.usable = false end
+      if s._reactiveFor ~= id then
+        s.reactive = Nock.API and Nock.API.IsReactiveSpell and Nock.API.IsReactiveSpell(id) or false
+        s._reactiveFor = id
+      end
     else
-      s.usable, s.noMana = nil, nil
+      s.usable, s.noMana, s.reactive, s._reactiveFor = nil, nil, nil, nil
     end
     if entry.usable and not (Nock.state.sim.active and SIM_OWNED[entry.key]) then
       local onCd = (s.duration or 0) > 0 and (s.startTime + s.duration) > now

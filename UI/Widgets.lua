@@ -2051,6 +2051,10 @@ function Nock.UI.ReactSlotLook(cd, out, opts, res)
   local tint, alpha = nil, 1
   if opts.dim and vis ~= "proc" and (vis == "cd" or cd.usable == false) then
     desat, alpha = true, 0.6
+  elseif cd.reactive and vis == "ready" and cd.usable == false then
+    -- a reactive spell (Mongoose Bite) waiting for its dodge is not
+    -- "available": greyed whatever reactTileDim says
+    desat, alpha = true, 0.6
   end
   if opts.manaTint and cd.noMana then
     desat, tint = true, "blue"

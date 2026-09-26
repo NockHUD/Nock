@@ -10,7 +10,7 @@ end
 local function boot(env)
   for _, k in ipairs({ "C_Spell", "C_UnitAuras", "C_AddOns", "C_Item", "GetSpellInfo", "GetSpellTexture",
     "GetSpellCooldown", "IsAddOnLoaded", "UnitAura", "GetTalentTabInfo", "issecretvalue",
-    "GetItemInfo", "GetItemIcon", "GetItemCount" }) do _G[k] = nil end
+    "GetItemInfo", "GetItemIcon", "GetItemCount", "IsUsableSpell" }) do _G[k] = nil end
   for k, v in pairs(env) do if k ~= "__forever" then _G[k] = v end end
   local Nock = { Flavor = { forever = env.__forever or false, Plain = function(v) return v end } }
   _G.LibStub = function() return { GetAddon = function() return Nock end } end
@@ -85,6 +85,24 @@ ok(Z.IsAddOnLoaded("x") == false, "IsAddOnLoaded false without any API")
 local miss = table.concat(Z.Missing(), ",")
 ok(miss:find("SpellInfo") and miss:find("SpellCooldown") and miss:find("AuraByIndex") and miss:find("ItemName"), "Missing lists the unresolved names: " .. miss)
 ok(Z.ItemCount(1) == 0 and Z.ItemName(1) == nil and Z.ItemIcon(1) == nil, "item resolvers degrade without any API")
+
+-- Usability + reactive spells (Mongoose Bite on the ready tile, 2026-09-26).
+do
+  local names = { [1495] = "Mongoose Bite", [36916] = "Mongoose Bite", [19306] = "Counterattack", [3044] = "Arcane Shot" }
+  local R = boot({ __forever = true, C_Spell = {
+    GetSpellInfo = function(id) return names[id] and { name = names[id] } or nil end,
+    IsSpellUsable = function(id) return id == 3044, false end,
+  } })
+  local u, m = R.SpellUsable(3044)
+  ok(u == true and m == false and R.SpellUsable(1495) == false, "SpellUsable via C_Spell.IsSpellUsable")
+  ok(R.IsReactiveSpell(1495) and R.IsReactiveSpell(36916) and R.IsReactiveSpell(19306), "Mongoose Bite (any rank) and Counterattack are reactive")
+  ok(R.IsReactiveSpell(3044) == false and R.IsReactiveSpell(nil) == false, "Arcane Shot is not; nil is not")
+  local G = boot({ IsUsableSpell = function(id) return false, true end })
+  local gu, gm = G.SpellUsable(1)
+  ok(gu == false and gm == true, "SpellUsable falls back to IsUsableSpell")
+  local Z2 = boot({})
+  ok(Z2.SpellUsable(1) == nil and Z2.IsReactiveSpell(1495) == false, "no API: nil / not reactive")
+end
 
 print(("api_layer: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
