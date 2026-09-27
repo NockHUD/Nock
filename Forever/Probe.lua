@@ -948,12 +948,12 @@ function Probe:Show(which, rest)
   -- `/nock probe lonewolf`: is Lone Wolf seen as talented, and by which path
   -- (spellbook / talent / aura)? Out of combat.
   if which == "lonewolf" then
-    local W = Nock:GetModule("Warnings", true)
-    if not (W and W.LoneWolf) then return end
-    W._loneWolfAt = nil
-    local on = W:LoneWolf(false)
+    local PM = Nock:GetModule("ForeverPet", true)
+    if not (PM and PM.LoneWolf) then return end
+    PM._loneWolfAt = nil
+    local on = PM:LoneWolf(false)
     Nock:Print(("Lone Wolf: %s%s"):format(on and "talented" or "not seen",
-      on and (" (via " .. tostring(W._loneWolfHow) .. ")") or ""))
+      on and (" (via " .. tostring(PM._loneWolfHow) .. ")") or ""))
     return
   end
   if which == "idshape" then

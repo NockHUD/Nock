@@ -649,9 +649,9 @@ onlyKeys(ra, { "intro", "hudMode", "useLook", "tabSize", "tabBars", "tabRange", 
   "react root")
 onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "elementsNote",
   "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview", "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
-  "reactShowCastBar", "reactShowAutoShotCast", "hideBlizzardCastBar", "reactShowGrid", "reactShowAspectIcon", "reactShowMarkIcon",
+  "reactShowCastBar", "reactShowAutoShotCast", "hideBlizzardCastBar", "reactShowGrid", "reactShowPetRow", "reactPetRowW", "reactShowAspectIcon", "reactShowMarkIcon",
   "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY",
-  "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH",
+  "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH", "reactPetRowH",
   "orderHeader", "order_reset", "castBarNonCombatCasts" }, "react tabSize",
   { "order_lbl_", "order_up_", "order_dn_" })
 ok(raSize.reactRangeLabels and raSize.reactRangeLabels.type == "toggle"

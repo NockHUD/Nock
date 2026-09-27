@@ -121,6 +121,17 @@ function BuffLedger:Refresh(state)
   -- Publish: live entries, soonest first (permanent ones last), entry tables
   -- reused (no allocation per refresh on the slow lane).
   local lb = state.ledgerBuffs
+  -- The same timers by catalog key, for readers that want one buff (the
+  -- pet row wants Feed). Entries are created once and reused.
+  local byKey = state.ledgerTimers
+  if byKey then
+    for _, id in ipairs(self._order) do
+      local t = self._track[id]
+      local e = byKey[t.key]
+      if not e then e = {}; byKey[t.key] = e end
+      if t.exp > now then e.exp, e.dur = t.exp, t.dur or 0 else e.exp, e.dur = 0, t.dur or 0 end
+    end
+  end
   local n = 0
   for _, id in ipairs(self._order) do
     local t = self._track[id]

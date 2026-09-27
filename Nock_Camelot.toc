@@ -28,6 +28,7 @@ Rotations\Profiles.lua
 
 Forever\Spells.lua
 Forever\Spellbook.lua
+Forever\PetLamp.lua
 
 Config\Defaults.lua
 Config\Options.lua
@@ -68,6 +69,7 @@ Modules\ManaTickEngine.lua
 Forever\ManaTick.lua
 Forever\Cooldowns.lua
 Forever\Probe.lua
+Forever\Pet.lua
 Forever\Warnings.lua
 Forever\RangeCues.lua
 Forever\AspectRing.lua
@@ -81,6 +83,7 @@ UI\ReactRangeLadder.lua
 UI\Frame_ReactCluster.lua
 UI\Frame_ReactCastBar.lua
 UI\Frame_ReactCooldowns.lua
+UI\Frame_ReactPetRow.lua
 UI\Frame_ReactCorners.lua
 UI\Frame_ReactBuffs.lua
 UI\Frame_AggroWarning.lua

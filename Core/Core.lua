@@ -576,6 +576,9 @@ function Nock:HandleSlashCommand(input)
     if #out == 0 then out[1] = "(no output)" end
     if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox("> " .. code .. "\n" .. table.concat(out, "\n"))
     else self:Print(table.concat(out, "\n")) end
+  elseif input == "pet log" then
+    local pm = self:GetModule("ForeverPet", true)
+    if pm and pm.ShowLog then pm:ShowLog() else self:Print("The pet happiness log is only recorded on WoW Forever.") end
   elseif input == "probe" or input:match("^probe%s") then
     local pr = self:GetModule("ForeverProbe", true)
     local which, rest = input:match("^probe%s+(%w+)%s*(.*)$")

@@ -171,6 +171,12 @@ Nock.state = {
   -- Forever: own-cast buffs from the ledger (Forever/Buffs.lua), the React
   -- buff row's item shape: { icon, exp, dur }, n entries, soonest first.
   ledgerBuffs = { n = 0 },
+  -- Forever: Buff ledger timers by catalog key (Forever/Buffs.lua), e.g.
+  -- ledgerTimers.Feed = { exp, dur } while Feed Pet runs. Entries are reused.
+  ledgerTimers = {},
+  -- Forever: the pet (Forever/Pet.lua). happiness 1 Unhappy / 2 Content /
+  -- 3 Happy, nil = no pet or unreadable; damagePct from GetPetHappiness.
+  pet = { exists = false, dead = false, loneWolf = false, happiness = nil, damagePct = nil },
   cooldowns = {
     -- keyed by entry.key: { startTime, duration, remaining, ready, procActive, icon }
   },

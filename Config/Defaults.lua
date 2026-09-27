@@ -743,6 +743,9 @@ Nock.Defaults = {
     -- separate opt-in showAutoShotCast (off above) — its swing timer covers it.
     reactShowAutoShotCast = true,
     reactShowGrid        = true,        -- 3-row cooldown grid
+    reactShowPetRow      = false,       -- Forever: pet happiness lamps under the grid (opt-in)
+    reactPetRowW         = 25,          -- Forever: pet lamps strip width, % of the HUD
+    reactPetRowH         = 4,           -- Forever: pet lamps height px
     reactShowNotation    = true,        -- rotation notation on the auto bar's right edge
     -- React cooldown grid.
     reactConsumablesAlways = false,     -- row 3: always show slots (ignore the whenActive auto-hide)
@@ -1242,6 +1245,10 @@ Nock.Defaults = {
 
   -- Per-character runtime memos (survive /reload mid-cycle).
   char = {
+    -- Forever pet happiness tier changes (Forever/Pet.lua, `/nock pet log`):
+    -- the data the future happiness drain is designed from. Never exported
+    -- (profile sharing carries the profile only).
+    petHappinessLog = {},
     -- Garment autopilot memo: false, or { itemID, link, slot, garment, dir }
     -- for a gate garment Nock changed and may still need to restore. dir is
     -- the arming direction: "off" = Nock removed it ([noequipped:...]

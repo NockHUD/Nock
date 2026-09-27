@@ -118,7 +118,7 @@ local HUD_OPT_IN_FLAGS = {
   "misdirectEnabled", "mdCastEnabled", "buffTrackerEnabled", "debuffTrackerEnabled",
   -- React corner icons: shipped off on purpose, so "Show all" must not turn
   -- them on. "Hide all" still clears them.
-  "reactShowAspectIcon", "reactShowMarkIcon",
+  "reactShowAspectIcon", "reactShowMarkIcon", "reactShowPetRow",
 }
 
 local function setAllHudVisibility(show)
@@ -6383,6 +6383,20 @@ local function buildOptionsTable()
       castBarSharedArgs("(same setting as General → Cast bar)").hideBlizzardCastBar
     sizeArgs.hideBlizzardCastBar.order = 25.6
     sizeArgs.reactShowGrid     = reactToggle("reactShowGrid",     "Cooldown grid",   "The 3-row cooldown grid under the cluster.", 26)
+    sizeArgs.reactShowPetRow = reactOptInToggle("reactShowPetRow",
+      "Pet happiness lamps",
+      "Three small lamps under the cooldown grid: green while your pet is Happy, amber when it's Content, red and pulsing when it's Unhappy, with FEED NOW under them and the Feed Pet timer while it eats. Hidden with no pet, a dead pet or Lone Wolf. Off by default.",
+      26.2)
+    sizeArgs.reactShowPetRow.hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end
+    sizeArgs.reactPetRowW = {
+      type = "range", name = "Pet lamps width",
+      desc = "How wide the pet happiness lamps are, as a share of the HUD's width.",
+      min = 10, max = 100, step = 5, order = 26.25,
+      hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end,
+      disabled = function() return notReact() or Nock.db.profile.reactShowPetRow ~= true end,
+      get = function() return tonumber(Nock.db.profile.reactPetRowW) or 25 end,
+      set = function(_, v) visualsSet(_, "reactPetRowW", v) end,
+    }
     sizeArgs.reactShowAspectIcon = reactOptInToggle("reactShowAspectIcon",
       "Aspect corner icon",
       "Show the aspect you're in as an icon above the cluster's top-left corner, greyed when you have no aspect. Off by default: the Aspect warning already covers this, only in combat and only when it's wrong.",
@@ -7267,7 +7281,7 @@ local function buildOptionsTable()
     -- nil until /reload; removeDefaults still strips default-equal values at
     -- logout, so untouched keys never enter the SV).
     local SKIN_REFERENCE = {
-      reactAutoH = 14, reactMeleeH = 12, reactRangeH = 12, reactManaH = 12, reactCastH = 16,
+      reactAutoH = 14, reactMeleeH = 12, reactRangeH = 12, reactManaH = 12, reactCastH = 16, reactPetRowH = 4,
       reactCornerIconSize = 42, reactCornerIconX = 30, reactCornerIconY = 50, reactBuffIconSize = 26,
       reactBarTexture = "", reactFont = "", reactFontSize = 9,
       reactFontStyle = "OUTLINE", reactFontShadow = false, reactTextOffsetY = 0, reactTextOffsetX = 0,
@@ -7412,6 +7426,14 @@ local function buildOptionsTable()
     sizeArgs.reactRangeH = skinRange("reactRangeH", "Range bar height",     29.3)
     sizeArgs.reactManaH  = skinRange("reactManaH",  "Mana bar height",      29.4)
     sizeArgs.reactCastH  = skinRange("reactCastH",  "Cast bar height",      29.5)
+    -- The pet lamps are a hairline, so they get their own thinner span.
+    sizeArgs.reactPetRowH = {
+      type = "range", name = "Pet lamps height", min = 3, max = 16, step = 1, order = 29.6,
+      hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end,
+      disabled = function() return notReact() or Nock.db.profile.reactShowPetRow ~= true end,
+      get = function() return tonumber(Nock.db.profile.reactPetRowH) or 4 end,
+      set = function(_, v) visualsSet(_, "reactPetRowH", v) end,
+    }
     -- Corner-icon geometry wants a wider span than the bar heights above.
     local function cornerRange(key, name, desc, order, minV, maxV)
       return {

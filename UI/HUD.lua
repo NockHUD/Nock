@@ -187,6 +187,10 @@ function HUD:ApplyRowVisibility()
   end
   setShown("ReactCluster",       react)
   setShown("ReactCooldownsView", react and (p.reactShowGrid ~= false))
+  -- Forever pet happiness lamps: opt-in, and the module itself says when
+  -- there is a pet to show (it re-stacks the HUD on a flip).
+  local petRow = Nock:GetModule("ReactPetRow", true)
+  setShown("ReactPetRow", react and petRow ~= nil and petRow:Wanted())
   setShown("FluffyCluster",      fluffy)
   -- The fluffy CD row is the cluster's welded child (grows downward, no
   -- cascade height). Opt-in (ships OFF), hence == true rather than ~= false.
@@ -318,6 +322,11 @@ local function reactCooldownsH()
   if m and m.ContentHeight then return m:ContentHeight() end
   return 1
 end
+local function reactPetRowH()
+  local m = Nock:GetModule("ReactPetRow", true)
+  if m and m.ContentHeight then return m:ContentHeight() end
+  return 1
+end
 local function fluffyClusterH()
   local m = Nock:GetModule("FluffyCluster", true)
   if m and m.ContentHeight then return m:ContentHeight() end
@@ -350,6 +359,7 @@ local LAYOUT = {
   { module = "RangeFinderView", anchor = "TOP",     height = rangeFinderH                               },
   { module = "CooldownsView",   anchor = "TOP",     height = cooldownsH                                 },
   { module = "ReactCooldownsView", anchor = "TOP",  height = reactCooldownsH, gap = -1                  },
+  { module = "ReactPetRow",     anchor = "TOP",     height = reactPetRowH, gap = -1                     },
   { module = "InfoRow",         anchor = "TOPLEFT", height = function() return C.DIM.INFO_ROW_H     end },
 }
 
@@ -361,9 +371,10 @@ local ROW_SCALE_KEY = {
   SwingTimers     = "swingScale",
   RangeFinderView = "rangeFinderScale",
   InfoRow         = "infoRowScale",
-  -- Both React rows share one scale so the cluster and grid stay proportioned.
+  -- The React rows share one scale so the cluster and grid stay proportioned.
   ReactCluster       = "reactScale",
   ReactCooldownsView = "reactScale",
+  ReactPetRow        = "reactScale",
   -- The fluffy CD row is the cluster's welded child, so it inherits this.
   FluffyCluster      = "fluffyScale",
 }
@@ -494,6 +505,7 @@ local ROW_LABEL = {
   RangeFinderView    = "Range Finder",
   CooldownsView      = "Cooldown Grid",
   ReactCooldownsView = "React Cooldown Grid",
+  ReactPetRow        = "Pet Happiness",
   FluffyCluster      = "Fluffy Cluster",
   InfoRow            = "Info Row",
 }

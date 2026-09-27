@@ -190,5 +190,19 @@ Nock.Flavor.Plain = function(v) return v end
 happiness = 3
 B:Refresh(st)
 for i = 1, lb.n do ok(lb[i].coords == nil, "a reused entry carries no stale coords") end
+-- Timers by key (the pet row reads the Feed Pet timer from here).
+do
+  secretAuras = false
+  now = 500
+  cache["pet1539"] = { duration = 20, expirationTime = 510 }
+  B:Refresh(st)
+  local f = st.ledgerTimers and st.ledgerTimers.Feed
+  ok(f and f.exp == 510 and f.dur == 20, "ledgerTimers.Feed = live Feed Pet effect")
+  local same = f
+  cache["pet1539"] = nil
+  B:Refresh(st)
+  ok(st.ledgerTimers.Feed == same and same.exp == 0, "expired: same entry, exp 0")
+end
+
 print(("forever_buffs: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
