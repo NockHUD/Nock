@@ -69,6 +69,10 @@ local function remembered()
   return db.foreverLearned
 end
 
+-- Ids whose length came from the client (an API read, a watched cooldown's
+-- end, or an earlier session's either) rather than the catalog's seed guess.
+local REAL = {}
+
 -- A learned duration applies to every id of the entry (a pair shares it) and
 -- is remembered for the next session.
 local function learnAll(ledger, e, duration)
@@ -76,6 +80,7 @@ local function learnAll(ledger, e, duration)
   local mem = remembered()
   for i = 1, #ids do
     Engine.Learn(ledger, ids[i], duration)
+    REAL[ids[i]] = true
     if mem then mem[ids[i]] = duration end
   end
 end
@@ -87,7 +92,7 @@ local function seedLearned(ledger, e)
   for i = 1, #ids do
     if e.cd then Engine.Learn(ledger, ids[i], e.cd) end
     local kept = mem and mem[ids[i]]
-    if type(kept) == "number" then Engine.Learn(ledger, ids[i], kept) end
+    if type(kept) == "number" then Engine.Learn(ledger, ids[i], kept); REAL[ids[i]] = true end
   end
 end
 
@@ -393,6 +398,91 @@ local function publishBuff(self, e, s, now)
   end
 end
 
+-- Client-cooldown watch (Disengage report, 2026-09-27): each own cast of a
+-- tracked spell feeds that spell's client cooldown (a duration object, secret
+-- in combat) into an invisible Cooldown widget. Its OnCooldownDone is a PLAIN
+-- edge at the client's true end: it ends the ledger's countdown (resets
+-- included) and teaches the length of a spell never read out of combat
+-- (combat-only spells: Disengage, Mongoose Bite). While a watch runs the tile
+-- counts as on cooldown (s.clientRunning), so a spell the ledger cannot time
+-- still greys, and the grid shows the client's own numbers
+-- (UI/Frame_ReactCooldowns.lua).
+local FEED_WINDOW = 1.0   -- updates this soon after the cast re-feed the widget (GCD -> the real cooldown)
+local WATCH_MAX   = 900   -- a watch the client never ended is dropped after this
+
+-- Pure: what a watched cooldown's end means. `dur` = end - cast, `real` = the
+-- entry's length already came from the client. Returns the length to learn
+-- (or nil) and whether the ledger's entry ends now. A GCD-long end is the GCD
+-- only: nothing learned, a running ledger entry left alone.
+function Cooldowns.DoneVerdict(dur, real)
+  if type(dur) ~= "number" or dur <= GCD_TOLERANCE then return nil, false end
+  local learn = (not real) and (math.floor(dur * 10 + 0.5) / 10) or nil
+  return learn, true
+end
+
+-- The widgets live on an unparented, invisible host: they are timers, not
+-- HUD elements, and a hidden UIParent (Alt-Z) must not stop their updates.
+local watchHost
+local function watchOf(self, e)
+  self._watch = self._watch or {}
+  local w = self._watch[e.key]
+  if w then return w end
+  if not watchHost then
+    watchHost = CreateFrame("Frame")
+    watchHost:SetSize(1, 1)
+    watchHost:SetPoint("BOTTOMLEFT", 0, 0)
+    watchHost:SetAlpha(0)
+  end
+  local cd = CreateFrame("Cooldown", nil, watchHost, "CooldownFrameTemplate")
+  cd:SetAllPoints(watchHost)
+  cd.noCooldownCount = true
+  if cd.SetHideCountdownNumbers then cd:SetHideCountdownNumbers(true) end
+  w = { cd = cd, key = e.key, e = e, armed = false }
+  cd:SetScript("OnCooldownDone", function() self:OnWatchDone(w) end)
+  self._watch[e.key] = w
+  return w
+end
+
+-- clientFeed counts the feeds, so a view holding the client's duration
+-- object knows when to read a fresh one.
+local function setClientRunning(key, on)
+  local s = Nock.state.cooldowns[key]
+  if not s then return end
+  s.clientRunning = on or nil
+  if on then s.clientFeed = (s.clientFeed or 0) + 1 end
+end
+
+local function disarm(w)
+  w.armed = false
+  setClientRunning(w.key, false)
+end
+
+-- Hand the widget the spell's current client cooldown. A plainly-zero object
+-- is nothing to watch (the spell is not cooling down yet); a secret one is
+-- taken on trust.
+local function feedWatch(w)
+  local obj = Nock.API.SpellCooldownDuration(w.read)
+  if not obj or not w.cd.SetCooldownFromDurationObject then return end
+  local zero = obj.IsZero and Nock.Flavor.Plain(obj:IsZero())
+  if zero == true then return end
+  w.cd:SetCooldownFromDurationObject(obj)
+  setClientRunning(w.key, true)
+end
+
+function Cooldowns:ArmWatch(e, id, read, now)
+  local w = watchOf(self, e)
+  w.id, w.read, w.castAt, w.armed = id, read, now, true
+  feedWatch(w)
+end
+
+function Cooldowns:OnWatchDone(w)
+  if not w.armed then return end
+  local learn, clear = Cooldowns.DoneVerdict(GetTime() - w.castAt, REAL[w.id] == true)
+  disarm(w)
+  if learn then learnAll(self.ledger, w.e, learn) end
+  if clear then Engine.Reconcile(self.ledger, w.id, 0, 0) end
+end
+
 function Cooldowns:OnEnable()
   lists(self)
   self:RegisterEvent("PLAYER_LOGIN", "Rescan")
@@ -454,6 +544,7 @@ function Cooldowns:UNIT_SPELLCAST_SUCCEEDED(event, unit, castGUID, spellID)
   -- a held buff's cooldown starts at its break (breakBuff), not here
   if e.untilBroken then return end
   Engine.OnCast(self.ledger, id, GetTime())
+  self:ArmWatch(e, id, spellID, GetTime())
   -- the learn read uses the cast's own rank (that is the spell on cooldown);
   -- the ledger is keyed by the catalog id
   if not Nock.Restricted("cooldowns") then self._learnPending, self._learnRead = id, spellID end
@@ -461,6 +552,12 @@ end
 
 function Cooldowns:SPELL_UPDATE_COOLDOWN()
   self:ScanUsable()
+  if self._watch then
+    local now = GetTime()
+    for _, w in pairs(self._watch) do
+      if w.armed and now - w.castAt <= FEED_WINDOW then feedWatch(w) end
+    end
+  end
   local id, read = self._learnPending, self._learnRead
   if not id or Nock.Restricted("cooldowns") then return end
   self._learnPending, self._learnRead = nil, nil
@@ -500,6 +597,9 @@ function Cooldowns:Rescan()
       Engine.Reconcile(self.ledger, id, start, duration)
     else
       Engine.Reconcile(self.ledger, id, 0, 0)
+      -- readable and not cooling down: a watch still running missed its end
+      local w = self._watch and self._watch[e.key]
+      if w and w.armed then disarm(w) end
     end
   end
 end
@@ -517,5 +617,7 @@ function Cooldowns:Refresh()
     end
     local start, duration = Engine.Cooldown(self.ledger, ledgerId(e), now)
     s.startTime, s.duration = start, duration
+    local w = self._watch and self._watch[e.key]
+    if w and w.armed and now - w.castAt > WATCH_MAX then disarm(w) end
   end
 end

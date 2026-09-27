@@ -387,28 +387,55 @@ function ReactCooldownsView:Refresh(state)
           slot._lastText = txt
         end
 
-        -- Swipe. TBC: the same (start, duration) pair as the text. Forever:
-        -- the client's own duration object is the truth under the ledger's
-        -- text and glow (a secret-bearing sink the widget accepts; the ledger
-        -- can drift on resets, the swipe cannot). Re-fired only on the
-        -- ledger's start edge so the animation does not restart every tick.
-        if dispDur and dispDur > 0 and dispRem and dispRem > 0 then
-          if dispStart ~= slot._lastCdStart or dispDur ~= slot._lastCdDuration then
-            -- (not while the buff is shown: its swipe is the buff's own)
-            local durObj = (Nock.Flavor and Nock.Flavor.forever and cd.spellId and not showBuff)
-                           and Nock.API.SpellCooldownDuration(cd.spellId) or nil
-            if durObj and slot.cooldown.SetCooldownFromDurationObject then
-              slot.cooldown:SetCooldownFromDurationObject(durObj)
-            else
-              slot.cooldown:SetCooldown(dispStart, dispDur)
-            end
-            slot._lastCdStart    = dispStart
-            slot._lastCdDuration = dispDur
+        -- Forever fallback: the client's cooldown runs where the ledger has no
+        -- timer (a length never read yet, or one too short). The swipe and the
+        -- number are then the client's, from its duration object: the number
+        -- is its remaining time (secret in combat) handed straight to the
+        -- tile's text -- the widget's own countdown numbers only draw with
+        -- the countdownForCooldowns CVar on, which ships off.
+        local fallback = cd.clientRunning and not showBuff and not (dispRem and dispRem > 0)
+                         and cd.spellId and slot.cooldown.SetCooldownFromDurationObject
+        if fallback then
+          -- re-read on each feed of the watch (the GCD's object, then the cooldown's)
+          if slot._fallback == nil or slot._fbFeed ~= cd.clientFeed then
+            local durObj = Nock.API.SpellCooldownDuration(cd.spellId)
+            if durObj then slot.cooldown:SetCooldownFromDurationObject(durObj) end
+            slot._fallback, slot._fbFeed = durObj or false, cd.clientFeed
+            -- nonzero: the ledger's next start re-feeds, its end clears
+            slot._lastCdStart, slot._lastCdDuration = -1, -1
           end
-        elseif slot._lastCdStart ~= 0 then
-          slot.cooldown:Clear()
-          slot._lastCdStart    = 0
-          slot._lastCdDuration = 0
+          local obj = slot._fallback
+          if obj and obj.GetRemainingDuration then
+            local okr, rem = pcall(obj.GetRemainingDuration, obj)
+            if okr then pcall(slot.cdText.SetFormattedText, slot.cdText, "%.0f", rem) end
+          end
+          slot._lastText = nil   -- the ledger's text repaints once this ends
+        else
+          slot._fallback = nil
+
+          -- Swipe. TBC: the same (start, duration) pair as the text. Forever:
+          -- the client's own duration object is the truth under the ledger's
+          -- text and glow (a secret-bearing sink the widget accepts; the ledger
+          -- can drift on resets, the swipe cannot). Re-fired only on the
+          -- ledger's start edge so the animation does not restart every tick.
+          if dispDur and dispDur > 0 and dispRem and dispRem > 0 then
+            if dispStart ~= slot._lastCdStart or dispDur ~= slot._lastCdDuration then
+              -- (not while the buff is shown: its swipe is the buff's own)
+              local durObj = (Nock.Flavor and Nock.Flavor.forever and cd.spellId and not showBuff)
+                             and Nock.API.SpellCooldownDuration(cd.spellId) or nil
+              if durObj and slot.cooldown.SetCooldownFromDurationObject then
+                slot.cooldown:SetCooldownFromDurationObject(durObj)
+              else
+                slot.cooldown:SetCooldown(dispStart, dispDur)
+              end
+              slot._lastCdStart    = dispStart
+              slot._lastCdDuration = dispDur
+            end
+          elseif slot._lastCdStart ~= 0 then
+            slot.cooldown:Clear()
+            slot._lastCdStart    = 0
+            slot._lastCdDuration = 0
+          end
         end
 
         local countTxt = (cd.count and cd.count > 0) and tostring(cd.count) or ""

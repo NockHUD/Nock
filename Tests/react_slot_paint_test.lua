@@ -337,6 +337,14 @@ do
   ok(r.desat == false and r.alpha == 1, "reactive, usability unknown (secret): the ready look stays")
   r = Look({ ready = true, reactive = false, usable = false }, nil, { dim = false })
   ok(r.desat == false and r.alpha == 1, "a normal unusable spell with dim off: unchanged (opt-in)")
+  r = Look({ ready = true, reactive = true, usable = true }, nil, { activeStyle = "none" })
+  ok(r.glow == "overlay", "reactive + usable: the action-button glow whatever the active style")
+  r = Look({ ready = true, reactive = true, usable = nil }, nil, {})
+  ok(r.glow == nil, "reactive, usability unknown: no glow")
+  r = Look({ ready = false, reactive = true, usable = true }, nil, {})
+  ok(r.glow == nil, "reactive but on cooldown: no glow")
+  r = Look({ ready = true, reactive = false, usable = true }, nil, {})
+  ok(r.glow == nil, "a normal usable spell: no glow")
 end
 
 print(("react_slot_paint: %d passed, %d failed"):format(pass, fail))

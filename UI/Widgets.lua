@@ -2082,6 +2082,10 @@ function Nock.UI.ReactSlotLook(cd, out, opts, res)
   -- Independent of the slot's own state -- the coach already folded Raptor's
   -- cooldown, the swing and the range in (Modules/WeaveCoach.lua).
   if opts.goGlow then res.glow = "overlay" end
+  -- A reactive spell lit by its trigger (Mongoose Bite after a dodge,
+  -- Counterattack after a parry) always takes the action-button glow,
+  -- whatever the active style (user, 2026-09-27).
+  if cd.reactive and vis == "ready" and cd.usable == true then res.glow = "overlay" end
   local desat = (opts.whenActive and vis == "cd") or false
   local tint, alpha = nil, 1
   if opts.dim and vis ~= "proc" and (vis == "cd" or cd.usable == false) then

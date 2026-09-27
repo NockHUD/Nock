@@ -355,6 +355,9 @@ function Nock:Tick()
       cd.remaining = 0
       cd.ready = true
     end
+    -- Forever: the client's own cooldown is still running where the ledger
+    -- has no (or too short a) timer (Forever/Cooldowns.lua client watch).
+    if cd.clientRunning then cd.ready = false end
     if cd.buffStartTime and cd.buffStartTime > 0 and cd.buffDuration and cd.buffDuration > 0 then
       cd.buffRemaining = math.max(0, cd.buffStartTime + cd.buffDuration - now)
     else

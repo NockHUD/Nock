@@ -16,12 +16,31 @@ _G.Enum = { PlayerSwingType = { MainHand = 0, OffHand = 1, Ranged = 2 } }
 local secretCds = false
 _G.C_Secrets = { ShouldCooldownsBeSecret = function() return secretCds end, ShouldAurasBeSecret = function() return false end }
 
+-- Frames for the client-cooldown watch: a Cooldown widget records what it was
+-- fed and keeps its OnCooldownDone script so a test can end it.
+local frames = {}
+_G.CreateFrame = function(kind)
+  local f = { kind = kind, scripts = {} }
+  function f:SetSize() end
+  function f:SetPoint() end
+  function f:SetAllPoints() end
+  function f:SetAlpha() end
+  function f:SetHideCountdownNumbers() end
+  function f:SetScript(n, fn) self.scripts[n] = fn end
+  function f:SetCooldownFromDurationObject(obj) self.fed = obj; self.feeds = (self.feeds or 0) + 1 end
+  frames[#frames + 1] = f
+  return f
+end
+local durObjZero = false
+local function durObj() return { IsZero = function() return durObjZero end } end
+
 local apiCd = {}   -- [id] = { start, duration }
 local apiReads = 0
 local Nock = {
   Flavor = { forever = true, Plain = function(v) if v == "SECRET" then return nil end return v end },
   API = {
     SpellCooldown = function(id) apiReads = apiReads + 1; if secretCds then return "SECRET", "SECRET", true end; local c = apiCd[id]; if c then return c[1], c[2], true end; return 0, 0, true end,
+    SpellCooldownDuration = function() return durObj() end,
     SpellIcon = function(id) return 100000 + id end,
     -- ranks are separate spells on Forever: the name is what they share
     SpellName = function(id) return ({ [3044] = "Arcane Shot", [14281] = "Arcane Shot", [2973] = "Raptor Strike", [14260] = "Raptor Strike" })[id] or ("spell" .. id) end,
@@ -359,6 +378,60 @@ do
   ok(arc.usable == false, "re-read on a cooldown update")
   ok(CD.events.SPELL_UPDATE_USABLE == "ScanUsable", "SPELL_UPDATE_USABLE drives it")
   Nock.API.SpellUsable, Nock.API.IsReactiveSpell = nil, nil
+end
+
+-- Client-cooldown watch (Disengage report 2026-09-27): a combat-only custom
+-- spell never read out of combat is timed by the client's own cooldown end.
+do
+  local V = CD.DoneVerdict
+  local l, c = V(1.4, false)
+  ok(l == nil and c == false, "a GCD-long end teaches nothing and leaves the ledger")
+  l, c = V(5.04, false)
+  ok(l == 5 and c == true, "a first real end teaches the length (rounded) and ends the ledger")
+  l, c = V(3.2, true)
+  ok(l == nil and c == true, "a known length is not relearned: an early end (reset) just ends the ledger")
+
+  Nock.db.profile.cooldownCustom = { { key = "c_spell_781", type = "spell", id = 781, label = "Dis" } }
+  Nock.db.char = {}
+  CD:OnConfigChanged()
+  local s = st.cooldowns.c_spell_781
+  secretCds = true
+  now = 1000
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 781); CD:Refresh()
+  ok(s.clientRunning == true, "cast of an unlearned spell: the client's cooldown runs")
+  ok(s.duration == 0, "the ledger cannot time it")
+  local w = CD._watch.c_spell_781
+  ok(w and w.cd.fed ~= nil, "the watch widget was fed the duration object")
+  now = 1000.5; CD:SPELL_UPDATE_COOLDOWN()
+  ok(w.cd.feeds == 2, "an update inside the feed window re-feeds (GCD -> cooldown)")
+  now = 1002; CD:SPELL_UPDATE_COOLDOWN()
+  ok(w.cd.feeds == 2, "no re-feed after the window")
+  now = 1005; w.cd.scripts.OnCooldownDone(); CD:Refresh()
+  ok(s.clientRunning == nil, "the client's end clears clientRunning")
+  ok(Nock.db.char.foreverLearned[781] == 5, "the length was learned in combat and remembered")
+  now = 1010
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 781); CD:Refresh()
+  ok(s.startTime == 1010 and s.duration == 5, "the next cast is timed by the ledger")
+  now = 1012; w.cd.scripts.OnCooldownDone(); CD:Refresh()
+  ok(s.startTime == 0 and s.duration == 0, "an early client end (reset) ends the ledger's countdown")
+  ok(Nock.db.char.foreverLearned[781] == 5, "and does not relearn a known length")
+
+  durObjZero = true
+  now = 1020
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 781)
+  ok(s.clientRunning == nil, "a plainly-zero duration object is nothing to watch")
+  durObjZero = false
+  now = 1030
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 781)
+  ok(s.clientRunning == true, "armed again")
+  now = 1030 + 901; CD:Refresh()
+  ok(s.clientRunning == nil, "a watch the client never ended is dropped")
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 781)
+  secretCds = false
+  CD:Rescan()
+  ok(s.clientRunning == nil, "an out-of-combat read of no cooldown disarms a missed watch")
+  Nock.db.profile.cooldownCustom = nil
+  CD:OnConfigChanged()
 end
 
 print(("forever_cooldowns: %d passed, %d failed"):format(pass, fail))
