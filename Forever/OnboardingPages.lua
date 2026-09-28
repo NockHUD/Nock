@@ -130,6 +130,10 @@ Onboarding.Pages = {
         end,
       },
     },
+    toggles = {
+      { key = "cameraFlipEnabled", label = "Camera flip on weaves", tag = "Advanced",
+        desc = "Turn away on the melee hit and back for the shot, camera fixed on the target. Raids only by default; set the camera up once with /nock camera setup." },
+    },
   },
   {
     key     = "corners",

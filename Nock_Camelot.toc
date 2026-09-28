@@ -77,6 +77,8 @@ Forever\AuraRow.lua
 Modules\ManaTickEngine.lua
 Forever\ManaTick.lua
 Forever\Cooldowns.lua
+Forever\CameraSetupView.lua
+Forever\CameraFlip.lua
 Forever\Probe.lua
 Forever\Pet.lua
 Forever\Warnings.lua

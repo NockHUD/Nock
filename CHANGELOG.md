@@ -6,6 +6,7 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 ### WoW Forever (beta)
 
+- **Weave camera flip**: the SoD "smart camera" weave on Forever. With one line at the end of each macro (`/run NockCamFlip()` after Raptor Strike, `/run NockCamFace()` after Auto Shot) the character turns away on the melee hit and back for the shot while the camera stays fixed on the target. Off by default and raids only until you say otherwise (Utilities → Camera flip, or the wizard's weave step); `/nock camera setup` opens a three-step window that saves the reversed camera view with a live bullseye track, tests it, and hands you both macros.
 - **Weave helper**: coaching for a Raptor Strike weave through the wide dead zone. After each Auto Shot the melee bar says GO IN (or WAIT with a countdown when the white swing would not be ready on arrival), the leg countdown runs while you cross, STRIKE in melee, BACK OUT after the hit, RELEASE as you re-enter range with the shot ready. Under the melee bar a new weave strip: the Auto Shot icon with the swing as a swipe, a glide bar that crosses the dead zone at your measured pace, the Raptor Strike icon with its cooldown. Nock measures how long your crossings take from the range ladder's edges (no speed, no distance) and remembers them per character. Off by default: the setup wizard's new **How do you play?** step turns it on (I weave / I stand and shoot), or Nock HUD → Size & Elements → Weave helper, where the start window and the leg seed live too; `/nock probe weave` for the diagnostic.
 
 ## 2.0.7

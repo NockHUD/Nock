@@ -1354,6 +1354,10 @@ if Nock.Flavor and Nock.Flavor.forever then
   p.cueOutOfRangeGate    = "raid"
   -- The weave helper's words ride the melee-bar takeover: on by default here.
   p.reactMeleeStageCue   = true
+  -- The weave camera flip (Forever/CameraFlip.lua): off until set up, and
+  -- raids only by default, the same ladder as the range cues.
+  p.cameraFlipEnabled    = false
+  p.cameraFlipGate       = "raid"
 end
 
 function Nock:GetDefaultPosition()

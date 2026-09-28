@@ -13,7 +13,7 @@ F.FAMILIES = { general = true, hud = true, profiles = true, alerts = true, utili
 -- Utilities is the TBC toolbox (practice, mailbox, weave binds, ...); only
 -- the Quality of life page has a feed on Forever (Modules/QoL.lua), plus the
 -- Forever-only Aspect ring page added below (F.AspectRingPage).
-F.KEEP_PAGES = { utilities = { qol = true, aspectRing = true } }
+F.KEEP_PAGES = { utilities = { qol = true, aspectRing = true, cameraFlip = true } }
 
 -- Dotted args paths removed inside the surviving families. A trailing `*`
 -- matches every key with that prefix (same convention as OptionsLayout rows).
@@ -196,6 +196,72 @@ function F.AspectRingPage()
   return { type = "group", name = "Aspect ring", order = 12, args = args }
 end
 
+-- Utilities -> Camera flip (Forever/CameraFlip.lua): its own page, it is not
+-- a HUD element. Headers render as cards; profile keys cameraFlipEnabled /
+-- cameraFlipGate, the setup window and the macros copybox.
+function F.CameraFlipPage()
+  local function CF() return Nock:GetModule("CameraFlip", true) end
+  local function styleWrong()
+    local get = (_G.C_CVar and _G.C_CVar.GetCVar) or _G.GetCVar
+    return tostring(get and get("cameraSmoothStyle") or "?") ~= "0"
+  end
+  local args = {
+    intro = {
+      type = "description", order = 1, fontSize = "medium",
+      name = "Weave with the camera fixed on the target: on the melee hit your character turns away and runs out toward the camera, on the shot it turns back. The camera itself never moves. Two macro lines drive it; the turn only happens where you allow it.\n",
+    },
+    turnsHeader = { type = "header", name = "Turns", desc = "When a weave may turn you.", order = 10 },
+    cameraFlipEnabled = {
+      type = "toggle", name = "Camera flip", order = 11, width = "full",
+      desc = "Turn away on the melee hit and back for the shot.\nNeeds the camera set up once (below) and the two macro lines. While this is off the lines do nothing, so they can stay in your macros.",
+      get = function() return Nock.db.profile.cameraFlipEnabled == true end,
+      set = function(_, v) Nock.db.profile.cameraFlipEnabled = v and true or false end,
+    },
+    cameraFlipGate = {
+      type = "select", name = "Where", order = 12, width = 1.1,
+      desc = "Everywhere, only in a group, or only in a raid. Out in the world a weave then just casts.",
+      values = { solo = "Everywhere", party = "Party and raid", raid = "Raid only" },
+      sorting = { "solo", "party", "raid" },
+      disabled = function() return Nock.db.profile.cameraFlipEnabled ~= true end,
+      get = function() return Nock.db.profile.cameraFlipGate or "raid" end,
+      set = function(_, v) Nock.db.profile.cameraFlipGate = v end,
+    },
+    cameraHeader = { type = "header", name = "Camera", desc = "The reversed view the turn needs, and the macros.", order = 20 },
+    cameraFlipSetup = {
+      type = "execute", name = "Set up camera", order = 21, width = 1.0,
+      desc = "Opens the three-step window: camera behind you, turn to face it on a live track, test it. Run it again after changing your zoom or tilt.",
+      func = function()
+        -- The setup window wants the whole screen (you steer the camera):
+        -- close every settings surface first, as the wizard buttons do.
+        if Nock.Settings then Nock.Settings:Close() end
+        LibStub("AceConfigDialog-3.0"):Close("Nock")
+        local blizz = _G.SettingsPanel or _G.InterfaceOptionsFrame
+        if blizz and blizz.IsShown and blizz:IsShown() and _G.HideUIPanel then _G.HideUIPanel(blizz) end
+        local m = CF(); if m and m.CameraSetup then m:CameraSetup() end
+      end,
+    },
+    cameraFlipMacros = {
+      type = "execute", name = "Show macros", order = 22, width = 1.0,
+      desc = "Both macros with their camera lines, in a window you can copy from.",
+      func = function() local m = CF(); if m and m.ShowMacros then m:ShowMacros() end end,
+    },
+    cameraFlipStyle = {
+      type = "execute", name = "Fix camera following style", order = 23, width = 1.4,
+      desc = "The turn needs Camera Following Style at \"Never adjust camera\". This sets it; the same setting lives on the Quality of life page.",
+      hidden = function() return not styleWrong() end,
+      func = function()
+        local set = (_G.C_CVar and _G.C_CVar.SetCVar) or _G.SetCVar
+        if set then set("cameraSmoothStyle", "0") end
+      end,
+    },
+    styleNote = {
+      type = "description", order = 24, fontSize = "small",
+      name = function() return styleWrong() and "|cffff9900Camera Following Style is not Never adjust: the camera fights every turn.|r" or "Camera Following Style: Never adjust." end,
+    },
+  }
+  return { type = "group", name = "Camera flip", order = 13, args = args }
+end
+
 -- Alerts -> Eating pill (UI/Frame_ConsumeBanner.lua): the pill's own rows,
 -- lifted out of the TBC Helpers page before that page is dropped (the
 -- consumables badge row has no feed on Forever). Same nodes, same profile keys.
@@ -225,6 +291,9 @@ function F.Apply(root)
   local util = root.args.utilities
   if type(util) == "table" and type(util.args) == "table" and not util.args.aspectRing and Nock.AspectRingOrder then
     util.args.aspectRing = F.AspectRingPage()
+  end
+  if type(util) == "table" and type(util.args) == "table" and not util.args.cameraFlip then
+    util.args.cameraFlip = F.CameraFlipPage()
   end
   for k, v in pairs(root.args) do
     if type(v) == "table" and v.type == "group" and not F.FAMILIES[k] then root.args[k] = nil end

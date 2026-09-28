@@ -595,6 +595,10 @@ function Nock:HandleSlashCommand(input)
   elseif input == "pet log" then
     local pm = self:GetModule("ForeverPet", true)
     if pm and pm.ShowLog then pm:ShowLog() else self:Print("The pet happiness log is only recorded on WoW Forever.") end
+  elseif input == "camera" or input:match("^camera%s") then
+    local CF = self:GetModule("CameraFlip", true)
+    local rest = input:match("^camera%s+(.*)$") or ""
+    if CF and CF.Command then CF:Command(rest) else self:Print("The camera flip is only available on WoW Forever.") end
   elseif input == "probe" or input:match("^probe%s") then
     local pr = self:GetModule("ForeverProbe", true)
     local which, rest = input:match("^probe%s+(%w+)%s*(.*)$")

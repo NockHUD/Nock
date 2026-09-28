@@ -116,6 +116,7 @@ local function restrictionRows()
   end
   return rows
 end
+Probe.RestrictionRows = restrictionRows
 
 local function secretRows()
   local rows = {}
@@ -963,6 +964,11 @@ end
 function Probe:Show(which, rest)
   local text
   if which == "range" then self:RangeRecord(rest); return end
+  if which == "camera" then
+    local CF = Nock:GetModule("CameraFlip", true)
+    if CF then CF:Command(rest) else Nock:Print("The camera flip is only available on WoW Forever.") end
+    return
+  end
   if which == "fonts" then self:FontPreview(rest); return end
   if which == "weave" then
     local WH, ST = Nock:GetModule("WeaveHelper", true), Nock:GetModule("SwingTimer", true)

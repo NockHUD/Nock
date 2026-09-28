@@ -50,7 +50,7 @@ end
 local upages = {}
 for k, v in pairs(nodeAt(opts, "utilities").args) do if type(v) == "table" and v.type == "group" then upages[#upages + 1] = k end end
 table.sort(upages)
-ok(#upages == 2 and upages[1] == "aspectRing" and upages[2] == "qol", "utilities: Quality of life + Aspect ring, got " .. table.concat(upages, ","))
+ok(#upages == 3 and upages[1] == "aspectRing" and upages[2] == "cameraFlip" and upages[3] == "qol", "utilities: Quality of life + Aspect ring + Camera flip, got " .. table.concat(upages, ","))
 -- The aspect ring page (Forever/AspectRing.lua): the key and the dial.
 do
   local key = nodeAt(opts, "utilities.aspectRing.aspectRingKey")
