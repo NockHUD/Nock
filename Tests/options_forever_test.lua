@@ -15,6 +15,7 @@ dofile("Config/OptionsForever.lua")
 dofile("Forever/Spells.lua")
 function Nock:NewModule() return { RegisterEvent = function() end, RegisterMessage = function() end } end
 dofile("Forever/AspectRing.lua")
+dofile("Forever/TrackingWheel.lua")
 ok(type(Nock.OptionsForever) == "function" or type(Nock.OptionsForever) == "table", "OptionsForever registered")
 local F = Nock.OptionsForever
 
@@ -50,7 +51,24 @@ end
 local upages = {}
 for k, v in pairs(nodeAt(opts, "utilities").args) do if type(v) == "table" and v.type == "group" then upages[#upages + 1] = k end end
 table.sort(upages)
-ok(#upages == 3 and upages[1] == "aspectRing" and upages[2] == "cameraFlip" and upages[3] == "qol", "utilities: Quality of life + Aspect ring + Camera flip, got " .. table.concat(upages, ","))
+ok(#upages == 4 and upages[1] == "aspectRing" and upages[2] == "cameraFlip" and upages[3] == "qol" and upages[4] == "trackingWheel", "utilities: Quality of life + Aspect ring + Camera flip + Tracking wheel, got " .. table.concat(upages, ","))
+-- The tracking wheel page (Forever/TrackingWheel.lua): the key and the size.
+do
+  local key = nodeAt(opts, "utilities.trackingWheel.trackingWheelKey")
+  ok(key and key.type == "keybinding" and key.name == "Tracking wheel key", "tracking wheel: key row")
+  ok(nodeAt(opts, "utilities.trackingWheel.keyHeader") and nodeAt(opts, "utilities.trackingWheel.sizeHeader"), "tracking wheel: two cards (Key, Size)")
+  local sent = {}
+  Nock.SendMessage = function(_, m) sent[#sent + 1] = m end
+  key.set(nil, "SHIFT-T")
+  ok(Nock.db.profile.trackingWheelKey == "SHIFT-T" and sent[#sent] == "NOCK_TRACKING_WHEEL_CONFIG", "key: saved and the wheel told")
+  Nock.db.profile.trackingWheelKey = nil
+  local size = nodeAt(opts, "utilities.trackingWheel.trackingWheelScale")
+  ok(size and size.type == "range" and size.get() == 1, "size row at 100%")
+  size.set(nil, 1.25)
+  ok(Nock.db.profile.trackingWheelScale == 1.25 and sent[#sent] == "NOCK_TRACKING_WHEEL_CONFIG", "size: saved and the wheel told")
+  Nock.db.profile.trackingWheelScale = nil
+  ok(nodeAt(opts, "utilities.trackingWheel.trackingWheelDir1") == nil, "no dial: the order is fixed")
+end
 -- The aspect ring page (Forever/AspectRing.lua): the key and the dial.
 do
   local key = nodeAt(opts, "utilities.aspectRing.aspectRingKey")

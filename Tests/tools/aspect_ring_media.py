@@ -6,6 +6,8 @@ Media/AspectRingDisc.tga   150x150: the dark disc (denser inside the tile
 Media/AspectRingWedge.tga  150x150: a white 60-degree annular slice pointing
                            straight up; the view rotates it toward the pick
                            and tints it with the active colour.
+Media/TrackingWheelWedge.tga  the same slice at 45 degrees for the eight-slot
+                           tracking wheel (UI/Frame_TrackingWheel.lua).
 
 Non-power-of-two on purpose: the client mip-blurs power-of-two textures even
 at 1:1 (project rule on pixel art). Drawn 1:1 at 150 UI units. Edges are
@@ -63,13 +65,18 @@ def disc_sample(x, y):
     return px
 
 
-def wedge_sample(x, y):
-    dx, dy = x - C, C - y            # image y runs down; up is +dy
-    d = math.hypot(dx, dy)
-    if d < R_WEDGE_IN or d > R_DISC - 1:
-        return (255, 255, 255, 0)
-    a = math.atan2(dx, dy)           # 0 = up
-    return (255, 255, 255, 255) if abs(a) <= HALF_WEDGE else (255, 255, 255, 0)
+def wedge_sampler(half):
+    def wedge_sample(x, y):
+        dx, dy = x - C, C - y            # image y runs down; up is +dy
+        d = math.hypot(dx, dy)
+        if d < R_WEDGE_IN or d > R_DISC - 1:
+            return (255, 255, 255, 0)
+        a = math.atan2(dx, dy)           # 0 = up
+        return (255, 255, 255, 255) if abs(a) <= half else (255, 255, 255, 0)
+    return wedge_sample
+
+
+wedge_sample = wedge_sampler(HALF_WEDGE)
 
 
 def render(sample, name):
@@ -95,5 +102,9 @@ def render(sample, name):
     print("wrote", out, SIZE, "x", SIZE)
 
 
-render(disc_sample, "AspectRingDisc.tga")
-render(wedge_sample, "AspectRingWedge.tga")
+import sys
+only = sys.argv[1:]
+for name, sampler in (("AspectRingDisc.tga", disc_sample), ("AspectRingWedge.tga", wedge_sample),
+                      ("TrackingWheelWedge.tga", wedge_sampler(math.radians(22.5)))):
+    if not only or name in only:
+        render(sampler, name)

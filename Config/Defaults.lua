@@ -1359,6 +1359,11 @@ if Nock.Flavor and Nock.Flavor.forever then
   -- raids only by default, the same ladder as the range cues.
   p.cameraFlipEnabled    = false
   p.cameraFlipGate       = "raid"
+  -- The wrong-tracking warning (Forever/Tracking.lua): on, everywhere; it
+  -- only fires with points in Improved Tracking anyway. The tracking wheel
+  -- (Forever/TrackingWheel.lua) has no key until the user picks one.
+  p.warnTrackingEnabled  = true
+  p.warnTrackingGate     = "always"
 end
 
 function Nock:GetDefaultPosition()

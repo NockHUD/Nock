@@ -22,7 +22,7 @@ dofile("Forever/Spells.lua")
 dofile("Forever/Warnings.lua")
 local W = module
 ok(W and W.name == "Warnings" and W.refreshInterval == 0.1, "registers as Warnings on the slow lane")
-ok(#W.Catalog == 9 and W.Catalog[9].key == "petGrowl" and W.Catalog[6].key == "notAttacking" and W.Catalog[7].key == "notInRange" and W.Catalog[7].category == "combat" and W.Catalog[8].key == "petAttack" and W.Catalog[8].category == "pet" and W.Catalog[1].key == "ammo" and W.Catalog[2].key == "petDead" and W.Catalog[3].key == "petMissing" and W.Catalog[4].key == "petUnhappy", "eight catalog entries")
+ok(#W.Catalog == 10 and W.Catalog[10].key == "wrongTracking" and W.Catalog[9].key == "petGrowl" and W.Catalog[6].key == "notAttacking" and W.Catalog[7].key == "notInRange" and W.Catalog[7].category == "combat" and W.Catalog[8].key == "petAttack" and W.Catalog[8].category == "pet" and W.Catalog[1].key == "ammo" and W.Catalog[2].key == "petDead" and W.Catalog[3].key == "petMissing" and W.Catalog[4].key == "petUnhappy", "ten catalog entries")
 for _, e in ipairs(W.Catalog) do
   ok(e.category and e.name and e.severity and e.enabledKey and e.iconFn and e.description and e.logic, "catalog entry complete: " .. e.key)
   ok(type(e.iconFn()) == "number", "catalog icon resolves: " .. e.key)

@@ -842,6 +842,24 @@ local function buildWarningGroup(cat, baseOrder)
       }
     end
   end
+  if cat.selects then
+    -- Dropdowns (e.g. a where-it-fires gate): `values` key -> label, `order`
+    -- the key list in menu order, `default` what an unset profile reads as.
+    for i, sel in ipairs(cat.selects) do
+      args["sel_" .. sel.key] = {
+        type     = "select",
+        name     = sel.label,
+        desc     = sel.desc,
+        order    = 15 + i,
+        values   = sel.values,
+        sorting  = sel.order,
+        dialogControl = lsmWidget(nil, "plain"),
+        disabled = function() return not Nock.db.profile[cat.enabledKey] end,
+        get      = function() return Nock.db.profile[sel.key] or sel.default end,
+        set      = function(_, v) Nock.db.profile[sel.key] = v end,
+      }
+    end
+  end
   if cat.inputs then
     -- Free-text inputs (e.g. comma-separated item-ID lists). Each setter
     -- broadcasts NOCK_VISUALS_CHANGED so the warning module can rebuild its

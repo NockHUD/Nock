@@ -44,6 +44,26 @@ local Spells = {
   -- with `/nock probe talents` (2026-09-26: node 105007, tree 1091). The
   -- no-pet warning stands down while it is talented (Forever/Warnings.lua).
   LONE_WOLF = 415370,
+  -- Tracking (vanilla ids; Forever/Tracking.lua). Track spells by base id,
+  -- and the wheel's slot order clockwise from straight up.
+  TRACKING = {
+    [1494]  = "beasts",     [19883] = "humanoids", [19884] = "undead",  [19878] = "demons",
+    [19879] = "dragonkin",  [19880] = "elementals", [19882] = "giants", [19885] = "hidden",
+  },
+  TRACKING_RING = { "beasts", "humanoids", "undead", "demons", "dragonkin", "elementals", "giants", "hidden" },
+  -- Creature type id (the client's CreatureType table: Beast 1, Dragonkin 2,
+  -- Demon 3, Elemental 4, Giant 5, Undead 6, Humanoid 7; Critter 8,
+  -- Mechanical 9, Not specified 10 and the rest have no Track spell) -> the
+  -- Track spell that covers it.
+  TRACK_BY_CREATURE_TYPE = { [1] = 1494, [2] = 19879, [3] = 19878, [4] = 19880, [5] = 19882, [6] = 19884, [7] = 19883 },
+  -- English creature type names -> id: the fallback while the client offers
+  -- no C_CreatureInfo list to learn the localized names from.
+  CREATURE_TYPE_EN = { Beast = 1, Dragonkin = 2, Demon = 3, Elemental = 4, Giant = 5, Undead = 6, Humanoid = 7 },
+  -- Improved Tracking (Survival talent: more damage to the creature types you
+  -- track): spell id from the trait tree (`/nock probe tracking`, 2026-09-28).
+  -- The name is the fallback lookup should the id ever miss.
+  IMPROVED_TRACKING = 24293,
+  IMPROVED_TRACKING_NAME = "Improved Tracking",
 }
 Nock.Spells = Spells
 

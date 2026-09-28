@@ -293,6 +293,26 @@ Nock.state = {
     order = {},                    -- [slot] = aspect key, the dial layout (profile aspectRingOrder, cleaned)
     knownRev = 0,                  -- bumps when `known` changes (the view re-applies attributes)
   },
+  trackingWheel = {
+    -- Forever/TrackingWheel.lua; UI/Frame_TrackingWheel.lua paints it. The
+    -- aspect ring's shape with eight slots (Forever/AspectRing.lua factory).
+    open = false, cx = 0, cy = 0,
+    hover = nil,
+    known = {},                    -- [slot] = localized Track spell name, nil = not learned
+    short = {},                    -- [slot] = label ("Beasts")
+    order = {},                    -- [slot] = tracking key (Nock.Spells.TRACKING_RING)
+    knownRev = 0,
+  },
+  tracking = {
+    -- Forever/Tracking.lua: the hunter's tracking as state.
+    activeId       = nil,   -- the Track spell that is on (base id) | nil none
+    targetTrackId  = nil,   -- the Track spell the target's creature type wants | nil (no target / no Track spell for it)
+    targetTypeName = nil,   -- UnitCreatureType("target") as the client names it
+    known          = {},    -- [Track spell id] = true when learned (by spellbook name)
+    knownRev       = 0,
+    rank           = nil,   -- Improved Tracking's rank (read out of combat, held through a fight) | nil unknown
+    wrong          = false, -- a learned Track spell fits the target and is not the one on
+  },
   warnings = {
     -- ordered array, highest severity first
     -- entries: { id, severity = "red"|"amber"|"blue", text }

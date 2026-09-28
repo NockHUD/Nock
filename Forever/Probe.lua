@@ -704,6 +704,49 @@ function Probe.TalentReport(getInfo)
   return table.concat(L, "\n")
 end
 
+-- `/nock probe tracking` (Forever/Tracking.lua): the minimap tracking list
+-- with the active flag, the target's creature type against the client's
+-- type names and the Track spell it wants, the talent rows whose name has
+-- "Track" (to pin Improved Tracking's id) and the published state. Pure
+-- over `d` = { list, creatureType, typeNames, rank, improvedId, talents, state }.
+function Probe.TrackingReport(d)
+  local L = { "Nock probe tracking" }
+  if type(d.list) ~= "table" then
+    L[#L + 1] = "no tracking list (C_Minimap.GetTrackingInfo missing or secret)"
+  else
+    L[#L + 1] = ("-- tracking list: %d entries"):format(#d.list)
+    for i, e in ipairs(d.list) do
+      L[#L + 1] = ("%2d  %-4s  spell %-6s  %s"):format(i, e.active and "ON" or "off", tostring(e.spellID), tostring(e.name))
+    end
+  end
+  L[#L + 1] = ("creature type: %s"):format(tostring(d.creatureType))
+  if type(d.typeNames) == "table" then
+    local ids = {}
+    for id in pairs(d.typeNames) do ids[#ids + 1] = id end
+    table.sort(ids)
+    local parts = {}
+    for _, id in ipairs(ids) do parts[#parts + 1] = ("%d = %s"):format(id, tostring(d.typeNames[id])) end
+    L[#L + 1] = "client type names: " .. table.concat(parts, ", ")
+  else
+    L[#L + 1] = "client type names: none (English fallback)"
+  end
+  local need = Nock.TrackingForCreatureType and Nock.TrackingForCreatureType(d.creatureType, d.typeNames)
+  L[#L + 1] = ("wants %s"):format(tostring(need))
+  L[#L + 1] = ("Improved Tracking: id %s  rank %s"):format(tostring(d.improvedId), tostring(d.rank))
+  for _, t in ipairs(d.talents or {}) do
+    L[#L + 1] = ("talent  %s  spell %s  rank %s"):format(tostring(t.name), tostring(t.spellID), tostring(t.rank))
+  end
+  local st = d.state
+  if st then
+    local known = {}
+    for id in pairs(st.known or {}) do known[#known + 1] = tostring(id) end
+    table.sort(known)
+    L[#L + 1] = ("state: activeId %s  targetTrackId %s  wrong %s  known %s"):format(
+      tostring(st.activeId), tostring(st.targetTrackId), tostring(st.wrong), table.concat(known, ","))
+  end
+  return table.concat(L, "\n")
+end
+
 -- The retail-style talent tree (C_ClassTalents + C_Traits): the active
 -- loadout's trees, or the spec's tree through the view-only loadout when no
 -- loadout exists yet. One line per node entry: spell id, name, rank.
@@ -1069,6 +1112,28 @@ function Probe:Show(which, rest)
       name = function(id) return Nock.Flavor.Plain(Nock.API.SpellName(id)) end,
       viewID = TC and TC.VIEW_TRAIT_CONFIG_ID or -3,
     }) .. "\n\n" .. Probe.TalentReport(_G.C_SpecializationInfo and _G.C_SpecializationInfo.GetTalentInfo)
+    if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
+    return
+  end
+  if which == "tracking" then
+    local TM = Nock:GetModule("Tracking", true)
+    -- `/nock probe tracking any`: toggle the warning free of the talent
+    -- (rank 1 published) for testing; back to the tree on /reload or again.
+    if rest == "any" and TM then
+      TM.ignoreTalent = not TM.ignoreTalent or nil
+      TM._rankAt = nil
+      Nock:Print(("Tracking warning: %s"):format(TM.ignoreTalent and "ignoring the talent (testing)" or "talent required again"))
+      return
+    end
+    local R = TM and TM.Reads
+    local S, Tr = Nock.Spells, Nock.Traits
+    local nameOf = function(id) return Nock.Flavor.Plain(Nock.API.SpellName(id)) end
+    local text = Probe.TrackingReport({
+      list = R and R.trackingList(), creatureType = R and R.creatureType(), typeNames = R and R.creatureTypeNames(),
+      rank = Tr and Tr.LiveRank(S.IMPROVED_TRACKING, S.IMPROVED_TRACKING_NAME), improvedId = S.IMPROVED_TRACKING,
+      talents = Tr and Tr.Find("Track", _G.C_ClassTalents, _G.C_Traits, nameOf) or {},
+      state = Nock.state and Nock.state.tracking,
+    })
     if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
     return
   end

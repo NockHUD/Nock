@@ -21,6 +21,9 @@ local NOT_IN_RANGE_GRACE = 1.0
 -- Seconds a living pet may stand without a target in combat before the
 -- "pet idle" square fires: the attack order lands a beat after the pull.
 local PET_IDLE_GRACE = 1.5
+-- Seconds the wrong tracking may sit on a target before the "TRACK" square
+-- fires: a retarget or a tracking switch mid-swap never blinks it.
+local WRONG_TRACKING_GRACE = 1.0
 local PET_ATTACK_ICON = 132152  -- Ability_GhoulFrenzy, the pet Attack command
 -- The zones the range finder publishes that each attack cannot reach.
 local RANGED_MISSES = { CLOSE = "DEAD ZONE", LONG = "RANGE" }
@@ -150,7 +153,34 @@ function Checks.petGrowl(reads)
   return warn("petGrowl", "amber", spellIcon(Nock.Spells.GROWL) or 132270, "GROWL", nil)
 end
 
-Warnings.ORDER = { Checks.ammo, Checks.petDead, Checks.petMissing, Checks.petUnhappy, Checks.notAttacking, Checks.notInRange, Checks.petAttack, Checks.petGrowl }
+-- Where a warning may fire, over the instance you are in: "always", "dungeon"
+-- (a dungeon or a raid), "raid" (a raid only). Unset or unknown reads as
+-- always. `kind` is "none" / "party" / "raid" (IsInInstance's word).
+local GATE_RANK = { always = 0, dungeon = 1, raid = 2 }
+local KIND_RANK = { none = 0, party = 1, raid = 2 }
+Warnings.GATES = { "always", "dungeon", "raid" }
+function Warnings.GateAllows(gate, kind)
+  return (KIND_RANK[kind] or 0) >= (GATE_RANK[gate] or 0)
+end
+
+-- The tracking that the target's creature type wants is learned and not on,
+-- with points in Improved Tracking (the only reason tracking is damage). The
+-- square shows the Track spell to switch to. A retarget restarts the grace.
+local wrongTrackingSince, wrongTrackingNeed
+function Checks.wrongTracking(reads)
+  local rank = reads.trackingRank
+  local need = reads.trackNeeded
+  local wrong = isEnabled("warnTrackingEnabled") and type(rank) == "number" and rank > 0
+    and reads.targetHostile == true and need ~= nil and reads.trackKnown == true and reads.trackActive ~= need
+    and Warnings.GateAllows(threshold("warnTrackingGate", "always"), reads.instanceKind or "none")
+  if not wrong then wrongTrackingSince, wrongTrackingNeed = nil, nil; return nil end
+  local now = reads.now or 0
+  if not wrongTrackingSince or wrongTrackingNeed ~= need then wrongTrackingSince, wrongTrackingNeed = now, need end
+  if now - wrongTrackingSince < WRONG_TRACKING_GRACE then return nil end
+  return warn("wrongTracking", "amber", spellIcon(need) or 132328, "TRACK", nil)
+end
+
+Warnings.ORDER = { Checks.ammo, Checks.petDead, Checks.petMissing, Checks.petUnhappy, Checks.notAttacking, Checks.notInRange, Checks.petAttack, Checks.petGrowl, Checks.wrongTracking }
 
 -- The live reads, every one secret-guarded: a secret answer is a nil read
 -- and the check stays quiet.
@@ -186,8 +216,26 @@ function Warnings:Reads(state)
   r.inInstance = self:InInstance()
   r.growlAutocast = nil
   if r.inInstance and r.petExists then r.growlAutocast = self:GrowlAutocast() end
+  r.instanceKind = self:InstanceKind()
+  -- The tracking state (Forever/Tracking.lua): the talent, the target's
+  -- need, whether that Track spell is learned, and the one that is on.
+  local tr = state.tracking
+  r.trackingRank = tr and tr.rank or nil
+  r.trackNeeded = tr and tr.targetTrackId or nil
+  r.trackKnown = (tr and r.trackNeeded and tr.known[r.trackNeeded] == true) or false
+  r.trackActive = tr and tr.activeId or nil
   r.now = GetTime()
   return r
+end
+
+-- "none" / "party" / "raid": the instance you are in, IsInInstance's word;
+-- anything else (or a secret, or no API) is "none".
+function Warnings:InstanceKind()
+  if not _G.IsInInstance then return "none" end
+  local _, kind = IsInInstance()
+  kind = P(kind)
+  if kind == "party" or kind == "raid" then return kind end
+  return "none"
 end
 
 -- A dungeon or raid instance (instance-based, not group-based: the same rule
@@ -391,5 +439,20 @@ Warnings.Catalog = {
     iconFn      = function() return spellIcon(Nock.Spells.GROWL) or 132270 end,
     description = "Your pet's Growl is on autocast inside a dungeon or raid: turn it off so the pet does not taunt mobs off the tank.",
     logic       = "Fires when:\n• You are inside a dungeon or raid instance\n• A living pet is out\n• Growl is on the pet bar with autocast on\n\nIn and out of combat, so it shows before the pull. Quiet in the open world, where Growl on autocast is what you want solo. Matched by Growl's name, so every rank counts.",
+  },
+  {
+    key         = "wrongTracking",
+    category    = "combat",
+    name        = "Wrong tracking",
+    severity    = "amber",
+    enabledKey  = "warnTrackingEnabled",
+    iconFn      = function() return spellIcon(1494) or 132328 end,  -- Track Beasts
+    description = "Your target's creature type wants a tracking you know, and it is not the one that is on.",
+    logic       = "Fires when:\n• You have points in Improved Tracking (the talent is what makes tracking damage)\n• Your target is alive and attackable\n• Its creature type has a Track spell you have learned\n• That tracking is not on (another one, or none)\n• That has held for 1 s\n\nThe square shows the Track spell to switch to. Quiet for creature types no tracking covers (mechanicals, critters), and wherever the gate below says so. The tracking wheel (Utilities) switches without a mouse trip to the minimap.",
+    selects     = {
+      { key = "warnTrackingGate", label = "Where", default = "always",
+        values = { always = "Always", dungeon = "Dungeons and raids", raid = "Raids only" },
+        order = Warnings.GATES },
+    },
   },
 }

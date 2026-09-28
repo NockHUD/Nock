@@ -25,38 +25,12 @@ function Pet.LoneWolfFrom(id, traitRank, spellKnown, auraBySpell)
   return false
 end
 
--- The rank of the active loadout's node whose entry is `spellID`. The node
--- is found once per loadout (a 50-node walk) and then read directly.
-local traitNode = { config = nil, node = nil }
+-- The rank of the active loadout's node whose entry is `spellID`: the shared
+-- trait walker (Forever/Traits.lua), one walk per loadout for every talent.
 function Pet.TraitRank(spellID, CT, T)
-  if not (CT and CT.GetActiveConfigID and T and T.GetConfigInfo and T.GetTreeNodes and T.GetNodeInfo
-          and T.GetEntryInfo and T.GetDefinitionInfo) then return nil end
-  local okc, config = pcall(CT.GetActiveConfigID)
-  if not okc or not config then return nil end
-  if traitNode.config ~= config then
-    traitNode.config, traitNode.node = config, nil
-    local oki, info = pcall(T.GetConfigInfo, config)
-    for _, tree in ipairs(oki and type(info) == "table" and info.treeIDs or {}) do
-      local okn, nodes = pcall(T.GetTreeNodes, tree)
-      for _, nodeID in ipairs(okn and type(nodes) == "table" and nodes or {}) do
-        local okd, node = pcall(T.GetNodeInfo, config, nodeID)
-        for _, entryID in ipairs(okd and type(node) == "table" and node.entryIDs or {}) do
-          local oke, entry = pcall(T.GetEntryInfo, config, entryID)
-          local def = oke and type(entry) == "table" and entry.definitionID
-          local okf, d = false, nil
-          if def then okf, d = pcall(T.GetDefinitionInfo, def) end
-          if okf and type(d) == "table" and d.spellID == spellID then traitNode.node = nodeID end
-        end
-        if traitNode.node then break end
-      end
-      if traitNode.node then break end
-    end
-  end
-  if not traitNode.node then return nil end
-  local okr, node = pcall(T.GetNodeInfo, config, traitNode.node)
-  return okr and type(node) == "table" and P(node.activeRank) or nil
+  return Nock.Traits.Rank(spellID, CT, T)
 end
-function Pet.ResetTraitCache() traitNode.config, traitNode.node = nil, nil end
+function Pet.ResetTraitCache() Nock.Traits.Reset() end
 
 function Pet:LoneWolf(inCombat)
   local now = GetTime()

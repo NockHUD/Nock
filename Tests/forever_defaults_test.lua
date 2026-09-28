@@ -35,5 +35,8 @@ ok(fv.weaveHelperEnabled == false and fv.reactShowWeaveStrip == true and near(fv
 ok(near(fv.weaveStartWindow, 0.75), "Forever: start window 0.75 s")
 ok(fv.reactMeleeStageCue == true and tbc.reactMeleeStageCue == false, "Forever: the melee-bar takeover on; TBC keeps it opt-in")
 ok(tbc.weaveHelperEnabled == false and tbc.reactWeaveH == 18, "TBC carries the keys unused (one profile shape)")
+-- Wrong-tracking warning (Forever/Tracking.lua): on, everywhere, by default.
+ok(fv.warnTrackingEnabled == true and fv.warnTrackingGate == "always", "Forever: wrong-tracking warning on, gate Always")
+ok(fv.trackingWheelKey == nil and fv.trackingWheelScale == nil, "Forever: the tracking wheel has no key until set, size 100%")
 print(("forever_defaults: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

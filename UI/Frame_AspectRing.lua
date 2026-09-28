@@ -1,8 +1,7 @@
 -- UI/Frame_AspectRing.lua
--- The aspect ring's layer and six secure slot buttons with the React tile look (WoW Forever).
+-- The ring view factory (a layer and n secure slot buttons with the React tile look, WoW Forever) and the aspect ring's own view.
 
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
-local View = Nock:NewModule("AspectRingView", "AceEvent-3.0")
 local C = Nock.Constants
 
 local SLOT = 36
@@ -16,7 +15,20 @@ local MEDIA = "Interface\\AddOns\\Nock\\Media\\"
 local DISC_SIZE = 150
 local WEDGE_ALPHA = 0.22
 local NAME_OFFSET = -80   -- the name's top edge below the ring centre
-local SLICE = 2 * math.pi / 6
+
+-- `spec` (see Forever/AspectRing.lua, Nock.NewRingModule for the module's):
+--   name        the view module's name ("AspectRingView")
+--   layer       the layer's global name; slots are <slotPrefix>1..n
+--   stateKey    the Nock.state slot the module publishes ("aspectRing")
+--   n           slots (the wedge texture must match: 360/n degrees)
+--   wedge       the pointer wedge's file name under Media
+--   closeMsg    the message a slot click sends
+--   scaleProfile the size's profile key
+--   idByKey()   slot key -> spell id
+--   activeKey(state)  the slot key that is up right now, or nil
+function Nock.NewRingView(spec)
+local View = Nock:NewModule(spec.name, "AceEvent-3.0")
+local SLICE = 2 * math.pi / spec.n
 
 -- Its own UIParent layer (the Helpers click-layer precedent): a hidden HUD
 -- must not take the ring with it, and secure buttons stay out of the HUD
@@ -27,7 +39,7 @@ local SLICE = 2 * math.pi / 6
 -- lockdown, so every call on a secure button waits for SetupSlots (the first
 -- out-of-combat open).
 function View:OnInitialize()
-  local layer = CreateFrame("Frame", "NockAspectRingLayer", UIParent)
+  local layer = CreateFrame("Frame", spec.layer, UIParent)
   layer:SetFrameStrata("DIALOG")
   layer:SetSize(1, 1)
   layer:Hide()
@@ -44,7 +56,7 @@ function View:OnInitialize()
   -- Points straight up in the file; SetRotation turns it counter-clockwise,
   -- so slot i (clockwise from up) is -(i - 1) * 60 degrees.
   local wedge = layer:CreateTexture(nil, "BORDER")
-  wedge:SetTexture(MEDIA .. "AspectRingWedge.tga")
+  wedge:SetTexture(MEDIA .. spec.wedge)
   wedge:SetSize(DISC_SIZE, DISC_SIZE)
   wedge:SetPoint("CENTER", layer, "CENTER", 0, 0)
   wedge:Hide()
@@ -57,12 +69,12 @@ function View:OnInitialize()
   name:SetText("")
   self.name = name
 
-  self.idByKey = Nock.AspectRingIdByKey()
+  self.idByKey = spec.idByKey()
   self.slots = {}
   self.items = {}
-  for i = 1, #Nock.Spells.ASPECT_RING do
-    local b = CreateFrame("Button", "NockAspectRingSlot" .. i, layer, "SecureActionButtonTemplate")
-    b:SetScript("PostClick", function() View:SendMessage("NOCK_ASPECT_RING_CLOSE") end)
+  for i = 1, spec.n do
+    local b = CreateFrame("Button", spec.slotPrefix .. i, layer, "SecureActionButtonTemplate")
+    b:SetScript("PostClick", function() View:SendMessage(spec.closeMsg) end)
     -- The tile hangs off its centre (not all four corners), so the hover
     -- SetScale grows it about the middle.
     local tile = Nock.UI.CreateReactSlot(b, nil, SLOT)
@@ -83,13 +95,13 @@ function View:SetupSlots()
     b:SetSize(SLOT, SLOT)
     b:RegisterForClicks("AnyUp")
     b:SetAttribute("useOnKeyDown", false)
-    local ox, oy = Nock.AspectRingSlotOffset(i, radius)
+    local ox, oy = Nock.AspectRingSlotOffset(i, radius, spec.n)
     b:SetPoint("CENTER", self.layer, "CENTER", ox, oy)
   end
   self._setup = true
 end
 
--- Attributes per slot from state.aspectRing.known, out of combat only.
+-- Attributes per slot from the state's known names, out of combat only.
 function View:ApplyKnown(st)
   for i, b in ipairs(self.slots) do
     local macro = Nock.AspectRingMacro(st.known[i])
@@ -114,7 +126,7 @@ function View:SecureSetup(st)
   if InCombatLockdown() then return end
   if not self._setup then self:SetupSlots() end
   if st.knownRev ~= self._knownRev then self:ApplyKnown(st) end
-  local scale = Nock.AspectRingScale(Nock.db and Nock.db.profile)
+  local scale = Nock.RingScale(Nock.db and Nock.db.profile, spec.scaleProfile)
   if scale ~= self._scale then
     self.layer:SetScale(scale)
     self._scale = scale
@@ -122,12 +134,11 @@ function View:SecureSetup(st)
 end
 
 function View:Refresh(state)
-  local st = state.aspectRing
+  local st = state[spec.stateKey]
   self:SecureSetup(st)
   if not st.open then return end
 
-  local active = state.player and state.player.aspect and state.player.aspect.spellId
-  local activeKey = active and Nock.Spells.ASPECTS[active]
+  local activeKey = spec.activeKey(state)
   local p = (Nock.db and Nock.db.profile) or {}
   local glow = p.reactActiveColor or C.COLORS.PROC_GLOW
   local depth = (p.reactActiveSize or 3) * 3
@@ -164,3 +175,18 @@ function View:Refresh(state)
     self._hover, self._wedgeColor = h, glow
   end
 end
+
+return View
+end
+
+-- The aspect ring's view. The active aspect comes from the aura reader.
+Nock.NewRingView({
+  name = "AspectRingView", layer = "NockAspectRingLayer", slotPrefix = "NockAspectRingSlot",
+  stateKey = "aspectRing", n = 6, wedge = "AspectRingWedge.tga",
+  closeMsg = "NOCK_ASPECT_RING_CLOSE", scaleProfile = "aspectRingScale",
+  idByKey = Nock.AspectRingIdByKey,
+  activeKey = function(state)
+    local active = state.player and state.player.aspect and state.player.aspect.spellId
+    return active and Nock.Spells.ASPECTS[active] or nil
+  end,
+})

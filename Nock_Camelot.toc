@@ -80,10 +80,13 @@ Forever\Cooldowns.lua
 Forever\CameraSetupView.lua
 Forever\CameraFlip.lua
 Forever\Probe.lua
+Forever\Traits.lua
 Forever\Pet.lua
 Forever\Warnings.lua
 Forever\RangeCues.lua
 Forever\AspectRing.lua
+Forever\Tracking.lua
+Forever\TrackingWheel.lua
 Modules\ProfileShare.lua
 Modules\QoL.lua
 Modules\AggroWarning.lua
@@ -103,4 +106,5 @@ UI\Frame_AggroWarning.lua
 UI\Frame_Warnings.lua
 UI\Frame_ConsumeBanner.lua
 UI\Frame_AspectRing.lua
+UI\Frame_TrackingWheel.lua
 UI\Frame_Onboarding.lua

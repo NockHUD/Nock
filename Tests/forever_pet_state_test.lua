@@ -25,6 +25,7 @@ function Nock:GetModule(name) return modules[name] end
 _G.LibStub = function() return { GetAddon = function() return Nock end } end
 dofile("Core/State.lua")
 dofile("Forever/Spells.lua")
+dofile("Forever/Traits.lua")
 dofile("Forever/Pet.lua")
 local Pet = modules.ForeverPet
 ok(Pet and Pet.refreshInterval == 0.1, "module ForeverPet on the slow lane")

@@ -18,3 +18,5 @@ _G["BINDING_NAME_NOCK_PRACTICE_EXPERT"] = "Practice: expert (combat log + weave 
 -- Aspect ring (Forever/AspectRing.lua, WoW Forever only: the button does not
 -- exist on TBC, where the entry says so).
 _G["BINDING_NAME_CLICK NockAspectRingButton:LeftButton"] = forever and "Aspect ring (hold)" or "Aspect ring (WoW Forever)"
+-- Tracking wheel (Forever/TrackingWheel.lua): the same ring for the Track spells.
+_G["BINDING_NAME_CLICK NockTrackingWheelButton:LeftButton"] = forever and "Tracking wheel (hold)" or "Tracking wheel (WoW Forever)"

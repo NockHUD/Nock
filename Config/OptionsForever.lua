@@ -12,8 +12,8 @@ F.FAMILIES = { general = true, hud = true, profiles = true, alerts = true, utili
 -- Families that keep only the listed pages (every other group inside goes):
 -- Utilities is the TBC toolbox (practice, mailbox, weave binds, ...); only
 -- the Quality of life page has a feed on Forever (Modules/QoL.lua), plus the
--- Forever-only Aspect ring page added below (F.AspectRingPage).
-F.KEEP_PAGES = { utilities = { qol = true, aspectRing = true, cameraFlip = true } }
+-- Forever-only Aspect ring, Tracking wheel and Camera flip pages added below.
+F.KEEP_PAGES = { utilities = { qol = true, aspectRing = true, cameraFlip = true, trackingWheel = true } }
 
 -- Dotted args paths removed inside the surviving families. A trailing `*`
 -- matches every key with that prefix (same convention as OptionsLayout rows).
@@ -67,7 +67,7 @@ F.DROP = {
 F.RENAME = {
   ["hud.react"] = "Nock HUD",
   -- The family intro is a description node; only the QoL page survives.
-  ["utilities.intro"] = { name = "Quality-of-life helpers (what happens at a vendor, the full-screen glow, the camera and world switches the game hides) and the aspect ring." },
+  ["utilities.intro"] = { name = "Quality-of-life helpers (what happens at a vendor, the full-screen glow, the camera and world switches the game hides), the aspect ring and the tracking wheel." },
   ["hud.react.tabBars.showWindupMark"] = {
     name = "Spell-queue mark",
     desc = "The neutral mark on the Auto Shot bar where the client's spell-queue window opens before the next shot (SpellQueueWindow, 400 ms by default). Past it a press is queued behind the shot and comes out right after it; before it, a cast started now would push the shot back.",
@@ -196,6 +196,39 @@ function F.AspectRingPage()
   return { type = "group", name = "Aspect ring", order = 12, args = args }
 end
 
+-- Utilities -> Tracking wheel (Forever/TrackingWheel.lua): the aspect ring's
+-- mechanism for the eight Track spells; the key and the size. The order is
+-- fixed (Beasts up, then clockwise), so there is no dial.
+local function wheelChanged() Nock:SendMessage("NOCK_TRACKING_WHEEL_CONFIG") end
+
+function F.TrackingWheelPage()
+  local args = {
+    intro = {
+      type = "description", order = 1, fontSize = "medium",
+      name = "Hold the key for a wheel of your Track spells at the cursor: flick toward one and let go to switch to it, in or out of combat. Letting go in the middle changes nothing. Beasts sit up, then clockwise: Humanoids, Undead, Demons, Dragonkin, Elementals, Giants, Hidden. The Wrong tracking warning (Alerts → Warnings → Combat) tells you when your target wants another one.\n",
+    },
+    keyHeader = { type = "header", name = "Key", desc = "The key that opens the wheel.", order = 10 },
+    trackingWheelKey = {
+      type = "keybinding", name = "Tracking wheel key", order = 11,
+      desc = "The key to hold for the wheel. It can also be set in the game's Key Bindings window under Nock; when both are set, this one wins. A change made in combat applies when combat ends.",
+      get = function() return ringProfile().trackingWheelKey or "" end,
+      set = function(_, v)
+        ringProfile().trackingWheelKey = (type(v) == "string" and v ~= "") and v or nil
+        wheelChanged()
+      end,
+    },
+    sizeHeader = { type = "header", name = "Size", desc = "How large the wheel draws.", order = 20 },
+    trackingWheelScale = {
+      type = "range", name = "Wheel size", order = 21, isPercent = true,
+      desc = "How large the wheel draws; the cancel circle in the middle grows with it.",
+      min = 0.75, max = 2, step = 0.05,
+      get = function() return Nock.TrackingWheelScale(ringProfile()) end,
+      set = function(_, v) ringProfile().trackingWheelScale = v; wheelChanged() end,
+    },
+  }
+  return { type = "group", name = "Tracking wheel", order = 13, args = args }
+end
+
 -- Utilities -> Camera flip (Forever/CameraFlip.lua): its own page, it is not
 -- a HUD element. Headers render as cards; profile keys cameraFlipEnabled /
 -- cameraFlipGate, the setup window and the macros copybox.
@@ -294,6 +327,9 @@ function F.Apply(root)
   end
   if type(util) == "table" and type(util.args) == "table" and not util.args.cameraFlip then
     util.args.cameraFlip = F.CameraFlipPage()
+  end
+  if type(util) == "table" and type(util.args) == "table" and not util.args.trackingWheel and Nock.TrackingWheelScale then
+    util.args.trackingWheel = F.TrackingWheelPage()
   end
   for k, v in pairs(root.args) do
     if type(v) == "table" and v.type == "group" and not F.FAMILIES[k] then root.args[k] = nil end

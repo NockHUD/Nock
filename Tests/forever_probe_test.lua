@@ -21,6 +21,23 @@ ok(module and module.name == "ForeverProbe", "module ForeverProbe")
 local Probe = Nock.ForeverProbe
 ok(type(Probe.Format) == "function", "Format exists")
 
+-- `/nock probe tracking`: the tracking list, the target's type, the talent.
+do
+  Nock.TrackingForCreatureType = function(t) return t == "Beast" and 1494 or nil end   -- Forever/Tracking.lua's, stubbed
+  local rep = Probe.TrackingReport({
+    list = { { name = "Track Beasts", active = true, spellID = 1494 }, { name = "Find Herbs", active = false } },
+    creatureType = "Beast", typeNames = { [1] = "Beast", [7] = "Humanoid" },
+    rank = 2, improvedId = nil,
+    talents = { { name = "Improved Tracking", spellID = 999001, rank = 2 } },
+    state = { activeId = 1494, targetTrackId = 1494, wrong = false, known = { [1494] = true } },
+  })
+  ok(rep:find("Track Beasts") and rep:find("ON") and rep:find("Find Herbs"), "tracking rows with the active flag")
+  ok(rep:find("creature type: Beast") and rep:find("1 = Beast") and rep:find("wants 1494"), "the target's type, the client's names, the need")
+  ok(rep:find("Improved Tracking") and rep:find("999001") and rep:find("rank 2"), "the talent row with its spell id (to pin)")
+  ok(rep:find("activeId 1494") and rep:find("wrong false"), "state")
+  ok(Probe.TrackingReport({}):find("no tracking list"), "no API: says so")
+end
+
 local text = Probe.Format({
   build = "1.60.1 (69913)", toc = 16001, forever = true,
   restrictions = { { "Combat", "Active" }, { "Encounter", "Inactive" }, { "Map", "Inactive" }, { "Chat", "Inactive" } },
