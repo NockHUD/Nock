@@ -66,8 +66,8 @@ local function wellFedName()
   if C_Spell and C_Spell.GetSpellInfo then
     local info = C_Spell.GetSpellInfo(33259)
     name = info and info.name
-  elseif GetSpellInfo then
-    name = GetSpellInfo(33259)
+  elseif _G.GetSpellInfo then
+    name = _G.GetSpellInfo(33259)
   end
   _wellFedName = name or "Well Fed"
   return _wellFedName
@@ -350,8 +350,8 @@ local function foodGivesBuff(spellId)
   local desc
   if C_Spell and C_Spell.GetSpellDescription then
     desc = C_Spell.GetSpellDescription(spellId)
-  elseif GetSpellDescription then
-    desc = GetSpellDescription(spellId)
+  elseif _G.GetSpellDescription then
+    desc = _G.GetSpellDescription(spellId)
   end
   if type(desc) ~= "string" or desc == "" then return false end
   local yes = desc:lower():find("well fed", 1, true) ~= nil

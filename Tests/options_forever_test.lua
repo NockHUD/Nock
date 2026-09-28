@@ -90,6 +90,23 @@ ok(uintro and type(uintro.name) == "string" and not uintro.name:find("mailbox") 
 ok(nodeAt(opts, "alerts.aggro") ~= nil, "aggro page kept")
 for _, p in ipairs({ "alerts.helpers", "alerts.warnings.settings.noReleasePreview", "alerts.sounds.deadZone", "alerts.sounds.warnings", "alerts.sounds.weave", "alerts.sounds.other" }) do ok(nodeAt(opts, p) == nil, p .. " gone") end
 ok(nodeAt(opts, "alerts.sounds") ~= nil, "sounds page kept for the Range tab")
+-- The eating pill (UI/Frame_ConsumeBanner.lua) runs on Forever: its rows
+-- move from the dropped Helpers page onto their own page, and nothing else.
+do
+  local pg = nodeAt(opts, "alerts.eating")
+  ok(pg and pg.type == "group" and pg.name == "Eating pill", "alerts.eating page")
+  local keys = {}
+  for k in pairs(pg and pg.args or {}) do keys[#keys + 1] = k end
+  table.sort(keys)
+  ok(table.concat(keys, ",") == "consumeBannerEnabled,consumeBannerResetPos,consumeBannerSize,consumeBannerSound,pillHeader",
+    "eating page: header + the four pill rows, got " .. table.concat(keys, ","))
+  local en = nodeAt(opts, "alerts.eating.consumeBannerEnabled")
+  ok(en and en.type == "toggle" and en.get() == true, "pill toggle reads the profile (on by default)")
+  local order = {}
+  for k, v in pairs(pg.args) do order[#order + 1] = { k, v.order } end
+  table.sort(order, function(a, b) return a[2] < b[2] end)
+  ok(order[1][1] == "pillHeader" and order[2][1] == "consumeBannerEnabled", "header first, then the switch")
+end
 ok(nodeAt(opts, "alerts.warnings") ~= nil and nodeAt(opts, "alerts.warnings.settings.previewButton") ~= nil, "warnings page kept with its preview (Forever/Warnings.lua supplies the catalog)")
 
 -- HUD: React only, renamed.

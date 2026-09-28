@@ -1,6 +1,7 @@
 -- Forever/Auras.lua
 -- The Forever `Auras` module: aspect and Hunter's Mark from own casts while
--- auras are secret, from the aura cache (the truth) while they are not.
+-- auras are secret, from the aura cache (the truth) while they are not; the
+-- eating / drinking records from the cache only.
 
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 local Auras = Nock:NewModule("Auras", "AceEvent-3.0")
@@ -65,6 +66,35 @@ local function setMark(expirationTime, duration)
   t.huntersMark = markRec
 end
 
+-- Eating / drinking (UI/Frame_ConsumeBanner.lua reads the records): the
+-- generic Food / Drink auras by localized name, out of combat only. While
+-- auras are secret both clear: no food starts in combat and damage breaks
+-- the channel, so a blank pill is right where a stale one would stick.
+local eatRec, drinkRec = {}, {}
+
+local function consumeName(id, fallback)
+  local n = Nock.Flavor.Plain(Nock.API.SpellName(id))
+  return type(n) == "string" and n or fallback
+end
+
+-- A cache record -> the reused table, or nil when absent or already expired
+-- (a missed removal must not hold the pill up past the channel's own end).
+local function consumeRec(rec, out, now)
+  if not rec then return nil end
+  local exp = rec.expirationTime
+  if exp and exp > 0 and exp <= now then return nil end
+  out.icon, out.expirationTime, out.duration, out.spellId = rec.icon, exp, rec.duration, rec.spellId
+  return out
+end
+
+local function setConsume(AC)
+  local p = Nock.state.player
+  if not AC then p.eating, p.drinking = nil, nil; return end
+  local S, now = Nock.Spells, GetTime()
+  p.eating   = consumeRec(AC.ByName("player", consumeName(S.FOOD, "Food")), eatRec, now)
+  p.drinking = consumeRec(AC.ByName("player", consumeName(S.DRINK, "Drink")), drinkRec, now)
+end
+
 function Auras:OnEnable()
   local p = Nock.state.player
   p.feign, p.dazed, p.eating, p.drinking = nil, nil, nil, nil
@@ -93,8 +123,9 @@ end
 
 -- Out of combat the cache is the truth and overrides the ledger both ways.
 function Auras:Refresh()
-  if Nock.Restricted("auras") then return end
+  if Nock.Restricted("auras") then setConsume(nil); return end
   local AC = Nock.AuraCache
+  setConsume(AC)
   if not AC then return end
   local S = Nock.Spells
   local found

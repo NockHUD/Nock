@@ -95,5 +95,6 @@ UI\Frame_ReactCorners.lua
 UI\Frame_ReactBuffs.lua
 UI\Frame_AggroWarning.lua
 UI\Frame_Warnings.lua
+UI\Frame_ConsumeBanner.lua
 UI\Frame_AspectRing.lua
 UI\Frame_Onboarding.lua

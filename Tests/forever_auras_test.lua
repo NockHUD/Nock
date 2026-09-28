@@ -82,5 +82,28 @@ cache = { ["playerspell13165"] = { spellId = 14318 }, ["targetspell1130"] = { sp
 A:Refresh()
 ok(p.aspect and p.aspect.spellId == 13165, "Hawk rank 2 aura found by name out of combat")
 ok(t.huntersMark and t.huntersMark.expirationTime == 610, "Hunter's Mark rank 2 aura found by name")
+-- 10. eating / drinking: the Food (433) / Drink (430) auras by name, out of
+-- combat, as the records the pill (UI/Frame_ConsumeBanner.lua) reads.
+now = 1000
+cache = { ["playerspell433"] = { spellId = 33004, icon = 7, expirationTime = 1020, duration = 30 },
+          ["playerspell430"] = { spellId = 27089, icon = 8, expirationTime = 1015, duration = 30 } }
+A:Refresh()
+ok(p.eating and p.eating.spellId == 33004 and p.eating.icon == 7 and p.eating.expirationTime == 1020 and p.eating.duration == 30, "eating from the Food aura")
+ok(p.drinking and p.drinking.icon == 8 and p.drinking.expirationTime == 1015, "drinking from the Drink aura")
+now = 1016
+A:Refresh()
+ok(p.eating and p.drinking == nil, "an expired Drink record is not drinking")
+secretAuras = true
+A:Refresh()
+ok(p.eating == nil and p.drinking == nil, "both clear while auras are secret")
+secretAuras = false
+cache = {}
+A:Refresh()
+ok(p.eating == nil and p.drinking == nil, "none without the auras")
+-- The client has not resolved the names yet: the English fallbacks.
+Nock.API.SpellName = function() return nil end
+cache = { ["playerFood"] = { spellId = 1, icon = 9, expirationTime = 1030, duration = 30 } }
+A:Refresh()
+ok(p.eating and p.eating.icon == 9, "Food by the fallback name")
 print(("forever_auras: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

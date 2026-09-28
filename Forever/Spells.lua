@@ -17,6 +17,11 @@ local Spells = {
   ASPECT_HAWK = 13165,  -- the corner icon's "no aspect" face
   -- Pet Growl (rank 1): its localized name finds the pet-bar slot.
   GROWL = 2649,
+  -- The generic eating / drinking auras (vanilla ids, name source only: every
+  -- food applies its own id under one of these names). Forever/Auras.lua
+  -- falls back to "Food" / "Drink" while the client has not resolved them.
+  FOOD  = 433,
+  DRINK = 430,
   ASPECTS = {
     [13163] = "monkey", [13165] = "hawk", [5118] = "cheetah",
     [13159] = "pack",   [13161] = "beast", [20043] = "wild",

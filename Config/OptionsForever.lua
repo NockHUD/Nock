@@ -21,7 +21,8 @@ F.KEEP_PAGES = { utilities = { qol = true, aspectRing = true } }
 F.DROP = {
   -- Alerts: the aggro flash runs on own threat state (plain in combat) and
   -- the warnings page builds from Forever/Warnings.lua's own catalog;
-  -- helpers and sounds return later. No DO NOT RELEASE banner on Forever.
+  -- helpers and sounds return later (the eating pill's rows move to their
+  -- own page first, F.EatingPillPage). No DO NOT RELEASE banner on Forever.
   "alerts.helpers", "alerts.warnings.settings.noReleasePreview",
   -- Sounds: only the Range tab has a Forever feed (Forever/RangeCues.lua).
   "alerts.sounds.deadZone", "alerts.sounds.warnings", "alerts.sounds.weave", "alerts.sounds.other",
@@ -195,8 +196,31 @@ function F.AspectRingPage()
   return { type = "group", name = "Aspect ring", order = 12, args = args }
 end
 
+-- Alerts -> Eating pill (UI/Frame_ConsumeBanner.lua): the pill's own rows,
+-- lifted out of the TBC Helpers page before that page is dropped (the
+-- consumables badge row has no feed on Forever). Same nodes, same profile keys.
+local PILL_ROWS = { "consumeBannerEnabled", "consumeBannerSound", "consumeBannerSize", "consumeBannerResetPos" }
+
+function F.EatingPillPage(settings)
+  local args = {
+    pillHeader = { type = "header", name = "Eating / drinking pill", order = 1,
+      desc = "Centre-screen while the Food or Drink aura is on you; flashes WELL FED when the buff lands." },
+  }
+  for i, key in ipairs(PILL_ROWS) do
+    local n = settings[key]
+    if type(n) == "table" then n.order = 1 + i; args[key] = n end
+  end
+  return { type = "group", name = "Eating pill", order = 3, args = args }
+end
+
 function F.Apply(root)
   if type(root) ~= "table" or type(root.args) ~= "table" then return end
+  local alerts = root.args.alerts
+  local hs = type(alerts) == "table" and alerts.args and alerts.args.helpers
+  hs = type(hs) == "table" and hs.args and hs.args.tabSettings
+  if type(hs) == "table" and type(hs.args) == "table" and not alerts.args.eating then
+    alerts.args.eating = F.EatingPillPage(hs.args)
+  end
   -- Built once; the prune below keeps it (KEEP_PAGES), a re-Apply finds it.
   local util = root.args.utilities
   if type(util) == "table" and type(util.args) == "table" and not util.args.aspectRing and Nock.AspectRingOrder then
