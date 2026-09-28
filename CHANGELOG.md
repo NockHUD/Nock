@@ -2,7 +2,7 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
-## Unreleased
+## 2.0.8
 
 ### Both clients
 
@@ -13,6 +13,7 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 - **Tracking wheel**: the aspect ring's mechanism for your Track spells. Hold a key and a wheel of the eight trackings opens at the cursor (Beasts up, then clockwise: Humanoids, Undead, Demons, Dragonkin, Elementals, Giants, Hidden); flick toward one and let go to switch, in or out of combat. Unlearned ones are greyed and the one that is on glows. Utilities → Tracking wheel for the key and the size; also bindable under Nock in the game's Key Bindings.
 - **Wrong tracking warning**: with points in Improved Tracking, an amber TRACK square shows the Track spell your target's creature type wants whenever that tracking is learned and not the one on (or none is on). Quiet without the talent, for creature types no tracking covers, and until the wrong tracking has sat for a second. Alerts → Warnings → Combat, with a gate: Always (the default), Dungeons and raids, Raids only. `/nock probe tracking` for the diagnostic.
 - **Weave camera flip**: the SoD "smart camera" weave on Forever. With one line at the end of each macro (`/run NockCamFlip()` after Raptor Strike, `/run NockCamFace()` after Auto Shot) the character turns away on the melee hit and back for the shot while the camera stays fixed on the target. Off by default and raids only until you say otherwise (Utilities → Camera flip, or the wizard's weave step); `/nock camera setup` opens a three-step window that saves the reversed camera view with a live bullseye track, tests it, and hands you both macros.
+- **Your sounds**: Alerts → Sounds → Your sounds takes your own sound files (a file in `Interface\AddOns\NockSounds\`, any `Interface\AddOns` path, or a FileDataID) and lists them as "Custom: <name>" in every sound dropdown, kept per account. Along the way a settings-window fix: clicking a button now commits the text box you were still typing in.
 - **Weave helper**: coaching for a Raptor Strike weave through the wide dead zone. After each Auto Shot the melee bar says GO IN (or WAIT with a countdown when the white swing would not be ready on arrival), the leg countdown runs while you cross, STRIKE in melee, BACK OUT after the hit, RELEASE as you re-enter range with the shot ready. Under the melee bar a new weave strip: the Auto Shot icon with the swing as a swipe, a glide bar that crosses the dead zone at your measured pace, the Raptor Strike icon with its cooldown. Nock measures how long your crossings take from the range ladder's edges (no speed, no distance) and remembers them per character. Off by default: the setup wizard's new **How do you play?** step turns it on (I weave / I stand and shoot), or Nock HUD → Size & Elements → Weave helper, where the start window and the leg seed live too; `/nock probe weave` for the diagnostic.
 
 ## 2.0.7
