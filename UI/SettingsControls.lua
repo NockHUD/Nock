@@ -394,7 +394,18 @@ kinds.execute = {
     local ctl = { frame = f, btn = b }
     b:SetScript("OnClick", function()
       local row = ctl.row
-      if not row or row.disabled then return end
+      if not row then return end
+      -- A form's last field keeps keyboard focus when its button is clicked
+      -- (a click does not take focus), so its text was never set and the
+      -- button was drawn disabled from the old value. Commit it, then read
+      -- disabled again (Your sounds Add, 2026-09-28).
+      local fb = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
+      if fb and fb.nockCommit then
+        fb.nockCommit()
+        local okx, dis = W.Member(row.node, "disabled", row.info, row.inherited)
+        row.disabled = okx and (dis == true) or false
+      end
+      if row.disabled then return end
       local function go()
         local okf, err = W.Func(row)
         if not okf then Nock:Print(("Settings: %s"):format(tostring(err))) end
@@ -1022,6 +1033,8 @@ kinds.input = {
     -- probe 'Probe_release_input_holder').
     local line = CreateFrame("EditBox", nil, f.ctl)
     wire(line)
+    -- A button click commits a focused single-line box first (kinds.execute).
+    line.nockCommit = function() if ctl.row and changed(line) then commit() end end
     line:SetTextInsets(10, 10, 4, 4)
     Skin.Surface(line, "ground", "line")
     line:SetSize(188, 28); line:SetPoint("RIGHT", f.ctl, "RIGHT", 0, 0)

@@ -1284,6 +1284,10 @@ Nock.Defaults = {
     -- then { seenVersion = "x.y.z" }. Account-wide so a second hunter doesn't
     -- get the wizard again. Clear it to replay the first-run experience.
     onboarding = false,
+    -- Your own sounds (Forever/CustomSounds.lua): { { name, source }, ... },
+    -- registered into LSM as "Custom: <name>". Account-wide on purpose: the
+    -- files live on this machine, so a profile export never carries them.
+    customSounds = {},
   },
 }
 

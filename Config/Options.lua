@@ -8480,6 +8480,7 @@ local function buildOptionsTable()
         warnings = tab("Warnings", 2, "The cue each warning plays, on the Master channel. The same picker sits on the warning's own page; changing it here changes it there."),
         weave = tab("Weaving", 3, "Outcome cues for the melee weave, from the combat log: your Raptor Strike landing, and a Windfury proc. Played on the dead-zone output channel."),
         other = tab("Other cues", 4, "Sounds that belong to no warning."),
+        custom = tab("Your sounds", 6, "Your own .mp3 or .ogg files: put them in Interface\\AddOns\\NockSounds, fully restart the game, and add them here. Each shows up as \"Custom: <name>\" in every sound picker. A number plays a game sound by its file id; a full Interface\\AddOns path plays a file from any addon folder."),
       },
     }
     local rf = options.args.classic and options.args.classic.args.rangeFinder
@@ -8603,6 +8604,125 @@ local function buildOptionsTable()
     if ag and ag.args then
       sounds.args.other.args.aggroSoundMode = copyRow(ag.args.aggroSoundMode, 210)
       sounds.args.other.args.aggroPreview = copyRow(ag.args.aggroPreview, 211)
+    end
+    -- Your sounds (Forever/CustomSounds.lua): the add form, one message line
+    -- and a row per entry. The list is account-wide (db.global) because the
+    -- files live on this machine. LSM cannot unregister, so a removed entry
+    -- leaves the pickers only after a /reload; the message line says so.
+    do
+      local cs = sounds.args.custom
+      cs.hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end
+      local ca = cs.args
+      local form = { name = "", file = "", msg = nil }
+      local function CS() return Nock.CustomSounds end
+      local function lsm() return LibStub("LibSharedMedia-3.0", true) end
+      local function list()
+        local g = Nock.db and Nock.db.global
+        if type(g) ~= "table" then return {} end
+        if type(g.customSounds) ~= "table" then g.customSounds = {} end
+        return g.customSounds
+      end
+      local function channel() return Nock.db.profile.deadZoneSoundChannel or "Master" end
+      local function play(v, ch) return PlaySoundFile(v, ch) end
+      local function trimmed(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
+      -- The line under the form: an explicit status (Test / removal) wins,
+      -- else the reason the typed entry cannot be added yet.
+      local function msgText()
+        if form.msg then return form.msg end
+        local c = CS()
+        if not c or (form.name == "" and form.file == "") then return "" end
+        local v, err = c.Validate(form.name, form.file, list(), lsm())
+        return v and "" or (err or "")
+      end
+      ca.customSoundAddName = {
+        type = "input", name = "Name", order = 1, width = 0.8,
+        desc = "What the sound is called in the pickers, after \"Custom: \".",
+        get = function() return form.name end,
+        set = function(_, v) form.name = v or ""; form.msg = nil end,
+      }
+      ca.customSoundAddFile = {
+        type = "input", name = "File", order = 2, width = 1.2,
+        desc = "A file name in Interface\\AddOns\\NockSounds (ding.mp3), a full Interface\\AddOns path, or a game sound's file id (a number).",
+        get = function() return form.file end,
+        set = function(_, v) form.file = v or ""; form.msg = nil end,
+      }
+      ca.customSoundAddTest = {
+        type = "execute", name = "Test", order = 3, width = 0.4,
+        desc = "Play it once on the range-cue channel.",
+        disabled = function() return form.file:match("^%s*$") ~= nil end,
+        func = function()
+          local c = CS(); if not c then return end
+          local good, err = c.Test(form.file, channel(), play)
+          form.msg = (not good) and err or nil
+        end,
+      }
+      ca.customSoundAddBtn = {
+        type = "execute", name = "Add sound", order = 4, width = 0.6,
+        desc = "Add it to the list below and to every sound picker.",
+        -- Deliberately not gated on Test: a file dropped in while the game
+        -- runs is found only after a restart, and it will be there then.
+        disabled = function()
+          local c = CS()
+          return not c or c.Validate(form.name, form.file, list(), lsm()) == nil
+        end,
+        func = function()
+          local c = CS(); if not c then return end
+          local entry = { name = trimmed(form.name), source = trimmed(form.file) }
+          local l = list()
+          l[#l + 1] = entry
+          c.RegisterAll({ entry }, lsm())
+          form.name, form.file, form.msg = "", "", nil
+          Nock:RebuildOptionsArgs()
+        end,
+      }
+      ca.customSoundMsg = {
+        type = "description", order = 5, fontSize = "medium",
+        name = function() return "|cffffb000" .. msgText() .. "|r" end,
+        hidden = function() return msgText() == "" end,
+      }
+      local function rebuildCustomSounds()
+        for k in pairs(ca) do
+          if type(k) == "string" and k:sub(1, 12) == "customSound_" then ca[k] = nil end
+        end
+        local o = 10
+        for i, e in ipairs(list()) do
+          if type(e) == "table" and type(e.name) == "string" then
+            local W = Nock.OptionsWalk
+            local lbl = { type = "description", name = e.name, order = o, width = 0.8, fontSize = "medium" }
+            if W and W.SetMeta then W.SetMeta(lbl, "seq", o) end
+            ca["customSound_" .. i .. "_lbl"] = lbl
+            ca["customSound_" .. i .. "_file"] = {
+              type = "description", name = tostring(e.source or ""), order = o + 0.001, width = 1.2, fontSize = "medium",
+            }
+            ca["customSound_" .. i .. "_test"] = {
+              type = "execute", name = "Test", order = o + 0.002, width = 0.4,
+              desc = "Play it once on the range-cue channel.",
+              func = function()
+                local c = CS(); if not c then return end
+                local good, err = c.Test(e.source, channel(), play)
+                form.msg = (not good) and (e.name .. ": " .. err) or nil
+              end,
+            }
+            ca["customSound_" .. i .. "_rm"] = {
+              type = "execute", name = "X", order = o + 0.003, width = 0.3,
+              desc = "Remove this sound.",
+              func = function()
+                -- By identity, not index: a row drawn before another
+                -- removal must still remove its own entry (or nothing).
+                local l = list()
+                for j = #l, 1, -1 do
+                  if l[j] == e then table.remove(l, j) end
+                end
+                form.msg = e.name .. " is removed; it leaves the sound pickers after /reload."
+                Nock:RebuildOptionsArgs()
+              end,
+            }
+            o = o + 0.01
+          end
+        end
+      end
+      rebuildCustomSounds()
+      ARG_REBUILDERS[#ARG_REBUILDERS + 1] = rebuildCustomSounds
     end
     options.args.sounds = sounds
   end

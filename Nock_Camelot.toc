@@ -33,6 +33,7 @@ Core\CooldownEditor.lua
 Core\CooldownPicker.lua
 Forever\Spellbook.lua
 Forever\PetLamp.lua
+Forever\CustomSounds.lua
 
 Config\Defaults.lua
 Config\Options.lua

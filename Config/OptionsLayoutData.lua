@@ -339,6 +339,15 @@ L.TABS = {
     desc = { deadZoneSoundChannel = "The audio channel the dead-zone cues play through; Master ignores the music and ambience sliders." },
   },
   {
+    path = "alerts.sounds.custom",
+    forever = true,
+    cards = {
+      { key = "yourSoundsCard", name = "Your sounds", icon = { glyph = "bell" }, desc = "Your own files, in every sound picker as \"Custom: <name>\".", form = { "customSoundAddName", "customSoundAddFile", "customSoundAddTest", "customSoundAddBtn" }, table = { cols = { { "File" }, { "Test" }, { "" } }, rows = { { "customSound_*", { ["File"] = "_file", ["Test"] = "_test", [""] = "_rm" } } } }, rows = { "intro", "customSoundAddName", "customSoundAddFile", "customSoundAddTest", "customSoundAddBtn", "customSoundMsg", "customSound_*" } },
+    },
+    rename = { consumeBannerSound = "Chime when Well Fed lands", deadZoneSoundChannel = "Output channel", aggroSoundMode = "Aggro cue", aggroPreview = "Preview aggro cue" },
+    desc = { deadZoneSoundChannel = "The audio channel the dead-zone cues play through; Master ignores the music and ambience sliders." },
+  },
+  {
     path = "alerts.warnings.settings",
     cards = {
       { key = "squaresCard", name = "Squares", icon = { glyph = "warn" }, desc = "The alert squares; drag the row while frames are unlocked, Reset puts it back top centre.", actions = { "warningsResetPosition" }, rows = { "warningsResetPosition", "warningIconSize", "warningBorderSize" } },

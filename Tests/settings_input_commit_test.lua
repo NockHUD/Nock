@@ -71,5 +71,39 @@ box:SetText("999")
 box._scripts.OnEscapePressed(box)
 ok(store.addId == "2643" and sets == 2, "Escape discards")
 
+-- A form's LAST field still has focus when its button is clicked: clicking a
+-- button does not take keyboard focus in the client, so the box never blurs.
+-- The button commits the focused box first and re-reads its own disabled
+-- (drawn from the value before the commit), then runs (Your sounds, 2026-09-28).
+W.Member = function(node, key)
+  local v = node[key]
+  if type(v) == "function" then return true, v() end
+  return true, v
+end
+local focused
+_G.GetCurrentKeyBoardFocus = function() return focused end
+store.addId = ""
+local ran = 0
+local exec = SC.Acquire("execute", stub())
+local execNode = {
+  disabled = function() return (store.addId or "") == "" end,
+  func = function() ran = ran + 1 end,
+}
+W.Func = function(r) r.node.func(); return true end
+W.ConfirmText = function() return nil end
+local execRow = { key = "addBtn", type = "execute", name = "Add", node = execNode, disabled = true }
+exec:Bind(execRow, host)
+box:SetText("19434")
+focused = box
+exec.btn._scripts.OnClick(exec.btn)
+ok(store.addId == "19434", "clicking the button commits the focused box first")
+ok(ran == 1, "the button re-reads disabled after the commit and runs")
+-- Nothing focused and still disabled: the click stays refused.
+focused = nil
+store.addId = ""
+execRow.disabled = true
+exec.btn._scripts.OnClick(exec.btn)
+ok(ran == 1, "a disabled button with no pending edit does not run")
+
 print(("settings_input_commit: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
