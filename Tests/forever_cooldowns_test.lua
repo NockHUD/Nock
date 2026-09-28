@@ -61,6 +61,31 @@ dofile("Forever/LedgerEngine.lua")
 dofile("Forever/Snapshot.lua")   -- defines Nock.Restricted
 dofile("Forever/Spells.lua")
 dofile("Forever/Spellbook.lua")
+
+-- Set up test seeds for cold-start testing (cd values removed from catalog in 2026-09-27)
+for _, e in ipairs(Nock.Spells.TRACKED) do
+  if e.key == "Raptor" then e.cd = 6
+  elseif e.key == "Arc" then e.cd = 6
+  elseif e.key == "AimMulti" then e.cd = 6
+  elseif e.key == "Conc" then e.cd = 12
+  elseif e.key == "RF" then e.cd = 300
+  elseif e.key == "FD" then e.cd = 30
+  elseif e.key == "Elune" then e.cd = 180
+  elseif e.key == "Meld" then e.cd = 10
+  elseif e.key == "WillSurv" then e.cd = 180
+  elseif e.key == "Fury" then e.cd = 120
+  end
+end
+-- Rebuild Constants from the seeded TRACKED
+local C = Nock.Constants
+local tracked = {}
+for i, e in ipairs(Nock.Spells.TRACKED) do
+  local t = { type = "spell" }
+  for k, v in pairs(e) do t[k] = v end
+  tracked[i] = t
+end
+C.TRACKED_COOLDOWNS = tracked
+
 dofile("Forever/Cooldowns.lua")
 
 local C = Nock.Constants
@@ -170,14 +195,14 @@ ok(CD:IsEntryAvailable("Raptor") == true, "every catalog entry is available")
 do
   Nock.db.profile.cooldownCustom = {
     { key = "c_spell_1543", type = "spell", id = 1543, label = "Flare" },
-    { type = "spell", id = 781 },                       -- no stored key: derived
+    { type = "spell", id = 20736 },                       -- no stored key: derived
     { key = "c_item_5512", type = "item", id = 5512 },
   }
   secretCds = false
   msg("NOCK_VISUALS_CHANGED")
   local flare = CD:GetEntry("c_spell_1543")
   ok(flare and flare.custom == true and flare.id == 1543 and flare.label == "Flare", "custom spell tracked with its label")
-  ok(CD:GetEntry("c_spell_781") and CD:GetEntry("c_spell_781").label == "spell781", "no key: derived key, spell name as label")
+  ok(CD:GetEntry("c_spell_20736") and CD:GetEntry("c_spell_20736").label == "spell20736", "no key: derived key, spell name as label")
   ok(CD:GetEntry("c_item_5512") == nil, "custom item not tracked on Forever")
   ok(st.cooldowns.c_spell_1543 and st.cooldowns.c_spell_1543.icon == 100000 + 1543, "custom spell has a state slot and icon")
   local listed = false
@@ -238,7 +263,7 @@ do
   CD:UpdateKnown()
   ok(#sent == 1, "no change: no rebuild")
   for _, k in ipairs({ "Stone", "Fury", "Shatter", "Stomp", "Zerk", "FastRegen" }) do
-    ok(CD:GetEntry(k) == nil and CD:IsEntryAvailable(k) == true, "a racial the spellbook does not name is untracked (GetEntry nil keeps it off the grid): " .. k)
+    ok(CD:GetEntry(k) == nil and CD:IsEntryAvailable(k) == false, "a racial the spellbook does not name is untracked and unavailable (off the grid AND out of the tray): " .. k)
   end
   -- The human pair carries proven ids (level-1 dump): tracked, gated out on this book.
   ok(CD:GetEntry("Percep").id == 20600 and CD:GetEntry("WillSurv").id == 1259718, "human racials: Perception 20600, Will to Survive 1259718")
@@ -259,7 +284,8 @@ do
   ok(CD.events["SPELLS_CHANGED"] ~= nil, "the spellbook event refreshes the gate")
   _G.C_SpellBook = nil
   CD:UpdateKnown()
-  ok(CD:IsEntryAvailable("Meld") == true, "no spellbook API: cannot tell, keep showing")
+  ok(CD:IsEntryAvailable("Meld") == false, "no spellbook API: a racial cannot be confirmed, so it stays hidden")
+  ok(CD:IsEntryAvailable("Raptor") == true, "no spellbook API: class spells keep showing")
 end
 
 -- Racial buffs: the tile lights while the racial's own buff is up. In combat
@@ -367,13 +393,15 @@ do
   ok(u == nil and m == nil, "a secret read is nil: the tile keeps its ready look")
   u, m = UR(nil, true)
   ok(u == nil and m == nil, "no usable answer: no mana answer either")
-  local usable = { [3044] = true }
-  Nock.API.SpellUsable = function(id) return usable[id] == true, false end
-  Nock.API.IsReactiveSpell = function(id) return id == 3044 end
-  CD:ScanUsable()
+  -- Arc resolves to the spellbook's rank id (14281 in the test fixture), not the base id (3044)
   local arc = st.cooldowns.Arc
+  local arcId = arc.spellId
+  local usable = { [arcId] = true }
+  Nock.API.SpellUsable = function(id) return usable[id] == true, false end
+  Nock.API.IsReactiveSpell = function(id) return id == arcId end
+  CD:ScanUsable()
   ok(arc.usable == true and arc.noMana == false and arc.reactive == true, "ScanUsable publishes usable / noMana / reactive")
-  usable[3044] = false
+  usable[arcId] = false
   CD:SPELL_UPDATE_COOLDOWN()
   ok(arc.usable == false, "re-read on a cooldown update")
   ok(CD.events.SPELL_UPDATE_USABLE == "ScanUsable", "SPELL_UPDATE_USABLE drives it")
@@ -391,16 +419,16 @@ do
   l, c = V(3.2, true)
   ok(l == nil and c == true, "a known length is not relearned: an early end (reset) just ends the ledger")
 
-  Nock.db.profile.cooldownCustom = { { key = "c_spell_781", type = "spell", id = 781, label = "Dis" } }
+  Nock.db.profile.cooldownCustom = { { key = "c_spell_20736", type = "spell", id = 20736, label = "Dis" } }
   Nock.db.char = {}
   CD:OnConfigChanged()
-  local s = st.cooldowns.c_spell_781
+  local s = st.cooldowns.c_spell_20736
   secretCds = true
   now = 1000
-  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 781); CD:Refresh()
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 20736); CD:Refresh()
   ok(s.clientRunning == true, "cast of an unlearned spell: the client's cooldown runs")
   ok(s.duration == 0, "the ledger cannot time it")
-  local w = CD._watch.c_spell_781
+  local w = CD._watch.c_spell_20736
   ok(w and w.cd.fed ~= nil, "the watch widget was fed the duration object")
   now = 1000.5; CD:SPELL_UPDATE_COOLDOWN()
   ok(w.cd.feeds == 2, "an update inside the feed window re-feeds (GCD -> cooldown)")
@@ -408,30 +436,69 @@ do
   ok(w.cd.feeds == 2, "no re-feed after the window")
   now = 1005; w.cd.scripts.OnCooldownDone(); CD:Refresh()
   ok(s.clientRunning == nil, "the client's end clears clientRunning")
-  ok(Nock.db.char.foreverLearned[781] == 5, "the length was learned in combat and remembered")
+  ok(Nock.db.char.foreverLearned[20736] == 5, "the length was learned in combat and remembered")
   now = 1010
-  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 781); CD:Refresh()
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 20736); CD:Refresh()
   ok(s.startTime == 1010 and s.duration == 5, "the next cast is timed by the ledger")
   now = 1012; w.cd.scripts.OnCooldownDone(); CD:Refresh()
   ok(s.startTime == 0 and s.duration == 0, "an early client end (reset) ends the ledger's countdown")
-  ok(Nock.db.char.foreverLearned[781] == 5, "and does not relearn a known length")
+  ok(Nock.db.char.foreverLearned[20736] == 5, "and does not relearn a known length")
 
   durObjZero = true
   now = 1020
-  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 781)
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 20736)
   ok(s.clientRunning == nil, "a plainly-zero duration object is nothing to watch")
   durObjZero = false
   now = 1030
-  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 781)
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 20736)
   ok(s.clientRunning == true, "armed again")
   now = 1030 + 901; CD:Refresh()
   ok(s.clientRunning == nil, "a watch the client never ended is dropped")
-  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 781)
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 20736)
   secretCds = false
   CD:Rescan()
   ok(s.clientRunning == nil, "an out-of-combat read of no cooldown disarms a missed watch")
   Nock.db.profile.cooldownCustom = nil
   CD:OnConfigChanged()
+end
+
+-- Shared-cooldown group fallback (2026-09-28): a cast of a spell the ledger
+-- has never learned still arms the client-cooldown watch, and that fallback
+-- must mark EVERY tile in the shared group, not just the one that was cast --
+-- Arc and Hawk share one cooldown (arcaneHawk) but Hawk alone has no seed or
+-- learned duration in this fixture.
+do
+  ok(Nock.LedgerEngine.Known(CD.ledger, 1293241) == false, "Summon Hawk has no learned duration in this fixture")
+  st.cooldowns.Arc.clientRunning = nil
+  now = 2000
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 1293241)
+  ok(st.cooldowns.Hawk.clientRunning == true, "the cast arms Hawk's own client-cooldown watch")
+  ok(st.cooldowns.Arc.clientRunning == true, "the shared group also marks Arc, which never armed a watch of its own")
+end
+
+-- Rescan out-of-combat wipe (2026-09-28): Arcane Shot on
+-- cooldown per the API, Summon Hawk unlearned and reading 0/0 (apiCd has no
+-- entry for it) -- a Rescan must not let Hawk's meaningless zero clear the
+-- shared cooldown Arc's own reading just set. Both tiles read the group.
+-- (spellId is read off the published state rather than assumed to be the
+-- catalog's static 3044/1293241: an earlier block in this file resolves
+-- Arc's ledger id to a spellbook rank, same as any other name-matched entry.)
+do
+  local arcId, hawkId = st.cooldowns.Arc.spellId, st.cooldowns.Hawk.spellId
+  apiCd[arcId] = { 5000, 6 }
+  apiCd[hawkId] = nil
+  secretCds = false
+  now = 5000
+  CD:Rescan()
+  CD:Refresh()
+  ok(st.cooldowns.Arc.startTime == 5000 and st.cooldowns.Arc.duration == 6,
+     "Arc survives a Rescan even though Hawk's own reading is 0/0")
+  ok(st.cooldowns.Hawk.startTime == 5000 and st.cooldowns.Hawk.duration == 6,
+     "Hawk reads the same shared cooldown through the group, not its own empty reading")
+  ok(CD:GetEntry("ArcHawk") and st.cooldowns.ArcHawk.startTime == 5000 and st.cooldowns.ArcHawk.duration == 6,
+     "the combined Arcane + Hawk tile reads the same shared cooldown")
+  ok(st.cooldowns.ArcHawk.icon == "Interface\\AddOns\\Nock\\Media\\ArcaneHawk" and st.cooldowns.ArcHawk.icon2 == nil,
+     "the combined Arcane + Hawk tile draws its own art, one icon, no second half")
 end
 
 print(("forever_cooldowns: %d passed, %d failed"):format(pass, fail))

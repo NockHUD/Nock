@@ -45,22 +45,52 @@ Nock.Spells = Spells
 -- Tracked cooldowns, keyed by the rank-1 (base) spell id. A cast's
 -- UNIT_SPELLCAST_SUCCEEDED carries the rank's own id; Forever/Cooldowns.lua
 -- maps it to the base id (C_Spell.GetBaseSpell) before it touches the ledger.
--- `shared` names a shared-cooldown group (Aimed/Multi, 6 s on Forever).
+-- `shared` names a shared-cooldown group: every member is its OWN catalog
+-- entry and its own tile, all timed by one cooldown (Engine.Link in
+-- Forever/Cooldowns.lua). Two groups exist: `arcaneHawk` (Arcane Shot, Summon
+-- Hawk, Hydra Shot) and `aimedMulti` (Multi-Shot, Aimed Shot, plus the
+-- AimMulti pair tile below, kept as an extra placeable option). Nothing takes
+-- over another tile; the user places whichever member(s) they want.
 -- A `pair` entry is ONE tile for two spells that share a cooldown (Multi on
 -- the left half, Aimed on the right): `ids` in that draw order, the second
 -- id is the one the range tint follows. A `texture` gives the tile its own
 -- art instead: one icon, no halves, no seam.
--- `cd` is the seed cooldown in seconds so the first fight of a session has a
--- countdown before the client has been read once; the live reading replaces
--- it and is remembered per character (Forever/Cooldowns.lua).
+-- Cooldowns are discovered from the client (Forever/CooldownDiscovery.lua) and
+-- remembered per character (Forever/Cooldowns.lua); `lv` marks spells not
+-- trained by level 20, used only for hint text.
 Spells.TRACKED = {
-  { key = "Raptor",   id = 2973,  label = "Raptor", cd = 6, melee = true },                    -- Raptor Strike (range = the melee probe)
-  { key = "Arc",      id = 3044,  label = "Arc",    cd = 6 },                                  -- Arcane Shot
-  { key = "AimMulti", ids = { 2643, 19434 }, label = "Multi + Aimed", shared = "aimedMulti", cd = 6, -- one shared cooldown
+  { key = "Raptor",   id = 2973,  name = "Raptor Strike", label = "Raptor", melee = true, cat = "Class", row = 1 },                    -- Raptor Strike (range = the melee probe)
+  { key = "Arc",      id = 3044,  name = "Arcane Shot", label = "Arc", cat = "Class", row = 1, shared = "arcaneHawk" },  -- Arcane Shot; shares the arcaneHawk cooldown group with Summon Hawk and Hydra Shot
+  { key = "AimMulti", ids = { 2643, 19434 }, names = { "Multi-Shot", "Aimed Shot" }, label = "Multi + Aimed", shared = "aimedMulti", cat = "Class", row = 1, -- one shared cooldown
     texture = "Interface\\AddOns\\Nock\\Media\\MultiAimed" },             -- its own art (Media/MultiAimed.tga), not a split tile
-  { key = "Conc",     id = 5116,  label = "Conc",   cd = 12 },                                 -- Concussive Shot
-  { key = "RF",       id = 3045,  label = "RF",     cd = 300 },                                -- Rapid Fire
-  { key = "FD",       id = 5384,  label = "FD",     cd = 30 },                                 -- Feign Death
+  { key = "Hawk",  id = 1293241, name = "Summon Hawk", label = "Hawk",  talent = true, cat = "Talent", row = 1, shared = "arcaneHawk" },  -- BM talent; shares the cooldown with Arcane Shot and Hydra Shot
+  { key = "Hydra", id = 1293020, name = "Hydra Shot",  label = "Hydra", lv = 60, cat = "Class", row = 1, shared = "arcaneHawk" },   -- Forever id (user, 2026-09-28); shares the cooldown with Arcane Shot and Summon Hawk
+  { key = "ArcHawk", ids = { 3044, 1293241 }, names = { "Arcane Shot", "Summon Hawk" }, label = "Arcane + Hawk", cat = "Class", row = 1, shared = "arcaneHawk",
+    texture = "Interface\\AddOns\\Nock\\Media\\ArcaneHawk" }, -- one tile on the shared cooldown with its own art (Media/ArcaneHawk.tga); listed after the singles so their own casts keep resolving to them
+  { key = "Multi", id = 2643,  name = "Multi-Shot", label = "Multi", cat = "Class", row = 1, shared = "aimedMulti" },   -- shares the cooldown with Aimed Shot and the AimMulti pair tile
+  { key = "Aimed", id = 19434, name = "Aimed Shot", label = "Aimed", cat = "Class", row = 1, shared = "aimedMulti" },   -- shares the cooldown with Multi-Shot and the AimMulti pair tile
+  { key = "Conc",     id = 5116,  name = "Concussive Shot", label = "Conc", cat = "Class", row = 2 },                                 -- Concussive Shot
+  { key = "RF",       id = 3045,  name = "Rapid Fire", label = "RF",     lv = 26, cat = "Class", row = 1 },                                -- Rapid Fire
+  { key = "FD",       id = 5384,  name = "Feign Death", label = "FD",     lv = 30, cat = "Class", row = 2 },                                 -- Feign Death
+  -- Catalog additions (cooldown grid picker, 2026-09-27). Keyed by ID and name for
+  -- locale-safe matching; lv marks spells not trained by level 20.
+  { key = "Mongoose",  id = 1495,  name = "Mongoose Bite",      label = "Mongoose", cat = "Class",  row = 2, melee = true },
+  { key = "Disengage", id = 781,   name = "Disengage",          label = "Diseng",   cat = "Class",  row = 2, melee = true },
+  { key = "FrzTrap",   id = 1499,  name = "Freezing Trap",      label = "Trap",     cat = "Class",  row = 2 },
+  { key = "Scare",     id = 1513,  name = "Scare Beast",        label = "Scare",    cat = "Class",  row = 2 },
+  { key = "Flare",     id = 1543,  name = "Flare",              label = "Flare",    lv = 32, cat = "Class",  row = 2 },
+  { key = "Tranq",     id = 19801, name = "Tranquilizing Shot", label = "Tranq",    lv = 60, cat = "Class",  row = 2 },
+  { key = "BW",        id = 19574, name = "Bestial Wrath",      label = "BW",       talent = true, cat = "Talent", row = 2 },
+  { key = "Intim",     id = 19577, name = "Intimidation",       label = "Intim",    talent = true, cat = "Talent", row = 2 },
+  { key = "Scatter",   id = 19503, name = "Scatter Shot",       label = "Scatter",  talent = true, cat = "Talent", row = 2 },
+  { key = "Deter",     id = 19263, name = "Deterrence",         label = "Deter",    talent = true, cat = "Talent", row = 2 },
+  { key = "Counter",   id = 19306, name = "Counterattack",      label = "Counter",  talent = true, cat = "Talent", row = 2, melee = true },
+  { key = "Sniper",    id = 1310687, name = "Sniper Shot",     label = "Sniper",  talent = true, cat = "Talent", row = 2 },               -- MM talent (Forever)
+  { key = "Strider",   id = 1317257, name = "Strider Kick",    label = "Strider", talent = true, cat = "Talent", row = 2, melee = true }, -- SV talent (Forever)
+  { key = "ImmoTrap",  id = 13795,   name = "Immolation Trap", label = "Immo",    cat = "Class", row = 2 },
+  { key = "FrostTrap", id = 13809,   name = "Frost Trap",      label = "Frost",   lv = 28, cat = "Class", row = 2 },
+  { key = "ExploTrap", id = 13813,   name = "Explosive Trap",  label = "Explo",   lv = 34, cat = "Class", row = 2 },
+  { key = "Viper",     id = 3034,    name = "Viper Sting",     label = "Viper",   lv = 36, cat = "Class", row = 2 },
   -- Racials of the races that can be hunters on Forever (human, dwarf,
   -- night elf, orc, tauren, troll; the Skyborne actives are glides and
   -- regen buffs, not combat cooldowns). Forever reworked the racial kits
@@ -72,22 +102,21 @@ Spells.TRACKED = {
   -- while the character HAS the spell, so a human never sees the night
   -- elf pair (2026-09-23). The class spells above always show, learned
   -- or not, so a level-1 grid keeps its shape (user, 2026-09-23).
-  -- Seeds are guesses; the live reading replaces them on the first use.
   -- `buff` seeds the length of the racial's own buff: the tile lights and
   -- counts it down while it is up, and the aura read out of combat teaches
   -- the real length. `untilBroken` is a buff with no expiry (Shadowmeld: up
   -- until the hunter moves or acts). A racial with neither still lights
   -- while the aura cache finds a buff of its name out of combat.
-  { key = "Elune",    id = 1259799, name = "Elune's Light",   label = "Elune",  cd = 180, buff = 15, racial = true }, -- night elf (Forever): +10% crit 15 s
-  { key = "Meld",     id = 20580,   name = "Shadowmeld",      label = "Meld",   cd = 10, untilBroken = true, racial = true },  -- night elf: 10 s from the break
-  { key = "Stone",    name = "Stoneform",       label = "Stone",  cd = 180, buff = 8, racial = true },     -- dwarf
-  { key = "Percep",   id = 20600,   name = "Perception",      label = "Percep", cd = 180, buff = 20, racial = true }, -- human (level-1 dump 2026-09-23)
-  { key = "WillSurv", id = 1259718, name = "Will to Survive", label = "Will",   cd = 180, racial = true }, -- human (Forever): removes stuns
-  { key = "Fury",     name = "Blood Fury",      label = "Fury",   cd = 120, buff = 15, racial = true },    -- orc: +10% AP/SP 15 s
-  { key = "Shatter",  name = "Shatter Curse",   label = "Shatter", cd = 120, buff = 8, racial = true },    -- orc (Forever): curse immunity 8 s
-  { key = "Stomp",    name = "War Stomp",       label = "Stomp",  cd = 120, racial = true },               -- tauren
-  { key = "Zerk",     name = "Berserking",      label = "Zerk",   cd = 180, buff = 10, racial = true },    -- troll: +10% haste 10 s
-  { key = "FastRegen", name = "Fast Regeneration", label = "Regen", cd = 180, racial = true },             -- troll (Forever): 50% health
+  { key = "Elune",    id = 1259799, name = "Elune's Light",   label = "Elune",  buff = 15, racial = true, cat = "Racial", row = 1 }, -- night elf (Forever): +10% crit 15 s
+  { key = "Meld",     id = 20580,   name = "Shadowmeld",      label = "Meld",   untilBroken = true, racial = true, cat = "Racial", row = 1 },  -- night elf: 10 s from the break
+  { key = "Stone",    name = "Stoneform",       label = "Stone",  buff = 8, racial = true, cat = "Racial", row = 1 },     -- dwarf
+  { key = "Percep",   id = 20600,   name = "Perception",      label = "Percep", buff = 20, racial = true, cat = "Racial", row = 1 }, -- human (level-1 dump 2026-09-23)
+  { key = "WillSurv", id = 1259718, name = "Will to Survive", label = "Will",   racial = true, cat = "Racial", row = 1 }, -- human (Forever): removes stuns
+  { key = "Fury",     name = "Blood Fury",      label = "Fury",   buff = 15, racial = true, cat = "Racial", row = 1 },    -- orc: +10% AP/SP 15 s
+  { key = "Shatter",  name = "Shatter Curse",   label = "Shatter", buff = 8, racial = true, cat = "Racial", row = 1 },    -- orc (Forever): curse immunity 8 s
+  { key = "Stomp",    name = "War Stomp",       label = "Stomp",  racial = true, cat = "Racial", row = 1 },               -- tauren
+  { key = "Zerk",     name = "Berserking",      label = "Zerk",   buff = 10, racial = true, cat = "Racial", row = 1 },    -- troll: +10% haste 10 s
+  { key = "FastRegen", name = "Fast Regeneration", label = "Regen", racial = true, cat = "Racial", row = 1 },             -- troll (Forever): 50% health
 }
 
 -- Ledger buffs for the React buff row (Forever/Buffs.lua): base id, key and
@@ -118,8 +147,9 @@ if Nock.Flavor and Nock.Flavor.forever then
   local C = Nock.Constants
   local tracked = {}
   for i, e in ipairs(Spells.TRACKED) do
-    tracked[i] = { key = e.key, type = "spell", id = e.id, ids = e.ids, label = e.label, shared = e.shared, cd = e.cd, name = e.name, racial = e.racial,
-                   buff = e.buff, untilBroken = e.untilBroken, melee = e.melee, texture = e.texture }
+    local t = { type = "spell" }
+    for k, v in pairs(e) do t[k] = v end
+    tracked[i] = t
   end
   C.TRACKED_COOLDOWNS = tracked
   C.REACT_CD_ROWS = Spells.ROWS

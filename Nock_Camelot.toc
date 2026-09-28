@@ -27,6 +27,10 @@ Core\ConsumeData.lua
 Rotations\Profiles.lua
 
 Forever\Spells.lua
+Forever\CooldownCatalog.lua
+Forever\CooldownDiscovery.lua
+Core\CooldownEditor.lua
+Core\CooldownPicker.lua
 Forever\Spellbook.lua
 Forever\PetLamp.lua
 
@@ -54,6 +58,8 @@ UI\SettingsControls.lua
 UI\Frame_Settings.lua
 UI\SettingsLauncher.lua
 UI\SettingsLayouts.lua
+UI\Settings_CooldownBoard.lua
+UI\CooldownDrag.lua
 UI\HUD.lua
 
 Forever\LedgerEngine.lua
@@ -83,6 +89,7 @@ UI\ReactRangeLadder.lua
 UI\Frame_ReactCluster.lua
 UI\Frame_ReactCastBar.lua
 UI\Frame_ReactCooldowns.lua
+UI\Frame_CooldownTiles.lua
 UI\Frame_ReactPetRow.lua
 UI\Frame_ReactCorners.lua
 UI\Frame_ReactBuffs.lua

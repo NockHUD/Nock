@@ -6782,6 +6782,12 @@ local function buildOptionsTable()
       set = function(_, v) visualsSet(_, "rangeFinderFindingStyle", v) end,
     }
     gridArgs.gridHeader = { type = "header", name = "Cooldown grid", order = 50 }
+    gridArgs.cdBoardReset = {
+      type = "execute", name = "Default layout", order = 50.2,
+      desc = "Put the grid back to the built-in rows.",
+      hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end,
+      func = function() if Nock.CooldownRows then Nock.CooldownRows.Set(Nock.CooldownRows.Defaults()) end end,
+    }
     gridArgs.gridNote = {
       type = "description", fontSize = "medium", order = 50.5,
       name = "Three fixed row styles (large rotation tiles / small utility tiles / consumables) with fully editable contents: untick to hide a slot, Up/Down to reorder, X to remove, or add any tracked ability — including the shared custom entries below. Rows re-center around gaps; an emptied row collapses.\n",

@@ -54,6 +54,12 @@ F.DROP = {
   -- General: no cast bar, no setup check, no HUD-mode look, no profiler.
   "general.grpCastBar", "general.grpSetup", "general.grpLook",
   "general.perfPanel",
+  -- The cooldown board replaces the per-row lists, the custom list and the
+  -- ID form on Forever (UI/Settings_CooldownBoard.lua).
+  "hud.react.tabGrid.gridNote", "hud.react.tabGrid.rcd_*", "hud.react.tabGrid.rcustHeader",
+  "hud.react.tabGrid.rcust_*", "hud.react.tabGrid.addHeader", "hud.react.tabGrid.addType",
+  "hud.react.tabGrid.addId", "hud.react.tabGrid.addProc", "hud.react.tabGrid.addLabel",
+  "hud.react.tabGrid.addBtn",
 }
 
 -- A string renames the node; a table sets name and desc.

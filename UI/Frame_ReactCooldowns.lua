@@ -63,6 +63,7 @@ function ReactCooldownsView:OnInitialize()
   local container = CreateFrame("Frame", "NockReactCooldowns", Nock.parentFrame)
   self.frame = container
   self._pool = {}
+  self._cdmod = Nock:GetModule("Cooldowns", true)
   self:Rebuild()
   container:Hide()  -- HUD:ApplyRowVisibility shows it in React mode
 
@@ -179,6 +180,7 @@ function ReactCooldownsView:Rebuild()
       -- the user's icon zoom (gridIconZoom, 8 % = the standard 0.08–0.92).
       slot.icon:SetTexCoord(Nock.UI.IconCoords(row.w, row.h, p.gridIconZoom))
       slot._entry          = entry
+      slot._row            = row.index
       -- Per-HUD active-highlight geometry (thickness + contained/overflow);
       -- style + color are the Refresh look's job.
       Nock.UI.ApplyGlowStyle(slot, p.reactActiveSize or 3,
@@ -355,6 +357,8 @@ function ReactCooldownsView:Refresh(state)
         LOOK.dim         = p.reactTileDim and true or false
         LOOK.manaTint    = p.reactManaTint and true or false
         LOOK.whenActive  = slot._whenActive
+        local mod = self._cdmod
+        LOOK.unlearned   = (mod and mod.IsEntryKnown and mod:IsEntryKnown(entry.key) == false) or false
         local so = state.target.spellOut
         local r  = Nock.UI.ReactSlotLook(cd, so and so[entry.key], LOOK, RES)
         local lk = Nock.UI.ReactLookKey(r)

@@ -30,7 +30,9 @@ local function applyTab(W, node, tab)
     -- A card flagged `forever` shows on WoW Forever alone (its rows carry
     -- their own `hidden` for TBC); the header hides with them.
     local foreverOnly = card.forever and not (Nock.Flavor and Nock.Flavor.forever)
-    hdr.type, hdr.name, hdr.order, hdr.desc, hdr.hidden = "header", card.name, o, card.desc, foreverOnly or nil
+    -- A card flagged `tbc` is the Forever-less counterpart: hidden on WoW Forever.
+    local tbcOnly = card.tbc and (Nock.Flavor and Nock.Flavor.forever)
+    hdr.type, hdr.name, hdr.order, hdr.desc, hdr.hidden = "header", card.name, o, card.desc, (foreverOnly or tbcOnly) or nil
     cardKeys[card.key] = true
     setMeta(W, hdr, "icon", card.icon)
     setMeta(W, hdr, "actions", card.actions)
@@ -38,6 +40,7 @@ local function applyTab(W, node, tab)
     setMeta(W, hdr, "form", card.form)
     setMeta(W, hdr, "stack", card.stack)
     setMeta(W, hdr, "segments", card.segments)
+    setMeta(W, hdr, "board", card.board)
     setMeta(W, hdr, "advanced", card.advanced)
     local j = 0
     for _, key in ipairs(card.rows) do

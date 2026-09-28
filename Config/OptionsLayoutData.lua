@@ -264,13 +264,14 @@ L.TABS = {
   {
     path = "hud.react.tabGrid",
     cards = {
+      { key = "cooldownBoardCard", name = "Cooldown grid", forever = true, board = "cooldowns", icon = { glyph = "stack" }, desc = "Drag tiles to reorder, click the catalog to add, or type a spell name or ID.", actions = { "cdBoardReset" }, rows = { "cdBoardReset" } },
       { key = "gridCard", name = "Grid", icon = { spell = C.KILL_COMMAND }, rows = { "reactConsumablesAlways", "reactKcProcGlow", "reactRaptorGoGlow", "kcActionBarGlow", "gridGcdSwipe" } },
       { key = "tintsCard", name = "Tints", icon = { glyph = "palette" }, advanced = true, rows = { "reactRangeTint", "reactTileDim", "reactManaTint" } },
       { key = "iconsCard", name = "Icons", icon = { glyph = "expand" }, advanced = true, desc = "How the spell art sits in each tile.", rows = { "gridIconZoom" } },
       { key = "activeHighlightCard", name = "Active highlight", icon = { glyph = "sparkle" }, rows = { "reactActiveStyle", "reactActiveColor", "reactActiveSize", "reactActiveFit", "activePreview" } },
-      { key = "rowsCard", name = "Rows", icon = { glyph = "stack" }, desc = "What each grid row shows, in order: untick to hide, arrows to move, X to remove, + to add.", rows = { "rcd_*" } },
-      { key = "customEntriesCard", name = "Custom entries", icon = { glyph = "stack" }, desc = "Your own spells, shared by every HUD's grid; place them in a row with its +.", rows = { "rcust_*" } },
-      { key = "addAnEntryCard", name = "Add an entry", icon = { glyph = "plus" }, desc = "A spell or item ID; the label is optional.", form = { "addType", "addId", "addProc", "addLabel", "addBtn" }, rows = { "addType", "addId", "addProc", "addLabel", "addBtn" } },
+      { key = "rowsCard", name = "Rows", icon = { glyph = "stack" }, tbc = true, desc = "What each grid row shows, in order: untick to hide, arrows to move, X to remove, + to add.", rows = { "rcd_*" } },
+      { key = "customEntriesCard", name = "Custom entries", icon = { glyph = "stack" }, tbc = true, desc = "Your own spells, shared by every HUD's grid; place them in a row with its +.", rows = { "rcust_*" } },
+      { key = "addAnEntryCard", name = "Add an entry", icon = { glyph = "plus" }, tbc = true, desc = "A spell or item ID; the label is optional.", form = { "addType", "addId", "addProc", "addLabel", "addBtn" }, rows = { "addType", "addId", "addProc", "addLabel", "addBtn" } },
     },
     rename = { showAutoShotBar = "Auto Shot bar", showMeleeBar = "Melee swing timer", showGcdBar = "GCD bar", showManaBar = "Mana bar", rotationHelperEnabled = "Rotation helper", showWindupMark = "Wind-up mark", editGridShow = "Grid while unlocked", showAutoShotCast = "Auto Shot in cast bar", castBarNonCombatCasts = "Non-combat casts", backgroundEnabled = "Background", consumeBannerEnabled = "Pill while eating or drinking", playerEnabled = "Player buffs panel", petEnabled = "Pet buffs panel", trackerEnabled = "Tracker section", clickerEnabled = "Tank buttons", showCompleted = "Stocked items too", repairEnabled = "Repair reminder", weaveBindEnabled = "Weave bind", tonkDialEnabled = "Countdown dial", practiceToast = "Toast", practiceTimelineOkMarks = "OK marks too", releaseBarEnabled = "Retry-Timer", fluffyShowAutoShotCast = "Auto Shot wind-up as a cast", shotBarsShowMulti = "Multi-Shot window", shotBarsShowArcane = "Arcane Shot window", shotBarsShowRaptor = "Melee weave lane", autoShotDelayEnabled = "Auto Shot delay (experimental)", reactColorAutoFill = "Auto Shot fill", reactColorAutoShotFill = "Cast: Auto Shot wind-up" },
   },

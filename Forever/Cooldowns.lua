@@ -50,7 +50,7 @@ local EMPTY = {}
 local scratchIds = {}
 local function entryIds(e)
   if e.ids then return e.ids end
-  local id = e.id or RESOLVED[e.key]
+  local id = RESOLVED[e.key] or e.id
   if not id then return EMPTY end
   scratchIds[1] = id
   return scratchIds
@@ -58,7 +58,7 @@ end
 
 -- The id the ledger is asked for: any member of a linked group answers.
 local function ledgerId(e)
-  return e.id or (e.ids and e.ids[1]) or RESOLVED[e.key]
+  return (e.ids and e.ids[1]) or RESOLVED[e.key] or e.id
 end
 
 -- Learned durations outlive the session: per character, keyed by spell id.
@@ -134,9 +134,10 @@ local function customEntries()
 end
 
 function Cooldowns:RebuildLists()
-  self._tracked, self._byKey, self._byId, self._byName = {}, {}, {}, {}
+  self._tracked, self._byKey, self._byId, self._byName, self._groupKeys = {}, {}, {}, {}, {}
   self.ledger = self.ledger or Engine.New()
   local groups = {}
+  local sharedNames = {}   -- shared group name -> list of member keys (temp, folded into self._groupKeys below)
   local all = {}
   for _, e in ipairs(C.TRACKED_COOLDOWNS) do all[#all + 1] = e end
   for _, e in ipairs(customEntries()) do
@@ -168,14 +169,77 @@ function Cooldowns:RebuildLists()
       s.icon = e.texture or Nock.API.SpellIcon(ids[1])
       s.icon2 = (e.ids and not e.texture) and Nock.API.SpellIcon(ids[2]) or nil
       seedLearned(self.ledger, e)
-      if e.shared or e.ids then
-        local g = e.shared or e.key
+      -- A shared-cooldown group (e.shared) links every member's ids into one
+      -- ledger key: casting any of them stamps the whole group, and every
+      -- member's own tile reads it back through ledgerId. Nothing takes over
+      -- another tile; each member keeps its own entry, icon and state slot.
+      local g = e.shared or e.key
+      local grouped = e.shared or e.ids
+      if grouped then
         groups[g] = groups[g] or {}
         for i = 1, #ids do table.insert(groups[g], ids[i]) end
+      end
+      if e.shared then
+        sharedNames[e.shared] = sharedNames[e.shared] or {}
+        table.insert(sharedNames[e.shared], e.key)
       end
     end
   end
   for _, ids in pairs(groups) do Engine.Link(self.ledger, ids) end
+  -- One cached key list per tracked entry (the shared group's member list for
+  -- a shared entry, else a dedicated one-key list): groupKeysOf reads this
+  -- instead of allocating a fresh table on every watch feed/disarm/cast.
+  for _, e in ipairs(self._tracked) do
+    self._groupKeys[e.key] = (e.shared and sharedNames[e.shared]) or { e.key }
+  end
+end
+
+-- Rebuilds C.TRACKED_COOLDOWNS from the client's own spellbook and talent
+-- tree (Forever/CooldownDiscovery.lua), replacing its contents in place so
+-- every holder of that table reference (the catalog index, the picker, an
+-- open board) sees the new list. A no-op when the discovery module is not
+-- loaded (TBC never ships it, and some test harnesses stub Cooldowns alone).
+-- Returns true when the catalog actually changed, so a caller that is about
+-- to do its own diff-and-broadcast (UpdateKnown) can fold that in. `quiet`
+-- rebuilds without broadcasting: UpdateKnown recomputes _known from the
+-- rebuilt list right after calling this, and a broadcast fired before that
+-- would go out with the OLD known map still in place (IsEntryKnown wrong for
+-- a key Discover just added). OnDiscoverRetry calls this with no `quiet`, so
+-- a deferred discovery still broadcasts on its own.
+function Cooldowns:Discover(api, quiet)
+  local D = Nock.CooldownDiscovery
+  if not D then return end
+  -- Combat both hides the client's own cooldown/charge reads (secret) and
+  -- forbids touching the profile-facing catalog table; try again once combat
+  -- ends (OnEnable's PLAYER_REGEN_ENABLED handler). Checked before defaulting
+  -- api to a live client read, so a deferred call never touches the client.
+  if (InCombatLockdown and InCombatLockdown()) or Nock.Restricted("cooldowns") then
+    self._discoverPending = true
+    return
+  end
+  self._discoverPending = nil
+  api = api or D.ClientApi()
+  local list = D.Build(D.Rows(api), Nock.Spells.TRACKED)
+  local sig = D.Signature(list)
+  if sig == self._discoverSig then return end
+  self._discoverSig = sig
+  local tracked = C.TRACKED_COOLDOWNS
+  for i = #tracked, 1, -1 do tracked[i] = nil end
+  for i = 1, #list do
+    local t = { type = "spell" }
+    for k, v in pairs(list[i]) do t[k] = v end
+    tracked[i] = t
+  end
+  if Nock.CooldownCatalog and Nock.CooldownCatalog.Invalidate then Nock.CooldownCatalog.Invalidate() end
+  self:RebuildLists()
+  if not quiet then self:SendMessage("NOCK_VISUALS_CHANGED") end
+  return true
+end
+
+-- A Discover() call made in combat sets _discoverPending and defers; combat
+-- ending is the one moment it is guaranteed safe to retry.
+function Cooldowns:OnDiscoverRetry()
+  if self._discoverPending then self:Discover() end
 end
 
 -- The grid view's OnInitialize and Options.lua's RegisterOptions run before
@@ -199,10 +263,12 @@ function Cooldowns:OnConfigChanged() self:RebuildLists() end
 -- a level-1 grid keeps its shape. Known by id through C_SpellBook.IsSpellKnown, or
 -- by NAME in the spellbook: ranks are separate spells here and the base
 -- id may stop reading as known once a higher rank is trained. Without the
--- spellbook API the answer is "cannot tell": keep showing. The spellbook's
+-- spellbook API a racial cannot be confirmed, so it stays hidden; class
+-- spells keep showing (user, 2026-09-28: only your own racials). The spellbook's
 -- name map is Nock.ForeverSpellbookNames (Forever/Spellbook.lua).
 
 local function entryKnown(e, names)
+  if e.name and names[e.name] then return true end
   local SB = _G.C_SpellBook
   local ids = entryIds(e)
   for i = 1, #ids do
@@ -217,36 +283,78 @@ local function entryKnown(e, names)
 end
 
 function Cooldowns:UpdateKnown()
+  -- A discovery crash (an unnamed row D.Rows/D.Build could not filter, say)
+  -- must not break every future rescan: fall back to the current catalog and
+  -- carry on rather than spam chat with an error.
+  local okDiscover, discovered = pcall(self.Discover, self, nil, true)
+  if not okDiscover then discovered = false end
   local names = Nock.ForeverSpellbookNames()
   local old = self._known
   if not names then self._known = nil; return end
-  -- Name-keyed entries (the racials) take their id from the spellbook the
-  -- first time it lists them; the lists are rebuilt so the ledger indexes it.
+  self._names = names
+  -- Name-keyed entries (the racials, and any entry the catalog names) take
+  -- their id from the spellbook once it lists them; the lists are rebuilt so
+  -- the ledger indexes it. A resolved id can move again (Bestial Wrath's
+  -- vanilla id vs. the Forever talent's own), so a later different id still
+  -- counts as a change.
   local resolved = false
   for _, e in ipairs(C.TRACKED_COOLDOWNS) do
-    if e.type == "spell" and e.name and not e.id and not e.ids and not RESOLVED[e.key] then
+    if e.type == "spell" and e.name and not e.ids then
       local id = names[e.name]
-      if type(id) == "number" then RESOLVED[e.key] = id; resolved = true end
+      if type(id) == "number" and RESOLVED[e.key] ~= id and id ~= e.id then RESOLVED[e.key] = id; resolved = true end
     end
   end
   if resolved then self:RebuildLists() end
   local known = {}
   for _, e in ipairs(lists(self)) do
-    if e.racial then known[e.key] = entryKnown(e, names) end
+    -- A custom entry (a pet ability, a proc/item spell) is never in the
+    -- player's own spellbook by design; leave it unset rather than false so
+    -- consumers read it as "known" (grid tiles greyed unlearned on false).
+    if not e.custom then
+      known[e.key] = entryKnown(e, names)
+    end
   end
   self._known = known
-  if not old then return end
-  for k, v in pairs(known) do
-    if old[k] ~= v then self:SendMessage("NOCK_VISUALS_CHANGED"); return end
+  -- One broadcast, fired after _known is fully rebuilt so a listener reading
+  -- IsEntryKnown for whatever just changed sees the right answer: either
+  -- Discover() changed the catalog (quiet -- it did not send its own), or the
+  -- known map itself changed for an existing catalog.
+  local changed = discovered
+  if not changed and old then
+    for k, v in pairs(known) do
+      if old[k] ~= v then changed = true; break end
+    end
   end
+  if changed then self:SendMessage("NOCK_VISUALS_CHANGED") end
+end
+
+-- Hidden only for a racial the character does not have (another race's);
+-- class and talent spells always keep their tile, greyed while unknown.
+-- A racial counts as racial from the catalog itself, not only from the
+-- tracked list: a name-only racial of another race is never resolved, so it
+-- never becomes tracked, and must still be hidden from the tray and flyout.
+-- It is shown only once the spellbook confirms the character has it; before
+-- the spellbook is read, racials stay hidden (a night elf never sees orc ones).
+local function isRacial(self, key)
+  local e = self._byKey and self._byKey[key]
+  if e then return e.racial == true end
+  for _, c in ipairs(C.TRACKED_COOLDOWNS) do
+    if c.key == key then return c.racial == true end
+  end
+  return false
 end
 
 function Cooldowns:IsEntryAvailable(key)
+  if not isRacial(self, key) then return true end
   local known = self._known
-  if not known then return true end
-  local v = known[key]
-  if v == nil then return true end
-  return v
+  return (known and known[key] == true) or false
+end
+
+-- true / false, or nil when the spellbook cannot be read yet.
+function Cooldowns:IsEntryKnown(key)
+  local known = self._known
+  if not known then return nil end
+  return known[key]
 end
 
 -- View helpers, same contracts as the TBC module (profile + constants only).
@@ -444,46 +552,58 @@ local function watchOf(self, e)
 end
 
 -- clientFeed counts the feeds, so a view holding the client's duration
--- object knows when to read a fresh one.
-local function setClientRunning(key, on)
-  local s = Nock.state.cooldowns[key]
-  if not s then return end
-  s.clientRunning = on or nil
-  if on then s.clientFeed = (s.clientFeed or 0) + 1 end
+-- object knows when to read a fresh one. A shared-cooldown group (e.shared)
+-- marks EVERY member's tile, not just the one whose cast armed the watch: a
+-- combat-only fallback (a spell never read out of combat) still has to cover
+-- the other members, which share the same cooldown but never armed a watch
+-- of their own.
+local function groupKeysOf(self, e)
+  return (self._groupKeys and self._groupKeys[e.key]) or { e.key }
 end
 
-local function disarm(w)
+local function setClientRunning(self, e, on)
+  for _, key in ipairs(groupKeysOf(self, e)) do
+    local s = Nock.state.cooldowns[key]
+    if s then
+      s.clientRunning = on or nil
+      if on then s.clientFeed = (s.clientFeed or 0) + 1 end
+    end
+  end
+end
+
+local function disarm(self, w)
   w.armed = false
-  setClientRunning(w.key, false)
+  setClientRunning(self, w.e, false)
 end
 
 -- Hand the widget the spell's current client cooldown. A plainly-zero object
 -- is nothing to watch (the spell is not cooling down yet); a secret one is
 -- taken on trust.
-local function feedWatch(w)
+local function feedWatch(self, w)
   local obj = Nock.API.SpellCooldownDuration(w.read)
   if not obj or not w.cd.SetCooldownFromDurationObject then return end
   local zero = obj.IsZero and Nock.Flavor.Plain(obj:IsZero())
   if zero == true then return end
   w.cd:SetCooldownFromDurationObject(obj)
-  setClientRunning(w.key, true)
+  setClientRunning(self, w.e, true)
 end
 
 function Cooldowns:ArmWatch(e, id, read, now)
   local w = watchOf(self, e)
   w.id, w.read, w.castAt, w.armed = id, read, now, true
-  feedWatch(w)
+  feedWatch(self, w)
 end
 
 function Cooldowns:OnWatchDone(w)
   if not w.armed then return end
   local learn, clear = Cooldowns.DoneVerdict(GetTime() - w.castAt, REAL[w.id] == true)
-  disarm(w)
+  disarm(self, w)
   if learn then learnAll(self.ledger, w.e, learn) end
   if clear then Engine.Reconcile(self.ledger, w.id, 0, 0) end
 end
 
 function Cooldowns:OnEnable()
+  if Nock.CooldownRows then Nock.CooldownRows.MigrateOnce() end
   lists(self)
   self:RegisterEvent("PLAYER_LOGIN", "Rescan")
   self:RegisterEvent("PLAYER_ENTERING_WORLD", "Rescan")
@@ -497,6 +617,10 @@ function Cooldowns:OnEnable()
   -- usability (dim while unavailable, the no-mana tint, reactive spells);
   -- AceEvent hard-errors on an event the client lacks
   pcall(self.RegisterEvent, self, "SPELL_UPDATE_USABLE", "ScanUsable")
+  -- catalog discovery: retried once combat ends if it was deferred, and
+  -- re-run whenever the talent tree changes (a new spell can clear the bar)
+  self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnDiscoverRetry")
+  pcall(self.RegisterEvent, self, "TRAIT_CONFIG_UPDATED", "UpdateKnown")
   self:RegisterMessage("NOCK_SNAPSHOT", "Seed")
   self:RegisterMessage("NOCK_RESCAN", "Rescan")
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "OnConfigChanged")
@@ -533,13 +657,36 @@ function Cooldowns:ScanUsable()
   end
 end
 
+Cooldowns.RECENT_MAX = 8
+
+-- Pure: `id` to the front of `list`, a repeat moved, capped at `max`.
+function Cooldowns.RecentPush(list, id, max)
+  for i = #list, 1, -1 do if list[i] == id then table.remove(list, i) end end
+  table.insert(list, 1, id)
+  while #list > max do table.remove(list) end
+  return list
+end
+
+-- A cast the grid does not track, from the spellbook, with a cooldown (a base
+-- cooldown the client cannot report counts as "maybe": kept).
+function Cooldowns:NoteRecent(spellID)
+  local n = nameOf(spellID)
+  if not (n and self._names and self._names[n]) then return end
+  local base = Nock.API.SpellBaseCooldown and Nock.API.SpellBaseCooldown(spellID)
+  if base == 0 then return end
+  local list = Nock.state.cdRecent
+  if list[1] == spellID then return end
+  Cooldowns.RecentPush(list, spellID, Cooldowns.RECENT_MAX)
+  self:SendMessage("NOCK_CD_RECENT")
+end
+
 -- Own casts stamp the ledger (plain on Forever). While cooldowns are readable
 -- the next SPELL_UPDATE_COOLDOWN learns the real duration for that spell.
 function Cooldowns:UNIT_SPELLCAST_SUCCEEDED(event, unit, castGUID, spellID)
   if unit ~= "player" or type(spellID) ~= "number" then return end
   local e, id = self:Resolve(spellID)
   self:BreakHeld(e and e.key)
-  if not e then return end
+  if not e then self:NoteRecent(spellID); return end
   stampBuff(self, e, GetTime())
   -- a held buff's cooldown starts at its break (breakBuff), not here
   if e.untilBroken then return end
@@ -555,7 +702,7 @@ function Cooldowns:SPELL_UPDATE_COOLDOWN()
   if self._watch then
     local now = GetTime()
     for _, w in pairs(self._watch) do
-      if w.armed and now - w.castAt <= FEED_WINDOW then feedWatch(w) end
+      if w.armed and now - w.castAt <= FEED_WINDOW then feedWatch(self, w) end
     end
   end
   local id, read = self._learnPending, self._learnRead
@@ -583,23 +730,52 @@ function Cooldowns:Seed()
   end
 end
 
--- Out of combat: the API is the truth; the ledger is reconciled to it.
+-- Out of combat: the API is the truth; the ledger is reconciled to it. Two
+-- passes: read every entry's own client cooldown first, then reconcile each
+-- shared-cooldown GROUP once from whichever member actually read a running
+-- cooldown. A member the character does not have (an untalented Summon Hawk,
+-- an untrained Multi-Shot) is skipped outright -- the client has no cooldown
+-- data for a spell it doesn't know, so its reading would be a meaningless
+-- zero -- and even a genuine off-cooldown zero from a KNOWN member is never
+-- allowed to wipe a sibling's real, running cooldown just because it happened
+-- to be iterated after it (Summon Hawk after Arcane Shot, say): a fix, since
+-- reconciling per entry in one pass let exactly that happen.
 function Cooldowns:Rescan()
   self:UpdateKnown()
   self:ScanUsable()
   if Nock.Restricted("cooldowns") then return end
+  local reads = {}
+  local groupRunning = {}
   for _, e in ipairs(self._tracked) do
-    local id = ledgerId(e)
-    local start, duration = Nock.API.SpellCooldown(id)
-    start = Nock.Flavor.Plain(start); duration = Nock.Flavor.Plain(duration)
-    if type(duration) == "number" and duration > GCD_TOLERANCE and type(start) == "number" and start > 0 then
-      learnAll(self.ledger, e, duration)
-      Engine.Reconcile(self.ledger, id, start, duration)
-    else
-      Engine.Reconcile(self.ledger, id, 0, 0)
-      -- readable and not cooling down: a watch still running missed its end
-      local w = self._watch and self._watch[e.key]
-      if w and w.armed then disarm(w) end
+    if self:IsEntryKnown(e.key) ~= false then
+      local id = ledgerId(e)
+      local start, duration = Nock.API.SpellCooldown(id)
+      start = Nock.Flavor.Plain(start); duration = Nock.Flavor.Plain(duration)
+      local running = type(duration) == "number" and duration > GCD_TOLERANCE
+        and type(start) == "number" and start > 0
+      reads[e] = { id = id, start = start, duration = duration }
+      if running then
+        learnAll(self.ledger, e, duration)
+        local g = e.shared or e.key
+        local cur = groupRunning[g]
+        if not cur or (start + duration) > (cur.start + cur.duration) then
+          groupRunning[g] = { start = start, duration = duration }
+        end
+      end
+    end
+  end
+  for _, e in ipairs(self._tracked) do
+    local r = reads[e]
+    if r then
+      local running = groupRunning[e.shared or e.key]
+      if running then
+        Engine.Reconcile(self.ledger, r.id, running.start, running.duration)
+      else
+        Engine.Reconcile(self.ledger, r.id, 0, 0)
+        -- readable and not cooling down: a watch still running missed its end
+        local w = self._watch and self._watch[e.key]
+        if w and w.armed then disarm(self, w) end
+      end
     end
   end
 end
@@ -618,6 +794,6 @@ function Cooldowns:Refresh()
     local start, duration = Engine.Cooldown(self.ledger, ledgerId(e), now)
     s.startTime, s.duration = start, duration
     local w = self._watch and self._watch[e.key]
-    if w and w.armed and now - w.castAt > WATCH_MAX then disarm(w) end
+    if w and w.armed and now - w.castAt > WATCH_MAX then disarm(self, w) end
   end
 end

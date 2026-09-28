@@ -2102,6 +2102,12 @@ function Nock.UI.ReactSlotLook(cd, out, opts, res)
     if opts.tint == "red" then tint = "red"
     elseif opts.tint == "grey" then desat = true end
   end
+  -- A class or talent spell the character does not know yet keeps its place,
+  -- greyed, and never glows (cooldown grid picker, 2026-09-27).
+  if opts.unlearned then
+    desat, tint, alpha = true, nil, 0.35
+    res.glow = nil
+  end
   res.desat, res.tint, res.alpha = desat, tint, alpha
   return res
 end

@@ -114,6 +114,8 @@ def main():
                 if cd.get("desc"): fields.append("desc = %s" % lua_str(cd["desc"]))
                 if cd.get("advanced"): fields.append("advanced = true")
                 if cd.get("forever"): fields.append("forever = true")  # WoW Forever only (OptionsLayout hides the header on TBC)
+                if cd.get("tbc"): fields.append("tbc = true")  # the Forever-less counterpart: hidden on WoW Forever
+                if cd.get("board"): fields.append("board = %s" % lua_str(cd["board"]))  # a board-drawn card (Settings:Draw<Board>)
                 if cd.get("form"):
                     fields.append("form = { %s }" % ", ".join(lua_str(k) for k in (cd["form"] if isinstance(cd["form"], list) else cd["rows"])))
                 if cd.get("stack"): fields.append("stack = true")

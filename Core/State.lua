@@ -177,6 +177,9 @@ Nock.state = {
   -- Forever: the pet (Forever/Pet.lua). happiness 1 Unhappy / 2 Content /
   -- 3 Happy, nil = no pet or unreadable; damagePct from GetPetHappiness.
   pet = { exists = false, dead = false, loneWolf = false, happiness = nil, damagePct = nil },
+  -- Forever: spells cast this session that are in the spellbook, have a
+  -- cooldown and are not tracked, most recent first (Forever/Cooldowns.lua).
+  cdRecent = {},
   cooldowns = {
     -- keyed by entry.key: { startTime, duration, remaining, ready, procActive, icon }
   },

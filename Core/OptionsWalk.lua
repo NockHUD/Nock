@@ -643,7 +643,7 @@ local function splitLoose(loose, tab)
       cur = { key = "hdr_" .. r.key, name = r.name, path = r.path, node = tab.node, rows = {}, fromHeader = true,
               icon = metaOf(r.node, "icon"), desc = type(r.node.desc) == "string" and r.node.desc or nil, advanced = isAdv(r.node),
               actions = metaOf(r.node, "actions"), table = metaOf(r.node, "table"), form = metaOf(r.node, "form"),
-              stack = metaOf(r.node, "stack") == true, segments = metaOf(r.node, "segments") }
+              stack = metaOf(r.node, "stack") == true, segments = metaOf(r.node, "segments"), board = metaOf(r.node, "board") }
       if #cards == 0 and not hasControl(pre) then for _, p in ipairs(pre) do cur.rows[#cur.rows + 1] = p end; pre = {} end
       cards[#cards + 1] = cur
     elseif metaOf(r.node, "card") then
@@ -688,7 +688,7 @@ function W.Cards(tab, appName, contentWidth)
           local card = { key = c.key, name = strip(okn and name or c.key), path = p, node = n, lines = {},
                          icon = metaOf(n, "icon"), desc = type(n.desc) == "string" and n.desc or nil,
                          actions = metaOf(n, "actions"), table = metaOf(n, "table"), form = metaOf(n, "form"),
-                         stack = metaOf(n, "stack") == true, segments = metaOf(n, "segments") }
+                         stack = metaOf(n, "stack") == true, segments = metaOf(n, "segments"), board = metaOf(n, "board") }
           local rows = {}
           local cctx = { appName = appName, root = nil, handler = n.handler or ctx.handler }
           cardRows(cctx, n, p, walkInherit(inh, n), rows)

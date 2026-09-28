@@ -109,6 +109,12 @@ for _, p in ipairs({ "hud.react.tabBars", "hud.react.tabSize", "hud.react.tabSki
   ok(nodeAt(opts, p) ~= nil, p .. " kept")
 end
 
+-- The cooldown board (UI/Settings_CooldownBoard.lua) replaces the per-row
+-- lists, the custom list and the ID form on Forever.
+ok(nodeAt(opts, "hud.react.tabGrid.rcd_en_1_1") == nil, "hud.react.tabGrid.rcd_en_1_1 gone (rows list replaced by the board)")
+ok(nodeAt(opts, "hud.react.tabGrid.cdBoardReset") ~= nil, "hud.react.tabGrid.cdBoardReset kept")
+ok(nodeAt(opts, "hud.react.tabGrid.addId") == nil, "hud.react.tabGrid.addId gone (ID form replaced by the board)")
+
 -- Rows without a feed on Forever.
 for _, p in ipairs({
   "hud.react.tabBars.reactShowBrackets", "hud.react.tabBars.reactShowClipTicks", "hud.react.tabBars.reactShowDelay",

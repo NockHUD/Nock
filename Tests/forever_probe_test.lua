@@ -204,5 +204,33 @@ _G.CreateFrame = function() error("bad template") end
 local rep3 = module:ContainerSpike()
 ok(rep3:find("CreateFrame: err", 1, true), "a refused CreateFrame is reported")
 
+-- CdCatalogReport: spellbook + talent rows merged by id, passive flag,
+-- cooldown signals, and the summary counts.
+local cat = Probe.CdCatalogReport({
+  level = 20,
+  book = function() return {
+    { id = 3044, name = "Arcane Shot", src = "book:Market", passive = false },
+    { id = 1510, name = "Volley", src = "book:Market", passive = false },
+    { id = 19574, name = "Bestial Wrath", src = "book:Beast " },
+  } end,
+  talents = function() return {
+    { id = 19574, name = "Bestial Wrath", src = "talent", rank = 1, max = 1 },
+    { id = 1293241, name = "Summon Hawk", src = "talent", rank = 0, max = 1 },
+    { id = 415370, name = "Lone Wolf", src = "talent", rank = 0, max = 1 },
+  } end,
+  passive = function(id) return id == 415370 end,
+  baseCd = function(id) if id == 1510 then return 0, 1500 end; if id == 19574 then return 120000, 1500 end; return nil end,
+  tipCd = function(id) if id == 1293241 then return "6 sec cooldown" end end,
+  key = function(id) if id == 3044 then return "Arc" end end,
+})
+ok(cat:find("level 20", 1, true) and not cat:find("IN COMBAT", 1, true), "catalog report header")
+ok(cat:find("book:Beast +talent", 1, true), "a spell in both the book and the tree is one row, marked +talent")
+ok(cat:find("1293241  Summon Hawk [rank 0/1] | active", 1, true), "an untaken talent is listed with its rank")
+ok(cat:find("415370  Lone Wolf [rank 0/1] | PASSIVE", 1, true), "a passive talent is flagged")
+ok(cat:find("Volley | active | 0/1500", 1, true), "a zero base cooldown is shown as such")
+ok(cat:find("| Arc$", 1) or cat:find("| Arc\n", 1, true), "the tracked catalog key is shown")
+ok(cat:find("spells: 5  active: 4  active with a cooldown signal: 2", 1, true), "summary counts (BW by base cd, Hawk by tooltip)")
+ok(Probe.CdCatalogReport({ inCombat = true }):find("IN COMBAT", 1, true), "in-combat warning")
+
 print(("forever_probe: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

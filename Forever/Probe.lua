@@ -763,6 +763,49 @@ function Probe.TraitReport(api)
   return table.concat(L, "\n")
 end
 
+-- Cooldown catalog discovery: every spell the character could put on the
+-- grid -- the spellbook and the talent tree, taken or not -- with what the
+-- client says about its cooldown, so the catalog can be built from the
+-- client rather than typed from a wiki. `api` (all optional, injectable):
+-- book() / talents() -> { {id, name, src, passive?, rank?, max?} },
+-- passive(id), baseCd(id) -> ms, gcdMs, tipCd(id) -> text, curCd(id) -> s,
+-- charges(id) -> max, key(id) -> tracked catalog key, level, inCombat.
+function Probe.CdCatalogReport(api)
+  local function fmt(v) if v == nil then return "-" end return tostring(v) end
+  local L = { ("cooldown catalog probe  level %s%s"):format(fmt(api.level),
+    api.inCombat and "  (IN COMBAT: values may be hidden, rerun out of combat)" or "") }
+  L[#L + 1] = "src  spellID  name | passive | baseCd/gcd ms | tooltip cooldown | current cd | charges | tracked key"
+  local seen, rows = {}, {}
+  for _, e in ipairs(api.book and api.book() or {}) do
+    if e.id and not seen[e.id] then seen[e.id] = e; rows[#rows + 1] = e end
+  end
+  for _, e in ipairs(api.talents and api.talents() or {}) do
+    if e.id and seen[e.id] then
+      seen[e.id].src = seen[e.id].src .. "+talent"
+    elseif e.id then
+      seen[e.id] = e; rows[#rows + 1] = e
+    end
+  end
+  local actives, withCd = 0, 0
+  for _, e in ipairs(rows) do
+    local passive = e.passive
+    if passive == nil and api.passive then passive = api.passive(e.id) end
+    local base, gcd
+    if api.baseCd then base, gcd = api.baseCd(e.id) end
+    local tip = api.tipCd and api.tipCd(e.id)
+    if not passive then
+      actives = actives + 1
+      if (type(base) == "number" and base > 0) or tip then withCd = withCd + 1 end
+    end
+    L[#L + 1] = ("%-12s %7s  %s%s | %s | %s/%s | %s | %s | %s | %s"):format(e.src, fmt(e.id), fmt(e.name),
+      e.rank and (" [rank " .. fmt(e.rank) .. "/" .. fmt(e.max) .. "]") or "",
+      passive and "PASSIVE" or "active", fmt(base), fmt(gcd), fmt(tip),
+      fmt(api.curCd and api.curCd(e.id)), fmt(api.charges and api.charges(e.id)), fmt(api.key and api.key(e.id)))
+  end
+  L[#L + 1] = ("spells: %d  active: %d  active with a cooldown signal: %d"):format(#rows, actives, withCd)
+  return table.concat(L, "\n")
+end
+
 -- The secure-snippet probe (in-game only: every step is the client's).
 function Probe.SecureReport()
   local L = {}
@@ -978,6 +1021,13 @@ function Probe:Show(which, rest)
       ("apply: %s"):format(AR.lastApply or "not run (no row, in combat, or no shape given)"),
     }
     local text = table.concat(lines, "\n")
+    if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
+    return
+  end
+  -- `/nock probe cdcatalog`: every spellbook and talent spell with the
+  -- client's cooldown signals, for the discovered cooldown catalog. Out of combat.
+  if which == "cdcatalog" then
+    text = Probe.CdCatalogReport(Nock.CooldownDiscovery.ClientApi())
     if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
     return
   end

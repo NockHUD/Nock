@@ -664,7 +664,7 @@ onlyKeys(raBars, { "autoHeader", "reactAutoLegend", "reactShowNotation", "reactS
   "reactShowBrackets", "reactShowGcdDivider", "dirHeader", "reactDirAuto", "reactDirMelee",
   "grpEngine" }, "react tabBars")
 onlyKeys(raRange, { "rangeHeader", "rangeFinderFindingStyle" }, "react tabRange")
-onlyKeys(raGrid, { "gridHeader", "gridNote", "reactConsumablesAlways", "rcustHeader",
+onlyKeys(raGrid, { "gridHeader", "cdBoardReset", "gridNote", "reactConsumablesAlways", "rcustHeader",
   "kcHeader", "reactKcProcGlow", "reactRaptorGoGlow", "kcActionBarGlow", "reactRangeTint", "reactTileDim", "reactManaTint", "gridIconZoom", "gridGcdSwipe",
   "activeHeader", "reactActiveStyle", "reactActiveColor", "reactActiveSize", "reactActiveFit", "activePreview",
   "addHeader", "addType", "addId", "addProc", "addLabel", "addBtn" },

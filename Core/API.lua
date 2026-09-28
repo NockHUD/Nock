@@ -91,6 +91,15 @@ else
   function API.SpellCooldownDuration() return nil end
 end
 
+-- Base cooldown in ms (0 = none) or nil when the client cannot say.
+function API.SpellBaseCooldown(id)
+  local f = _G.GetSpellBaseCooldown
+  if not f then return nil end
+  local okc, ms = pcall(f, id)
+  if okc and type(ms) == "number" then return ms end
+  return nil
+end
+
 -- Usability ------------------------------------------------------------------
 -- (usable, noMana) raw: on Forever they may be secret in combat, so callers
 -- Plain() them. nil, nil where the client has neither form.

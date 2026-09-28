@@ -59,6 +59,7 @@ local function acquire(self, name, build)
   return f
 end
 function Settings:ReleaseLayouts()
+  if self.HideCooldownBoard then self:HideCooldownBoard() end
   for _, name in ipairs({ "lyIconBtn", "lyBtn", "lyPill", "lyFrame", "lyText", "lyTex" }) do
     local p = self[name]
     if p then
@@ -630,7 +631,7 @@ function Settings:LayoutCard(c, card, top, width)
     else rest[#rest + 1] = ln end
   end
   -- a block drawn straight under the head gets breathing room (a one-liner brings its own)
-  if y == top and (card.segmentRows or card.tableRows or card.bgBlock or card.itemRows or card.formRows or card.entries or card.items) then y = y + 10 end
+  if y == top and (card.segmentRows or card.tableRows or card.bgBlock or card.itemRows or card.formRows or card.entries or card.items or card.board) then y = y + 10 end
   if card.segmentRows then y = y + self:DrawSegments(c, card.segmentRows, y, width) end
   if card.tableRows then y = y + self:DrawTable(c, card.tableRows, y, width) end
   if card.bgBlock then y = y + self:DrawBgBlock(c, card.bgBlock, y, width) end
@@ -644,6 +645,7 @@ function Settings:LayoutCard(c, card, top, width)
     if #ctls > 0 then y = y + self:DrawForm(c, ctls, y, width) end
     rest = {}
   end
+  if card.board and self.DrawCooldownBoard then y = y + self:DrawCooldownBoard(c, y, width) end
   if card.entries then y = y + self:DrawEntries(c, card.entries, y, width) end
   if card.items then y = y + self:DrawItems(c, card.items, y, width, true) end
   if #rest > 0 then y = y + self:LayoutLines(c, rest, y, width) end

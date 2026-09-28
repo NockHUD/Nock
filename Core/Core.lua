@@ -202,6 +202,15 @@ function Nock:MigrateProfile()
   -- profile safe too. Values at or above the floor are left exactly as set.
   local lo, stored = self.Constants.TONK_CANCEL_MIN, tonumber(p.tonkCancelDelay)
   if stored and stored < lo then p.tonkCancelDelay = lo end
+  -- The cooldown-grid migration (old hidden-slot set -> rows) is otherwise
+  -- only run from Cooldowns:OnEnable, so a profile switch/copy/reset or a
+  -- ProfileShare import never sees it. Run it here too, before the caller
+  -- (OnProfileSwitched) broadcasts NOCK_VISUALS_CHANGED, so the grid repaints
+  -- from already-migrated rows. Forever only -- the row store doesn't exist
+  -- on the other flavours.
+  if Nock.Flavor and Nock.Flavor.forever and Nock.CooldownRows then
+    Nock.CooldownRows.MigrateOnce()
+  end
 end
 
 -- A unit-filtered event registration on a bare frame. AceEvent's RegisterEvent
@@ -307,6 +316,10 @@ function Nock:Tick()
   -- grid's ghost outline follows the snapped landing spot (one call, nil-cheap).
   local em = self.EditMode
   if em and em._drag then em:DragTick() end
+
+  -- Cooldown tile drag (UI/CooldownDrag.lua): only while a press is live.
+  local cdd = Nock.CooldownDrag
+  if cdd and cdd.pressed then cdd:Tick() end
 
   -- Ranged-speed poll. UNIT_ATTACK_SPEED is unreliable for ranged on this
   -- client: the 2026-08-31 swinglog shows Rapid Fire popping AND expiring with
