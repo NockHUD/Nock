@@ -4,6 +4,10 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 ## Unreleased
 
+### Both clients
+
+- **Restock ammo**: a third switch under Utilities → General → At a vendor. At any vendor that sells the ammo you have loaded, Nock fills your quiver or ammo pouch with it: empty slots and partial stacks, until the bag is full or the money runs out. Other ammo in the bag keeps its slot and your regular bags are never touched; one chat line with the count and the cost. Off by default.
+
 ### WoW Forever (beta)
 
 - **Weave camera flip**: the SoD "smart camera" weave on Forever. With one line at the end of each macro (`/run NockCamFlip()` after Raptor Strike, `/run NockCamFace()` after Auto Shot) the character turns away on the melee hit and back for the shot while the camera stays fixed on the target. Off by default and raids only until you say otherwise (Utilities → Camera flip, or the wizard's weave step); `/nock camera setup` opens a three-step window that saves the reversed camera view with a live bullseye track, tests it, and hands you both macros.

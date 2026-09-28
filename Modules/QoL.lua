@@ -184,17 +184,224 @@ function QoL:RepairAll()
   self:Print(("Repaired for %s."):format(moneyText(cost)))
 end
 
+-- ---------------------------------------------------------------------------
+-- Ammo restock: fill the quiver / ammo pouch with the LOADED ammo (ammo slot
+-- 0) from the vendor's list. Only that bag, only that item: regular bags are
+-- never touched, another arrow type in the quiver keeps its slot. The plan is
+-- pure over a reads table so the test drives it without a client:
+--   ammoId, ammoSubclass   the loaded ammo (false/nil = nothing loaded)
+--   stackSize              its max stack
+--   quiverSlots, quiver    slot count and { [slot] = { id, count } } (empty
+--                          slots absent), bagFamily 1 = quiver, 2 = pouch
+--   vendor                 { { index, id, price, bundle, available } }:
+--                          price is per BUNDLE (the vendor's stack, e.g. 200
+--                          Heavy Shot for 50c), available -1 = unlimited,
+--                          otherwise bundles in stock
+--   money                  copper on hand
+--   maxPerBuy              the vendor's per-purchase cap in items (optional)
+-- -> { buys = { { index, count, cost } }, units, cost }
+-- BuyMerchantItem's quantity is a number of ITEMS whether or not the vendor
+-- sells in stacks (since 4.1; the bundle count was the pre-4.1 reading, and
+-- sending it here bought three single shots). One buy per slot gap, split
+-- only by the per-purchase cap; the cost is the per-item share of the bundle
+-- price, rounded up.
+-- ---------------------------------------------------------------------------
+local ITEM_CLASS_PROJECTILE = (C and C.ITEM_CLASS_PROJECTILE) or 6
+local BAG_FAMILY_FOR_AMMO   = {            -- projectile subclass -> bag family
+  [(C and C.PROJECTILE_ARROW)  or 2] = 1,  -- arrows  -> quiver
+  [(C and C.PROJECTILE_BULLET) or 3] = 2,  -- bullets -> ammo pouch
+}
+local BUY_GAP = 0.25   -- seconds between purchases (the server throttles bursts)
+
+function QoL.PlanAmmoRestock(r)
+  local plan = { buys = {}, units = 0, cost = 0 }
+  local id, stack = r.ammoId, tonumber(r.stackSize) or 0
+  if not id or stack <= 0 or (r.quiverSlots or 0) <= 0 then return plan end
+  local want = r.ammoSubclass and BAG_FAMILY_FOR_AMMO[r.ammoSubclass]
+  if want and r.bagFamily and r.bagFamily ~= want then return plan end
+  local row
+  for _, v in ipairs(r.vendor or {}) do
+    if v.id == id then row = v; break end
+  end
+  if not row or (row.price or 0) <= 0 or (row.bundle or 1) <= 0 then return plan end
+  local bundle = row.bundle or 1
+  local perItem = row.price / bundle
+  local left = math.floor((r.money or 0) / perItem)               -- items affordable
+  if row.available and row.available >= 0 then left = math.min(left, row.available * bundle) end
+  local cap = tonumber(r.maxPerBuy) or 0
+  if cap <= 0 then cap = stack end
+  for slot = 1, r.quiverSlots do
+    if left <= 0 then break end
+    local s = r.quiver and r.quiver[slot]
+    local gap = 0
+    if not s then gap = stack
+    elseif s.id == id then gap = stack - (s.count or 0) end
+    while gap > 0 and left > 0 do
+      local n = math.min(gap, left, cap)
+      local cost = math.ceil(n * perItem)
+      plan.buys[#plan.buys + 1] = { index = row.index, count = n, cost = cost }
+      plan.units = plan.units + n
+      plan.cost  = plan.cost + cost
+      gap, left = gap - n, left - n
+    end
+  end
+  return plan
+end
+
+-- The equipped quiver / pouch: bag index, slot count, family (nil = none).
+local function findAmmoBag()
+  local free = (C_Container and C_Container.GetContainerNumFreeSlots) or _G.GetContainerNumFreeSlots
+  if not free then return nil end
+  for bag = 0, 4 do
+    local _, family = free(bag)
+    if family == 1 or family == 2 then return bag, numSlots(bag), family end
+  end
+  return nil
+end
+
+-- -> itemID, count (nil when the slot is empty)
+local function slotItem(bag, slot)
+  if C_Container and C_Container.GetContainerItemInfo then
+    local info = C_Container.GetContainerItemInfo(bag, slot)
+    if not info then return nil end
+    return info.itemID, info.stackCount or 1
+  elseif _G.GetContainerItemID then
+    local id = _G.GetContainerItemID(bag, slot)
+    if not id then return nil end
+    local _, count = _G.GetContainerItemInfo(bag, slot)
+    return id, count or 1
+  end
+  return nil
+end
+
+local function merchantItemId(i)
+  if _G.GetMerchantItemID then return _G.GetMerchantItemID(i) end
+  local link = _G.GetMerchantItemLink and _G.GetMerchantItemLink(i)
+  return link and tonumber(link:match("item:(%d+)")) or nil
+end
+
+-- One vendor row -> name, price, bundle (units per purchase), numAvailable
+-- (-1 = unlimited), purchasable. The bare GetMerchantItemInfo is deprecated
+-- (11.0.5) and nil on Forever; C_MerchantFrame.GetItemInfo returns a table.
+local function merchantRow(i)
+  if C_MerchantFrame and C_MerchantFrame.GetItemInfo then
+    local t = C_MerchantFrame.GetItemInfo(i)
+    if not t then return nil end
+    return t.name, t.price, t.stackCount, t.numAvailable, t.isPurchasable
+  elseif _G.GetMerchantItemInfo then
+    local name, _, price, bundle, available, purchasable = _G.GetMerchantItemInfo(i)
+    return name, price, bundle, available, purchasable
+  end
+  return nil
+end
+
+local function readAmmoRestock()
+  local r = { vendor = {}, quiver = {}, money = _G.GetMoney and _G.GetMoney() or 0 }
+  r.ammoId = _G.GetInventoryItemID and _G.GetInventoryItemID("player", 0) or false
+  if not r.ammoId then return r end
+  local instant = (C_Item and C_Item.GetItemInfoInstant) or _G.GetItemInfoInstant
+  if instant then
+    local _, _, _, _, _, classID, subclassID = instant(r.ammoId)
+    if classID == ITEM_CLASS_PROJECTILE then r.ammoSubclass = subclassID end
+  end
+  local info = (C_Item and C_Item.GetItemInfo) or _G.GetItemInfo
+  if info then
+    local name, _, _, _, _, _, _, stack = info(r.ammoId)
+    r.ammoName, r.stackSize = name, stack
+  end
+  local bag, slots, family = findAmmoBag()
+  r.bag, r.quiverSlots, r.bagFamily = bag, slots or 0, family
+  if bag then
+    for slot = 1, slots do
+      local id, count = slotItem(bag, slot)
+      if id then r.quiver[slot] = { id = id, count = count } end
+    end
+  end
+  local n = _G.GetMerchantNumItems and _G.GetMerchantNumItems() or 0
+  for i = 1, n do
+    local name, price, bundle, available, purchasable = merchantRow(i)
+    if name ~= nil and purchasable ~= false then
+      local rowId = merchantItemId(i)
+      r.vendor[#r.vendor + 1] = { index = i, id = rowId, name = name, price = price, bundle = bundle, available = available }
+      if rowId == r.ammoId and _G.GetMerchantItemMaxStack then r.maxPerBuy = _G.GetMerchantItemMaxStack(i) end
+    end
+  end
+  return r
+end
+
+function QoL:BuyPass()
+  self._buyTimer = nil
+  local queue = self._buyQueue
+  if not queue or not self._merchantOpen then self._buyQueue = nil; return end
+  local b = table.remove(queue, 1)
+  if b and _G.BuyMerchantItem then
+    _G.BuyMerchantItem(b.index, b.count)
+    self._buyUnits = (self._buyUnits or 0) + b.count
+    self._buyCost  = (self._buyCost or 0) + b.cost
+  end
+  if #queue > 0 then
+    self._buyTimer = self:ScheduleTimer("BuyPass", BUY_GAP)
+  else
+    self:FinishRestock(nil)
+  end
+end
+
+function QoL:FinishRestock(note)
+  self._buyQueue = nil
+  if (self._buyUnits or 0) > 0 then
+    self:Print(("Bought %d %s for %s%s."):format(self._buyUnits, self._buyName or "ammo", moneyText(self._buyCost or 0), note or ""))
+  end
+  self._buyUnits, self._buyCost, self._buyName = nil, nil, nil
+end
+
+-- /nock restock: the reads and the plan as the runner sees them, in a copybox
+-- (open a vendor first). Diagnostic only; buys nothing.
+function QoL:DumpRestock()
+  local r = readAmmoRestock()
+  local plan = QoL.PlanAmmoRestock(r)
+  local out = {}
+  local function add(fmt, ...) out[#out + 1] = fmt:format(...) end
+  add("merchantOpen=%s  toggle=%s  money=%s", tostring(self._merchantOpen), tostring(profile() and profile().qolRestockAmmo), tostring(r.money))
+  add("ammo: id=%s name=%s subclass=%s stack=%s", tostring(r.ammoId), tostring(r.ammoName), tostring(r.ammoSubclass), tostring(r.stackSize))
+  add("bag=%s slots=%s family=%s  maxPerBuy=%s", tostring(r.bag), tostring(r.quiverSlots), tostring(r.bagFamily), tostring(r.maxPerBuy))
+  for slot = 1, r.quiverSlots or 0 do
+    local q = r.quiver[slot]
+    add("  slot %d: %s", slot, q and ("id=%s x%s"):format(tostring(q.id), tostring(q.count)) or "empty")
+  end
+  add("vendor: %d rows (GetMerchantNumItems=%s, GetMerchantItemID=%s, GetMerchantItemLink=%s, C_MerchantFrame.GetItemInfo=%s, BuyMerchantItem=%s)", #r.vendor,
+    tostring(_G.GetMerchantNumItems and _G.GetMerchantNumItems()), tostring(_G.GetMerchantItemID ~= nil), tostring(_G.GetMerchantItemLink ~= nil),
+    tostring(C_MerchantFrame and C_MerchantFrame.GetItemInfo ~= nil), tostring(_G.BuyMerchantItem ~= nil))
+  for _, v in ipairs(r.vendor) do
+    add("  [%d] id=%s %s price=%s bundle=%s avail=%s", v.index, tostring(v.id), tostring(v.name), tostring(v.price), tostring(v.bundle), tostring(v.available))
+  end
+  add("plan: %d buys, %d units, %d copper", #plan.buys, plan.units, plan.cost)
+  for _, b in ipairs(plan.buys) do add("  buy index=%d items=%d cost=%d", b.index, b.count, b.cost) end
+  local text = table.concat(out, "\n")
+  if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else self:Print(text) end
+end
+
+function QoL:RestockAmmo()
+  local r = readAmmoRestock()
+  local plan = QoL.PlanAmmoRestock(r)
+  if #plan.buys == 0 then return end
+  self._buyQueue, self._buyUnits, self._buyCost, self._buyName = plan.buys, 0, 0, r.ammoName
+  self:BuyPass()
+end
+
 function QoL:MERCHANT_SHOW()
   local p = profile()
   if not p then return end
   self._merchantOpen = true
   if p.qolAutoRepair then self:RepairAll() end
   if p.qolSellGreys then self:SellGreys() end
+  if p.qolRestockAmmo then self:RestockAmmo() end
 end
 
 function QoL:MERCHANT_CLOSED()
   self._merchantOpen = false
   if self._sellTimer then self:CancelTimer(self._sellTimer); self._sellTimer = nil end
+  if self._buyTimer then self:CancelTimer(self._buyTimer); self._buyTimer = nil end
+  if self._buyQueue then self:FinishRestock(" (vendor closed)") end
   if self._sellQueue then
     -- the window closed mid-run: report what did go through
     self._sellQueue = nil

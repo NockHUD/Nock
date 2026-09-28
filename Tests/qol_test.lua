@@ -220,5 +220,134 @@ do
   Nock.Flavor = nil
 end
 
+--------------------------------------------------------------------------------
+-- 6. Ammo restock (pure plan): fill the quiver/pouch with the LOADED ammo from
+--    the vendor's list; never the regular bags, never another type.
+--------------------------------------------------------------------------------
+do
+  local P = QoL.PlanAmmoRestock
+  ok(type(P) == "function", "restock: planner exposed")
+  local function reads(t)
+    t.stackSize = t.stackSize or 200
+    t.money = t.money or 1000000
+    t.vendor = t.vendor or { { index = 3, id = 2512, price = 10, bundle = 1, available = -1 } }
+    if t.ammoId == nil then t.ammoId = 2512 end
+    return t
+  end
+
+  -- an empty 4-slot quiver -> four full stacks
+  local plan = P(reads({ quiverSlots = 4, quiver = {} }))
+  ok(#plan.buys == 4 and plan.units == 800 and plan.cost == 8000, "restock: empty quiver fills every slot (" .. tostring(plan.units) .. ")")
+  ok(plan.buys[1].index == 3 and plan.buys[1].count == 200, "restock: each buy names the vendor index and the count in items")
+
+  -- partial stacks of the loaded ammo top up; another arrow type keeps its slot
+  plan = P(reads({ quiverSlots = 3, quiver = { [1] = { id = 2512, count = 150 }, [2] = { id = 3030, count = 20 } } }))
+  ok(plan.units == 250 and #plan.buys == 2, "restock: tops up the partial stack, skips the other type (" .. tostring(plan.units) .. ")")
+
+  -- full quiver -> nothing
+  plan = P(reads({ quiverSlots = 2, quiver = { [1] = { id = 2512, count = 200 }, [2] = { id = 2512, count = 200 } } }))
+  ok(#plan.buys == 0 and plan.units == 0, "restock: a full quiver buys nothing")
+
+  -- vendor does not sell the loaded ammo -> nothing
+  plan = P(reads({ quiverSlots = 2, quiver = {}, vendor = { { index = 1, id = 3030, price = 10, bundle = 1, available = -1 } } }))
+  ok(#plan.buys == 0, "restock: vendor without the loaded ammo buys nothing")
+
+  -- no ammo loaded / no quiver -> nothing
+  ok(#P(reads({ ammoId = false, quiverSlots = 2, quiver = {} })).buys == 0, "restock: nothing loaded buys nothing")
+  ok(#P(reads({ quiverSlots = 0, quiver = {} })).buys == 0, "restock: no quiver buys nothing")
+
+  -- short on money: buy what is affordable, whole bundles
+  plan = P(reads({ quiverSlots = 2, quiver = {}, money = 2505 }))
+  ok(plan.units == 250 and plan.cost == 2500 and #plan.buys == 2 and plan.buys[2].count == 50, "restock: money caps the buys (" .. tostring(plan.units) .. ")")
+  plan = P(reads({ quiverSlots = 2, quiver = {}, money = 5 }))
+  ok(#plan.buys == 0, "restock: cannot afford one -> nothing")
+
+  -- sold in stacks: the vendor's price is per bundle, the buy is in items
+  -- (BuyMerchantItem's quantity is items since 4.1, stacked or not)
+  plan = P(reads({ quiverSlots = 1, quiver = { [1] = { id = 2512, count = 123 } }, vendor = { { index = 2, id = 2512, price = 50, bundle = 5, available = -1 } } }))
+  ok(plan.buys[1].count == 77 and plan.units == 77 and plan.cost == 770, "restock: items, priced per bundle (" .. tostring(plan.units) .. "/" .. tostring(plan.cost) .. ")")
+  plan = P(reads({ quiverSlots = 3, quiver = {}, vendor = { { index = 1, id = 2512, price = 50, bundle = 200, available = -1 } } }))
+  ok(#plan.buys == 3 and plan.buys[1].count == 200 and plan.units == 600 and plan.cost == 150, "restock: a stack of 200 for 50c -> three buys of 200 items (" .. tostring(plan.cost) .. ")")
+  plan = P(reads({ quiverSlots = 3, quiver = {}, money = 120, vendor = { { index = 1, id = 2512, price = 50, bundle = 200, available = -1 } } }))
+  ok(plan.units == 480 and #plan.buys == 3 and plan.buys[3].count == 80, "restock: money caps in items at the per-item price (" .. tostring(plan.units) .. ")")
+  -- the vendor's per-purchase cap splits a slot into several buys
+  plan = P(reads({ quiverSlots = 1, quiver = {}, maxPerBuy = 80 }))
+  ok(#plan.buys == 3 and plan.buys[1].count == 80 and plan.buys[3].count == 40 and plan.units == 200, "restock: the per-purchase cap splits a slot (" .. #plan.buys .. ")")
+
+  -- limited stock (counted in bundles) caps the buys
+  plan = P(reads({ quiverSlots = 2, quiver = {}, vendor = { { index = 1, id = 2512, price = 10, bundle = 1, available = 30 } } }))
+  ok(plan.units == 30 and #plan.buys == 1, "restock: limited stock caps the buys (" .. tostring(plan.units) .. ")")
+  plan = P(reads({ quiverSlots = 2, quiver = {}, vendor = { { index = 1, id = 2512, price = 50, bundle = 200, available = 1 } } }))
+  ok(plan.units == 200 and #plan.buys == 1, "restock: one bundle left in stock -> one stack (" .. tostring(plan.units) .. ")")
+
+  -- arrows never go into an ammo pouch (family 2) and bullets never into a quiver
+  plan = P(reads({ quiverSlots = 2, quiver = {}, bagFamily = 2, ammoSubclass = 2 }))
+  ok(#plan.buys == 0, "restock: arrows loaded, pouch equipped -> nothing")
+  plan = P(reads({ quiverSlots = 2, quiver = {}, bagFamily = 1, ammoSubclass = 2 }))
+  ok(#plan.buys == 2, "restock: arrows into a quiver is fine")
+end
+
+--------------------------------------------------------------------------------
+-- 7. Ammo restock at the vendor: off by default; on, buys in passes, one line;
+--    the window closing stops it.
+--------------------------------------------------------------------------------
+do
+  local bought = {}
+  _G.GetInventoryItemID = function(_, slot) return slot == 0 and 2512 or nil end
+  _G.GetMerchantNumItems = function() return 2 end
+  _G.GetMerchantItemID = function(i) return ({ 3030, 2512 })[i] end
+  _G.GetMerchantItemInfo = function(i) return "Arrow", "tex", 10, 1, -1, true, true end
+  _G.BuyMerchantItem = function(i, n) bought[#bought + 1] = { i, n } end
+  _G.C_Container.GetContainerNumFreeSlots = function(bag) return 0, bag == 2 and 1 or 0 end
+  local oldGII = _G.GetItemInfo
+  _G.GetItemInfo = function(x) if x == 2512 then return "Rough Arrow", "item:2512", 1, 1, 1, "Projectile", "Arrow", 200 end return oldGII(x) end
+  _G.GetItemInfoInstant = function(x) if x == 2512 then return 2512, "Projectile", "Arrow", "INVTYPE_AMMO", 1, 6, 2 end end
+  local function quiver(n) bags[2] = {} for i = 1, n do bags[2][i] = false end end
+  local function qslot(i, id, count) bags[2][i] = { id = id, count = count, quality = 1, price = 1, link = "item:" .. id } end
+  local realInfo = _G.C_Container.GetContainerItemInfo
+  _G.C_Container.GetContainerItemInfo = function(bag, i)
+    local s = bags[bag] and bags[bag][i]
+    if not s then return nil end
+    return { quality = s.quality, stackCount = s.count, hyperlink = s.link, isLocked = false, itemID = s.id }
+  end
+
+  reset(); bought = {}; quiver(4); money = 1000000
+  QoL:MERCHANT_SHOW(); runTimers()
+  ok(#bought == 0, "restock: off by default buys nothing")
+
+  reset(); bought = {}; quiver(4); qslot(1, 2512, 50); qslot(2, 3030, 200); money = 1000000
+  Nock.db.profile.qolRestockAmmo = true
+  QoL:MERCHANT_SHOW()
+  runTimers()
+  ok(#bought == 3, "restock: on -> one buy per slot to fill (" .. #bought .. ")")
+  ok(bought[1][1] == 2 and bought[1][2] == 150, "restock: the partial stack is topped up at the vendor's row")
+  ok(#prints == 1 and prints[1]:find("550", 1, true) and prints[1]:find("Rough Arrow", 1, true), "restock: one line with the count and the name (" .. tostring(prints[1]) .. ")")
+
+  reset(); bought = {}; quiver(4); money = 1000000
+  Nock.db.profile.qolRestockAmmo = true
+  QoL:MERCHANT_SHOW()
+  QoL:MERCHANT_CLOSED()
+  runTimers()
+  ok(#bought < 4, "restock: closing the window stops the remaining buys (" .. #bought .. ")")
+
+  reset(); bought = {}; quiver(4); for i = 1, 4 do qslot(i, 2512, 200) end; money = 1000000
+  Nock.db.profile.qolRestockAmmo = true
+  QoL:MERCHANT_SHOW(); runTimers()
+  ok(#bought == 0 and #prints == 0, "restock: a full quiver is silent")
+
+  -- Forever: the bare GetMerchantItemInfo is gone; C_MerchantFrame.GetItemInfo returns a table
+  reset(); bought = {}; quiver(2); money = 1000000
+  Nock.db.profile.qolRestockAmmo = true
+  local oldMII = _G.GetMerchantItemInfo
+  _G.GetMerchantItemInfo = nil
+  _G.C_MerchantFrame = { GetItemInfo = function(i) return { name = "Arrow", texture = 1, price = 10, stackCount = 1, numAvailable = -1, isPurchasable = true } end }
+  QoL:MERCHANT_SHOW(); runTimers()
+  ok(#bought == 2 and bought[1][2] == 200, "restock: reads the vendor through C_MerchantFrame.GetItemInfo (" .. #bought .. ")")
+  _G.GetMerchantItemInfo, _G.C_MerchantFrame = oldMII, nil
+
+  _G.C_Container.GetContainerItemInfo = realInfo
+  _G.GetItemInfo = oldGII
+end
+
 print(("qol_test: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

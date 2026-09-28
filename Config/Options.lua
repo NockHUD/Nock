@@ -3129,7 +3129,7 @@ local function buildOptionsTable()
             order = 1,
             fontSize = "medium",
           },
-          vendorHeader = { type = "header", name = "At a vendor", desc = "Both run the moment a merchant window opens.", order = 10 },
+          vendorHeader = { type = "header", name = "At a vendor", desc = "All three run the moment a merchant window opens.", order = 10 },
           qolAutoRepair = {
             type = "toggle",
             name = "Auto repair",
@@ -3147,6 +3147,15 @@ local function buildOptionsTable()
             width = "full",
             get = function() return Nock.db.profile.qolSellGreys == true end,
             set = function(_, v) Nock.db.profile.qolSellGreys = v and true or false end,
+          },
+          qolRestockAmmo = {
+            type = "toggle",
+            name = "Restock ammo",
+            desc = "Fill your quiver or ammo pouch with the ammo you have loaded, at any vendor that sells it: empty slots and partial stacks of that ammo, until the bag is full or the money runs out. Other ammo in the bag keeps its slot; your regular bags are never touched. One chat line with the count and the cost.",
+            order = 13,
+            width = "full",
+            get = function() return Nock.db.profile.qolRestockAmmo == true end,
+            set = function(_, v) Nock.db.profile.qolRestockAmmo = v and true or false end,
           },
           screenHeader = { type = "header", name = "Screen", order = 20 },
           qolNoGlow = {

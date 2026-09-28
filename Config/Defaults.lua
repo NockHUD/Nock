@@ -1070,6 +1070,7 @@ Nock.Defaults = {
     qolHideErrors = false,  -- Forever: the red UIErrorsFrame text off (Modules/QoL.lua ApplyErrors)
     qolAutoRepair = false,  -- repair everything at a repair vendor, own money only
     qolSellGreys  = false,  -- sell every poor-quality item at any vendor
+    qolRestockAmmo = false, -- fill the quiver / pouch with the loaded ammo at a vendor that sells it
     -- PvP mode (Modules/PvPMode.lua; sidebar PvP). The mode itself is off;
     -- each pvp* switch says what the mode changes while it is on.
     pvpMode             = "off",   -- "off" | "on" | "auto" (auto = battleground / arena)

@@ -921,6 +921,9 @@ function Nock:HandleSlashCommand(input)
   elseif input == "trinkets" then
     local m = self:GetModule("Cooldowns", true)
     if m and m.DumpTrinkets then m:DumpTrinkets() else self:Print("Cooldowns not loaded.") end
+  elseif input == "restock" then
+    local m = self:GetModule("QoL", true)
+    if m and m.DumpRestock then m:DumpRestock() else self:Print("QoL not loaded.") end
   elseif input == "arrows" then
     local m = self:GetModule("InfoRow", true)
     if m and m.DumpArrows then m:DumpArrows() else self:Print("InfoRow not loaded.") end
