@@ -898,10 +898,88 @@ function Probe.SecureReport()
   return table.concat(L, "\n")
 end
 
+-- `/nock probe weave`: the weave helper's state and the four spec questions
+-- (spec 2026-09-28 §6) answered from the helper's state, the swing samples
+-- and the cast ring. Pure over `src`:
+--   stage, legIn, legOut, learnedIn, learnedOut, moving, playerMovingPlain,
+--   mhRangeEvents, raptorId, swings = { {t, swingType, duration} },
+--   casts = { {t, ev, spellID} }
+function Probe.WeaveReport(src)
+  local L = {}
+  local function row(s) L[#L + 1] = s end
+  row(("stage: %s  moving: %s"):format(tostring(src.stage), tostring(src.moving)))
+  row(("legIn %.2f (%s)  legOut %.2f (%s)"):format(src.legIn or 0, src.learnedIn and "learned" or "seed",
+    src.legOut or 0, src.learnedOut and "learned" or "seed"))
+  row(("IsPlayerMoving plain in combat: %s"):format(tostring(src.playerMovingPlain)))
+  row(("MainHand PLAYER_SWING_RANGE_UPDATE events: %d"):format(src.mhRangeEvents or 0))
+  row("")
+  -- The helper's own ring: how the engine classed each event as it arrived
+  -- (a Ranged event = shot or the client's reset), and the stage it left.
+  row("helper events (how the engine classed them):")
+  for _, h in ipairs(src.helper or {}) do
+    if h.kind == "Ranged" then
+      row(("  %.2f  Ranged  %s  stage %s"):format(h.t, h.shot and "shot" or "reset", tostring(h.stage)))
+    else
+      row(("  %.2f  %s  stage %s  legIn %.2f"):format(h.t, tostring(h.kind), tostring(h.stage), h.legIn or 0))
+    end
+  end
+  row("")
+  -- Every stage change with what the decision saw: zone, the swing's age,
+  -- seconds until the white swing and Raptor are ready, movement.
+  row("stage transitions (what the decision saw):")
+  for _, x in ipairs(src.transitions or {}) do
+    row(("  %.2f  %s -> %s  zone %s  age %.2f  melee %.2f  raptor %.2f  moving %s"):format(
+      x.t, tostring(x.from), tostring(x.to), tostring(x.zone), x.age or 0, x.melee or 0, x.raptor or 0, tostring(x.moving)))
+  end
+  row("")
+  row("swing events (MainHand = 0, OffHand = 1, Ranged = 2):")
+  local swings = src.swings or {}
+  local RANGED, MH = 2, 0
+  for i = 1, #swings do
+    local s = swings[i]
+    row(("  %.2f  kind %s  dur %.2f"):format(s.t, tostring(s.swingType), s.duration or 0))
+    if s.swingType == MH then
+      local seen = false
+      for j = i + 1, #swings do
+        local n = swings[j]
+        if n.t - s.t > 0.1 then break end
+        if n.swingType == RANGED then
+          row(("    Ranged event %.3f s after a MainHand hit: client reset"):format(n.t - s.t))
+          seen = true
+          break
+        end
+      end
+      if not seen then row(("    no Ranged event within 0.1 s of the hit at %.2f"):format(s.t)) end
+      for _, c in ipairs(src.casts or {}) do
+        if c.spellID == src.raptorId and c.ev == "UNIT_SPELLCAST_SUCCEEDED" and c.t <= s.t and s.t - c.t <= 2 then
+          row(("    Raptor Strike SUCCEEDED %.2f s before the hit at %.2f"):format(s.t - c.t, s.t))
+        end
+      end
+    end
+  end
+  return table.concat(L, "\n")
+end
+
 function Probe:Show(which, rest)
   local text
   if which == "range" then self:RangeRecord(rest); return end
   if which == "fonts" then self:FontPreview(rest); return end
+  if which == "weave" then
+    local WH, ST = Nock:GetModule("WeaveHelper", true), Nock:GetModule("SwingTimer", true)
+    local st = WH and WH.st or {}
+    local plainMoving = _G.IsPlayerMoving and Nock.Flavor.Plain(_G.IsPlayerMoving())
+    local text = Probe.WeaveReport({
+      stage = st.stage, legIn = st.legIn, legOut = st.legOut, learnedIn = st.learnedIn, learnedOut = st.learnedOut,
+      moving = st.moving, playerMovingPlain = type(plainMoving) == "boolean",
+      mhRangeEvents = WH and WH.mhRangeEvents or 0,
+      raptorId = Nock.Spells and Nock.Spells.RAPTOR_STRIKE,
+      helper = (WH and WH.Samples) and WH:Samples() or {},
+      transitions = (WH and WH.Transitions) and WH:Transitions() or {},
+      swings = (ST and ST.Samples) and ST:Samples() or {}, casts = self.Casts and self:Casts() or {},
+    })
+    if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
+    return
+  end
   -- `/nock probe idshape set|list`: re-filter the live buff row with the
   -- other ID-table shape (Forever/AuraRow.lua ID_SHAPE, unverified). Put a
   -- buff that is up on the hide list, then flip until it disappears.

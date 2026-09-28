@@ -6297,6 +6297,66 @@ local function buildOptionsTable()
         Nock:SendMessage("NOCK_VISUALS_CHANGED")
       end,
     }
+    -- Forever weave helper (spec 2026-09-28). Built on both flavours (the
+    -- layout data names the rows), hidden on TBC.
+    local notForever = function() return not (Nock.Flavor and Nock.Flavor.forever) end
+    sizeArgs.weaveHelperEnabled = {
+      type = "toggle", name = "Weave helper", order = 22.3, width = "full",
+      desc = "GO IN / WAIT / STRIKE / BACK OUT / RELEASE on the melee bar with the leg countdown, and the weave strip under it. Leg times are learned from your own crossings of the dead zone.",
+      hidden = notForever, disabled = notReact,
+      get = function() return Nock.db.profile.weaveHelperEnabled ~= false end,
+      set = function(_, v) visualsSet(_, "weaveHelperEnabled", v and true or false) end,
+    }
+    sizeArgs.reactShowWeaveStrip = {
+      type = "toggle", name = "Weave strip", order = 22.31, width = "full",
+      desc = "The row under the melee bar: Auto Shot icon with the swing swipe, the glide bar, Raptor Strike icon with its cooldown. Off keeps the words on the melee bar.",
+      hidden = notForever,
+      disabled = function() return notReact() or Nock.db.profile.weaveHelperEnabled == false end,
+      get = function() return Nock.db.profile.reactShowWeaveStrip ~= false end,
+      set = function(_, v) visualsSet(_, "reactShowWeaveStrip", v and true or false) end,
+    }
+    sizeArgs.weaveLegSeed = {
+      type = "range", name = "Leg seed", order = 22.32, min = 0.5, max = 3.0, step = 0.05,
+      desc = "Crossing time until Nock has measured yours.\nSeconds one crossing of the dead zone takes, used for the countdown and the glide until Nock has timed your own crossings. Each leg (in, out) is replaced by its first real crossing on this character, then refined by every crossing after it. Forget learned legs starts over from this value.",
+      hidden = notForever,
+      disabled = function() return notReact() or Nock.db.profile.weaveHelperEnabled == false end,
+      get = function() return tonumber(Nock.db.profile.weaveLegSeed) or 1.1 end,
+      set = function(_, v)
+        Nock.db.profile.weaveLegSeed = v
+        local WH = Nock:GetModule("WeaveHelper", true)
+        if WH and WH.ApplySeed then WH:ApplySeed() end
+      end,
+    }
+    sizeArgs.weaveStartWindow = {
+      type = "range", name = "Start window", order = 22.325, min = 0.2, max = 3.0, step = 0.05,
+      desc = "How long after a shot GO IN may still appear.\nSeconds after an Auto Shot in which GO IN is offered, directly or at the end of a WAIT. A melee hit resets the ranged swing, so a start later than this throws most of the swing away: the cue then waits for the next shot. It also caps the WAIT: a wait that would end past the window is not offered. Once you are moving, the GO stays one second longer.",
+      hidden = notForever,
+      disabled = function() return notReact() or Nock.db.profile.weaveHelperEnabled == false end,
+      get = function() return tonumber(Nock.db.profile.weaveStartWindow) or 0.75 end,
+      set = function(_, v)
+        Nock.db.profile.weaveStartWindow = v
+        local WH = Nock:GetModule("WeaveHelper", true)
+        if WH and WH.ApplyWindow then WH:ApplyWindow() end
+      end,
+    }
+    sizeArgs.reactWeaveH = {
+      type = "range", name = "Weave strip height", order = 22.33, min = 10, max = 32, step = 1,
+      desc = "Height of the strip row in pixels.\nThe weave strip under the melee bar: the Auto Shot icon with the swing as a swipe, the glide bar, the Raptor Strike icon with its cooldown. The two icons are square at this height, so it sets the icon size too.",
+      hidden = notForever,
+      disabled = function() return notReact() or Nock.db.profile.weaveHelperEnabled == false or Nock.db.profile.reactShowWeaveStrip == false end,
+      get = function() return tonumber(Nock.db.profile.reactWeaveH) or 18 end,
+      set = function(_, v) visualsSet(_, "reactWeaveH", v) end,
+    }
+    sizeArgs.weaveLegsReset = {
+      type = "execute", name = "Forget learned legs", order = 22.34, width = 1.2,
+      desc = "Back to the seed for both legs; the next crossings teach Nock again.",
+      hidden = notForever,
+      disabled = function() return notReact() or Nock.db.profile.weaveHelperEnabled == false end,
+      func = function()
+        local WH = Nock:GetModule("WeaveHelper", true)
+        if WH and WH.ResetLegs then WH:ResetLegs() end
+      end,
+    }
     sizeArgs.reactShowRangeBar = reactToggle("reactShowRangeBar", "Range bar",       "Finding ladder + predictive weave fill.", 23)
     -- Forever only: the Range Finder ladder's style (Forever/RangeLadder.lua
     -- Layout). Built on both flavours (the layout data names it), hidden on TBC.
@@ -6673,9 +6733,10 @@ local function buildOptionsTable()
       function(stored) return Nock.UI.ResolveReactBarOrder(stored) end, {
       auto  = "Auto Shot bar",
       melee = "Melee swing bar",
+      weave = "Weave strip",   -- Forever only (the resolver never lists it on TBC)
       range = "Range bar",
       mana  = "Mana bar",
-    }, 4, notReact, 29)
+    }, (Nock.Flavor and Nock.Flavor.forever) and 5 or 4, notReact, 29)   -- rows: Forever has the weave strip
 
     barsArgs.autoHeader = { type = "header", name = "Auto Shot bar", order = 30 }
     -- Annotated miniature of the converge bar (UI/AceGUI_BarLegends.lua). No

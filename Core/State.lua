@@ -242,6 +242,20 @@ Nock.state = {
     -- blocked (bags full / cursor busy) — read by Warnings so the red
     -- shirt-gate warning stays up instead of being suppressed.
     garmentFlipBlocked = false,
+    -- Forever weave helper (Forever/WeaveHelper.lua, engine Forever/WeaveEngine.lua):
+    -- stage GO / WAIT / IN / STRIKE / OUT / RELEASE / nil; the running leg
+    -- ("in"/"out", 0..1 progress from the ranged end, seconds left, stale =
+    -- past the estimate while still moving); the learned leg seconds; the
+    -- WAIT countdown; glide = the strip's fill (0 ranged end, 1 melee end).
+    legKind      = nil,
+    legProg      = 0,
+    legRemaining = 0,
+    legStale     = false,
+    legIn        = 0,
+    legOut       = 0,
+    waitFor      = nil,
+    glide        = 0,
+    releaseAt    = nil,
   },
   -- "Shot Bars" scrolling timeline (Fluffy-style). Written by ShotPredictor,
   -- read by the ShotBars view. Arrays are reused in place (no per-tick alloc):

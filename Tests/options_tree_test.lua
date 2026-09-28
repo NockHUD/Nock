@@ -648,7 +648,9 @@ onlyKeys(classicChild("rotation").args,
 onlyKeys(ra, { "intro", "hudMode", "useLook", "tabSize", "tabBars", "tabRange", "tabGrid", "tabBuff", "tabProcs", "tabSkin" },
   "react root")
 onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "elementsNote",
-  "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview", "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
+  "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview",
+  "weaveHelperEnabled", "reactShowWeaveStrip", "weaveLegSeed", "weaveStartWindow", "reactWeaveH", "weaveLegsReset",
+  "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
   "reactShowCastBar", "reactShowAutoShotCast", "hideBlizzardCastBar", "reactShowGrid", "reactShowPetRow", "reactPetRowW", "reactShowAspectIcon", "reactShowMarkIcon",
   "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY",
   "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH", "reactPetRowH",
@@ -660,6 +662,25 @@ ok(raSize.reactRangeLabels and raSize.reactRangeLabels.type == "toggle"
 ok(raSize.reactRangeStyle and raSize.reactRangeStyle.type == "select" and raSize.reactRangeStyle.dialogControl ~= nil
    and raSize.reactRangeStyle.hidden() == true and raSize.reactRangeStyle.get() == "compact",
    "react tabSize: Range Finder style select (compact default, LSM leak guard, hidden on TBC)")
+-- Forever weave helper rows (spec 2026-09-28): built on both flavours, hidden on TBC.
+Nock.db.profile.weaveHelperEnabled = false
+ok(raSize.weaveHelperEnabled and raSize.weaveHelperEnabled.type == "toggle" and raSize.weaveHelperEnabled.hidden() == true
+   and raSize.weaveHelperEnabled.get() == false, "react tabSize: weave helper toggle reads the profile (off), hidden on TBC")
+Nock.db.profile.weaveHelperEnabled = nil
+ok(raSize.weaveLegSeed and raSize.weaveLegSeed.type == "range" and raSize.weaveLegSeed.hidden() == true and raSize.weaveLegSeed.get() == 1.1,
+   "react tabSize: leg seed range (1.1 default, hidden on TBC)")
+ok(raSize.weaveStartWindow and raSize.weaveStartWindow.type == "range" and raSize.weaveStartWindow.hidden() == true and raSize.weaveStartWindow.get() == 0.75,
+   "react tabSize: start window range (0.75 default, hidden on TBC)")
+-- A short first line and a newline in the desc: the settings window then
+-- shows the info glyph with the full text as its tooltip (user 2026-09-28).
+for _, k in ipairs({ "weaveLegSeed", "weaveStartWindow", "reactWeaveH" }) do
+  local d = raSize[k].desc or ""
+  local first = d:match("^([^\n]*)")
+  ok(d:find("\n", 1, true) ~= nil and #first <= 60, "react tabSize: " .. k .. " desc = short line + info tooltip")
+end
+ok(raSize.reactWeaveH and raSize.reactWeaveH.type == "range" and raSize.reactWeaveH.get() == 18 and raSize.reactShowWeaveStrip
+   and raSize.reactShowWeaveStrip.get() == true and raSize.weaveLegsReset and raSize.weaveLegsReset.type == "execute",
+   "react tabSize: strip toggle, strip height 18, forget-legs button")
 onlyKeys(raBars, { "autoHeader", "reactAutoLegend", "reactShowNotation", "reactShowClipTicks", "showWindupMark", "reactShowDelay",
   "reactShowBrackets", "reactShowGcdDivider", "dirHeader", "reactDirAuto", "reactDirMelee",
   "grpEngine" }, "react tabBars")

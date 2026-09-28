@@ -106,6 +106,32 @@ Onboarding.Pages = {
     },
   },
   {
+    key     = "weave",
+    kind    = "cards",
+    reveals = { "hud" },
+    eyebrow = "You can change this anytime",
+    title   = "How do you play?",
+    blurb   = "Weaving runs in for a Raptor Strike between shots. Nock can call every step of it.",
+    options = {
+      {
+        value = "turret", label = "I stand and shoot",
+        desc  = "No weave cues and no weave strip; the melee bar keeps its plain swing.",
+        icon  = autoShotIcon,
+        isSelected = function(p) return p.weaveHelperEnabled == false end,
+        apply      = function(p) p.weaveHelperEnabled = false end,
+      },
+      {
+        value = "weave", label = "I weave", tag = "Advanced",
+        desc  = "GO IN, WAIT, STRIKE, BACK OUT and RELEASE on the melee bar, and a weave strip under it that crosses the dead zone at your own pace.",
+        icon  = function() return Onboarding.SpellIcon(Nock.Spells and Nock.Spells.RAPTOR_STRIKE) end,
+        isSelected = function(p) return p.weaveHelperEnabled ~= false end,
+        apply      = function(p)
+          p.weaveHelperEnabled, p.reactShowWeaveStrip, p.reactMeleeStageCue, p.reactShowMeleeBar = true, true, true, true
+        end,
+      },
+    },
+  },
+  {
     key     = "corners",
     kind    = "toggles",
     reveals = { "react.corners", "react.buffs" },
@@ -233,5 +259,6 @@ function Onboarding:BuildRecap()
     { "Warnings", p.showWarnings == false and "off" or (on .. " of " .. total .. " on") },
     { "Range cues", joinOr(cues, "off") },
     { "Aspect ring key", (p.aspectRingKey or "") ~= "" and p.aspectRingKey or "not set" },
+    { "Weaving", p.weaveHelperEnabled == false and "turret" or "helper on" },
   }
 end

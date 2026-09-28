@@ -728,6 +728,15 @@ Nock.Defaults = {
     reactShowAutoBar     = true,        -- converge Auto Shot bar
     reactShowMeleeBar    = true,        -- melee swing bar
     reactMeleeStageCue   = false,       -- weave-coach stage takes over the melee bar (fill + marching triangles + word); off = small text only (opt-in, user 2026-09-02)
+    -- Forever weave helper (Forever/WeaveHelper.lua): the loop coach on the
+    -- melee bar + the weave strip row. Off by default: the setup wizard's
+    -- "How do you play?" Advanced card turns it on (user, 2026-09-28). Keys
+    -- exist on TBC unused.
+    weaveHelperEnabled   = false,
+    reactShowWeaveStrip  = true,        -- the strip row (the words on the melee bar stay)
+    weaveLegSeed         = 1.1,         -- seconds per leg before the first crossing is learned
+    weaveStartWindow     = 0.75,        -- seconds after a shot in which GO IN is offered (directly or after a WAIT)
+    reactWeaveH          = 18,          -- strip height px (icons square at it)
     reactShowRangeBar    = true,        -- slide range finder
     reactShowManaBar     = true,        -- thin mana bar
     reactManaText        = "percent",   -- mana bar center text: "none" | "percent" | "value" | "both"
@@ -1343,6 +1352,8 @@ if Nock.Flavor and Nock.Flavor.forever then
   p.cueMeleeGate         = "raid"
   p.cueInRangeGate       = "raid"
   p.cueOutOfRangeGate    = "raid"
+  -- The weave helper's words ride the melee-bar takeover: on by default here.
+  p.reactMeleeStageCue   = true
 end
 
 function Nock:GetDefaultPosition()

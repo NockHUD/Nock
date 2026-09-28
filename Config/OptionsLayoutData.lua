@@ -242,7 +242,7 @@ L.TABS = {
     path = "hud.react.tabSize",
     cards = {
       { key = "sizeCard", name = "Size", icon = { glyph = "expand" }, rows = { "reactWidth", "reactScale" } },
-      { key = "elementsCard", name = "Elements", icon = { spell = C.RAPID_FIRE }, desc = "What the cluster stacks, top to bottom.", rows = { "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview", "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactShowCastBar", "reactShowGrid", "reactShowPetRow", "reactPetRowW" } },
+      { key = "elementsCard", name = "Elements", icon = { spell = C.RAPID_FIRE }, desc = "What the cluster stacks, top to bottom.", rows = { "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview", "weaveHelperEnabled", "reactShowWeaveStrip", "weaveLegSeed", "weaveStartWindow", "reactWeaveH", "weaveLegsReset", "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactShowCastBar", "reactShowGrid", "reactShowPetRow", "reactPetRowW" } },
       { key = "manaCard", name = "Mana", icon = { spell = 34074 }, rows = { "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc" } },
       { key = "castBarCard", name = "Cast bar", icon = { spell = C.STEADY_SHOT }, rows = { "reactShowAutoShotCast", "castBarNonCombatCasts", "hideBlizzardCastBar" } },
       { key = "cornersCard", name = "Corners", icon = { spell = 13165 }, desc = "Aspect and Hunter's Mark flanking the cluster.", rows = { "reactShowAspectIcon", "reactShowMarkIcon", "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY" } },

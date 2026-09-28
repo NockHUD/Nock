@@ -145,5 +145,50 @@ ok(Coach(st, 0) == "HOLD", "preview on, in combat: the coach's stage (never a li
 Nock.UI.stagePreview = nil
 _G.InCombatLockdown = nil
 
+--------------------------------------------------------------------------------
+-- Forever weave helper stages (Forever/WeaveEngine.lua): WAIT and STRIKE are
+-- new looks; IN wears GO's look and OUT wears STRUCK's (shared tables).
+--------------------------------------------------------------------------------
+local wait = Look("WAIT")
+ok(wait and wait.text == "WAIT" and wait.march == 0 and not wait.flash, "WAIT: 'WAIT', still")
+local strike = Look("STRIKE")
+ok(strike and strike.text == "STRIKE" and strike.march == 0 and not strike.flash, "STRIKE: 'STRIKE', still")
+ok(Look("IN") == go and Look("OUT") == struck, "IN = GO's look, OUT = STRUCK's look")
+ok(wait and strike and wait.fill ~= strike.fill and #wait.fill == 4 and #strike.fill == 4, "WAIT and STRIKE have their own colours")
+
+-- StageLegText(state): the melee bar's right text. WAIT = the countdown to
+-- GO, a running leg = its seconds left, GO = the learned leg in; else "".
+local T = Nock.UI.StageLegText
+ok(type(T) == "function", "Nock.UI.StageLegText exists")
+if T then
+  ok(T({ weave = { stage = "WAIT", waitFor = 0.84 } }) == "0.8s", "WAIT: the countdown, one decimal")
+  local inTxt = T({ weave = { stage = "IN", legRemaining = 0.55 } })
+  ok(inTxt == "0.6s" or inTxt == "0.5s", "IN: seconds left")
+  ok(T({ weave = { stage = "OUT", legRemaining = 1.0 } }) == "1.0s", "OUT: seconds left")
+  ok(T({ weave = { stage = "GO", legIn = 1.1 } }) == "1.1s", "GO: the learned leg in")
+  ok(T({ weave = { stage = "STRIKE", legRemaining = 0.3 } }) == "" and T({ weave = { stage = "RELEASE" } }) == "", "STRIKE / RELEASE: no number")
+  ok(T({ weave = { stage = "HOLD" } }) == "" and T({}) == "" and T(nil) == "", "TBC stages and no state: empty")
+  ok(T({ weave = { stage = "IN", legRemaining = 0 } }) == "", "a leg at zero prints nothing")
+end
+
+-- StageLegTenths(state): the same number as whole tenths (or nil), so the
+-- bar diffs on it and formats only when the digit changes (no string work
+-- on the tick while the value holds).
+local Tn = Nock.UI.StageLegTenths
+ok(type(Tn) == "function", "Nock.UI.StageLegTenths exists")
+if Tn then
+  ok(Tn({ weave = { stage = "WAIT", waitFor = 0.84 } }) == 8, "WAIT 0.84 -> 8 tenths")
+  ok(Tn({ weave = { stage = "OUT", legRemaining = 1.04 } }) == 10 and Tn({ weave = { stage = "OUT", legRemaining = 0.96 } }) == 10, "1.04 and 0.96 share the tenth 10")
+  ok(Tn({ weave = { stage = "STRIKE", legRemaining = 0.3 } }) == nil and Tn({}) == nil and Tn({ weave = { stage = "IN", legRemaining = 0.04 } }) == nil, "nothing to say -> nil")
+end
+
+-- The settings preview cycles the stages the client can show: TBC's coach
+-- stages, Forever's helper stages.
+Nock.Flavor = { forever = true }
+ok(Prev(0, 1.5) == "GO" and Prev(1.5, 1.5) == "WAIT" and Prev(3.0, 1.5) == "IN" and Prev(4.5, 1.5) == "STRIKE"
+   and Prev(6.0, 1.5) == "OUT" and Prev(7.5, 1.5) == "RELEASE" and Prev(9.0, 1.5) == "GO", "forever: GO WAIT IN STRIKE OUT RELEASE, then round again")
+Nock.Flavor = nil
+ok(Prev(1.5, 1.5) == "HOLD", "tbc: the coach cycle unchanged")
+
 print(("react_melee_cue: %d passed, %d failed"):format(pass, fail))
 if fail > 0 then os.exit(1) end

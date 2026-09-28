@@ -36,10 +36,46 @@ ok(View.PositionValid({ point = "CENTER", relPoint = "CENTER", x = 3000, y = 0 }
 ok(View.PositionValid({ point = "CENTER", relPoint = "CENTER", x = 0, y = -2000 }, 1920, 1080) == false, "off the bottom: default")
 ok(View.PositionValid({ point = "TOPLEFT" }, 1920, 1080) == false, "missing numbers: default")
 
+-- The default spot: centred in the right half of the screen, vertically
+-- centred (user 2026-09-28; it used to hug the right edge).
+local dock = View.DockPosition(1920, 1080)
+ok(dock.point == "CENTER" and dock.relPoint == "CENTER" and dock.x == 480 and dock.y == 0, "dock: the centre of the right half")
+ok(View.DockPosition(2560, 1440).x == 640, "dock scales with the screen width")
+ok(View.PositionValid(dock, 1920, 1080) == true, "the dock is a valid position")
+
 ok(View.PanelHeight(0) == 430, "empty body keeps the base height")
 ok(View.PanelHeight(260) == 430, "the base body fits in the base height")
 ok(View.PanelHeight(300) == 96 + 300 + 74, "taller content grows the window")
 ok(View.PanelHeight(2000) == 620, "the window never grows past 620")
+
+-- A card badge: `recommended` prints RECOMMENDED, `tag` prints its own word
+-- (the Forever weave card wears ADVANCED), neither hides the badge.
+do
+  local pages = {
+    { key = "c", kind = "cards", options = {
+      { value = "a", label = "A", tag = "Advanced", isSelected = function() return false end },
+      { value = "b", label = "B", recommended = true, isSelected = function() return true end },
+      { value = "c", label = "C", isSelected = function() return false end } } },
+  }
+  local E = { Pages = pages }
+  function E:CurrentPage() return pages[1], 1 end
+  function E:Progress() return 1, 1 end
+  function E:IsLastPage() return true end
+  function E:IsOptionLocked() return false end
+  function E:IsOptionOn() return true end
+  function E:OptionValue(opt) return nil end
+  function E:BuildRecap() return {} end
+  Nock.modules.Onboarding = E
+  Nock.db.profile = {}
+  Nock.OpenConfig = function() end
+  local okRun, err = pcall(function() View:Show(); View:Render() end)
+  ok(okRun, "badge render: " .. tostring(err))
+  local cards = View.frame and View.frame.cards
+  ok(cards and cards[1].rec._text == "ADVANCED" and cards[1].rec._shown ~= false, "tag card: ADVANCED badge shown")
+  ok(cards and cards[2].rec._text == "RECOMMENDED" and cards[2].rec._shown ~= false, "recommended card: RECOMMENDED badge")
+  ok(cards and cards[3].rec._shown == false, "plain card: no badge")
+  View:Hide()
+end
 
 -- Render smoke: every page kind the Forever script uses draws without error,
 -- sliders show the engine's value, and a long page grows the window.

@@ -137,7 +137,6 @@ for _, p in ipairs({
   "hud.react.tabBars.reactShowBrackets", "hud.react.tabBars.reactShowClipTicks", "hud.react.tabBars.reactShowDelay",
   "hud.react.tabBars.reactShowGcdDivider", "hud.react.tabBars.reactShowNotation",
   "hud.react.tabSize.reactShowAutoShotCast",
-  "hud.react.tabSize.reactMeleeStageCue",
   "hud.react.tabSkin.reactColorTickSteady", "hud.react.tabSkin.reactTickSteadyWidth", "hud.react.tabSkin.reactTickMultiWidth",
   "hud.react.tabSkin.reactColorTickMulti", "hud.react.tabSkin.reactColorBracket", "hud.react.tabSkin.reactGcdDividerWidth",
   "general.grpCastBar", "general.grpSetup", "general.grpLook", "general.perfPanel",
@@ -145,6 +144,10 @@ for _, p in ipairs({
   ok(nodeAt(opts, p) == nil, p .. " gone")
 end
 for _, p in ipairs({
+  -- the weave helper (spec 2026-09-28) gives the takeover and the preview a feed
+  "hud.react.tabSize.reactMeleeStageCue", "hud.react.tabSize.stagePreview",
+  "hud.react.tabSize.weaveHelperEnabled", "hud.react.tabSize.weaveLegSeed", "hud.react.tabSize.weaveStartWindow", "hud.react.tabSize.reactShowWeaveStrip",
+  "hud.react.tabSize.reactWeaveH", "hud.react.tabSize.weaveLegsReset",
   "hud.react.tabBars.reactDirAuto", "hud.react.tabBars.reactDirMelee",
   "hud.react.tabSize.reactShowAutoBar", "hud.react.tabSize.reactShowMeleeBar", "hud.react.tabSize.reactShowManaBar",
   "hud.react.tabSize.reactScale", "hud.react.tabSize.reactWidth", "hud.react.tabSize.order_up_1",

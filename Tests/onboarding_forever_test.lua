@@ -53,7 +53,26 @@ local O = Nock.Onboarding
 
 local keys = {}
 for i, pg in ipairs(O.Pages) do keys[i] = pg.key end
-ok(table.concat(keys, ",") == "start,welcome,hud,range,corners,warnings,cues,ring,qol,done", "page order, got " .. table.concat(keys, ","))
+ok(table.concat(keys, ",") == "start,welcome,hud,range,weave,corners,warnings,cues,ring,qol,done", "page order, got " .. table.concat(keys, ","))
+
+-- The weave page: weave (recommended) switches the helper and its strip on,
+-- turret switches the helper off; the choice reads back from the profile.
+local wpg
+for _, pg in ipairs(O.Pages) do if pg.key == "weave" then wpg = pg end end
+ok(wpg and wpg.kind == "cards" and #wpg.options == 2 and wpg.options[1].value == "turret" and wpg.options[1].recommended ~= true
+   and wpg.options[2].value == "weave" and wpg.options[2].tag == "Advanced" and wpg.options[2].recommended ~= true,
+   "weave page: turret first, weave second tagged Advanced, neither recommended (the default is turret)")
+ok(D.weaveHelperEnabled == false, "Forever default: helper off (turret)")
+do
+  local p = { weaveHelperEnabled = true, reactShowWeaveStrip = true, reactMeleeStageCue = true, reactShowMeleeBar = true }
+  ok(wpg.options[2].isSelected(p) == true and wpg.options[1].isSelected(p) == false, "helper on reads as weave")
+  wpg.options[1].apply(p)
+  ok(p.weaveHelperEnabled == false and wpg.options[1].isSelected(p) == true and wpg.options[2].isSelected(p) == false, "turret: helper off")
+  p.reactShowWeaveStrip, p.reactMeleeStageCue, p.reactShowMeleeBar = false, false, false
+  wpg.options[2].apply(p)
+  ok(p.weaveHelperEnabled == true and p.reactShowWeaveStrip == true and p.reactMeleeStageCue == true and p.reactShowMeleeBar == true,
+     "weave: helper, strip, melee-bar words and the melee bar all on")
+end
 
 -- Every reveal key is a nudge key a Camelot-listed file registers.
 local camelotSrc = ""
@@ -127,6 +146,10 @@ ok(Nock.db.profile.aspectRingKey == "SHIFT-R" and sent[2] == "NOCK_ASPECT_RING_C
 local recap = O:BuildRecap()
 ok(#recap >= 5 and #recap <= 6, "recap fits the finish page (5-6 rows)")
 ok(recap[5][2] == "SHIFT-R", "recap names the ring key")
+ok(recap[6] and recap[6][1] == "Weaving" and recap[6][2] == "turret", "recap: turret (the Forever default)")
+Nock.db.profile.weaveHelperEnabled = true
+ok(O:BuildRecap()[6][2] == "helper on", "recap: helper on when chosen")
+Nock.db.profile.weaveHelperEnabled = false
 
 -- First run stamps seenVersion as the wizard opens.
 O:Close()

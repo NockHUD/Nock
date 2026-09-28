@@ -2,6 +2,12 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
+## Unreleased
+
+### WoW Forever (beta)
+
+- **Weave helper**: coaching for a Raptor Strike weave through the wide dead zone. After each Auto Shot the melee bar says GO IN (or WAIT with a countdown when the white swing would not be ready on arrival), the leg countdown runs while you cross, STRIKE in melee, BACK OUT after the hit, RELEASE as you re-enter range with the shot ready. Under the melee bar a new weave strip: the Auto Shot icon with the swing as a swipe, a glide bar that crosses the dead zone at your measured pace, the Raptor Strike icon with its cooldown. Nock measures how long your crossings take from the range ladder's edges (no speed, no distance) and remembers them per character. Off by default: the setup wizard's new **How do you play?** step turns it on (I weave / I stand and shoot), or Nock HUD → Size & Elements → Weave helper, where the start window and the leg seed live too; `/nock probe weave` for the diagnostic.
+
 ## 2.0.7
 
 ### WoW Forever (beta)

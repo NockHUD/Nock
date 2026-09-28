@@ -101,5 +101,20 @@ ok(eq(F({ "mana", "auto" }), { "mana", "swing", "ranged", "melee", "range" }),
    "fluffy: React's keys are unknown here; missing bars append in built-in order")
 ok(eq(R({ "swing" }), BUILTIN), "react: Fluffy's keys are unknown there")
 
+--------------------------------------------------------------------------------
+-- Forever: the weave strip is a fifth row between the melee bar and the
+-- range row; TBC never sees the key.
+--------------------------------------------------------------------------------
+Nock.Flavor = { forever = true }
+local FBUILT = { "auto", "melee", "weave", "range", "mana" }
+ok(eq(R(false), FBUILT), "forever: the built-in order carries the weave row")
+ok(eq(R({ "mana", "weave" }), { "mana", "weave", "auto", "melee", "range" }), "forever: weave is a known key")
+ok(eq(R({ "auto", "melee", "range", "mana" }), { "auto", "melee", "weave", "range", "mana" }), "forever: an old four-bar order gets the weave row under the melee bar")
+ok(eq(R({ "range", "mana", "auto", "melee" }), { "range", "mana", "auto", "melee", "weave" }), "forever: with the melee bar last, the weave row follows it")
+ok(eq(R({ "range", "mana" }), { "range", "mana", "auto", "melee", "weave" }), "forever: a partial order without the melee bar still places the weave row after it")
+Nock.Flavor = { forever = false }
+ok(eq(R(false), BUILTIN) and eq(R({ "weave", "mana" }), { "mana", "auto", "melee", "range" }), "tbc: weave is unknown, order unchanged")
+Nock.Flavor = nil
+
 print(string.format("react_order: %d passed, %d failed", pass, fail))
 if fail > 0 then os.exit(1) end

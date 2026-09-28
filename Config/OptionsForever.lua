@@ -41,10 +41,10 @@ F.DROP = {
   -- finding-ladder style, which has no feed on Forever (the three-zone
   -- finder needs no setting); the range bar's own rows live in Size & Skin.
   "hud.react.tabBuff", "hud.react.tabRange",
-  -- Size & Elements: Auto Shot wind-up (no feed), weave stage, mana tick
-  -- (M3a Task 5). The corners and the range bar came back with M3a.
+  -- Size & Elements: Auto Shot wind-up (no feed). The corners and the range
+  -- bar came back with M3a; the melee-bar takeover and its preview with the
+  -- weave helper (spec 2026-09-28).
   "hud.react.tabSize.reactShowAutoShotCast",
-  "hud.react.tabSize.reactMeleeStageCue", "hud.react.tabSize.stagePre*",
   -- Skin: the Steady/Multi clip ticks (no clip model, and neither spell is
   -- in the game yet), brackets and the GCD divider go; the wind-up pair
   -- stays as the spell-queue mark (renamed below).

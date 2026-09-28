@@ -12,7 +12,7 @@ local HEADER_FONT = "Numen"
 
 local PANEL_W     = 470
 local PANEL_H     = 430
-local DOCK        = { point = "RIGHT", relPoint = "RIGHT", x = -24, y = 0 }
+local DOCK        = { point = "CENTER", relPoint = "CENTER", x = 480, y = 0 }   -- re-derived by View.DockPosition
 local OUTER       = 16
 local BODY_TOP    = 96      -- below eyebrow + title + blurb
 local BODY_BOTTOM = 74      -- above the footer
@@ -92,12 +92,19 @@ function View.PanelHeight(contentH)
   return h
 end
 
+-- The default spot: the centre of the screen's right half, vertically
+-- centred (user 2026-09-28; the old dock hugged the right edge). Pure.
+function View.DockPosition(screenW, screenH)
+  DOCK.point, DOCK.relPoint, DOCK.x, DOCK.y = "CENTER", "CENTER", (screenW or 1920) / 4, 0
+  return DOCK
+end
+
 local function savedPosition()
   local ch = Nock.db and Nock.db.char
   local pos = ch and ch.wizardPosition
   local w = UIParent and UIParent.GetWidth and UIParent:GetWidth() or 1920
   local h = UIParent and UIParent.GetHeight and UIParent:GetHeight() or 1080
-  return View.PositionValid(pos, w, h) and pos or DOCK
+  return View.PositionValid(pos, w, h) and pos or View.DockPosition(w, h)
 end
 
 function View:EnsureFrame()
@@ -432,7 +439,19 @@ function View:RenderCards(page)
     card.icon:SetTexture(opt.icon and opt.icon() or nil)
     card.label:SetText(opt.label)
     card.desc:SetText(opt.desc or "")
-    card.rec:SetShown(opt.recommended == true)
+    -- One badge: RECOMMENDED in green, or the card's own `tag` (the Forever
+    -- weave card wears ADVANCED) in the dim ink; nothing for a plain card.
+    if opt.recommended == true then
+      card.rec:SetText("RECOMMENDED")
+      card.rec:SetTextColor(COL_REC[1], COL_REC[2], COL_REC[3])
+      card.rec:Show()
+    elseif type(opt.tag) == "string" and opt.tag ~= "" then
+      card.rec:SetText(opt.tag:upper())
+      card.rec:SetTextColor(COL_DIM[1], COL_DIM[2], COL_DIM[3])
+      card.rec:Show()
+    else
+      card.rec:Hide()
+    end
 
     local selected = opt.isSelected and opt.isSelected(p) or false
     card._selected = selected

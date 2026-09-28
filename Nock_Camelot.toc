@@ -68,6 +68,8 @@ Forever\Snapshot.lua
 Forever\SwingTimer.lua
 Forever\RangeLadder.lua
 Forever\RangeFinder.lua
+Forever\WeaveEngine.lua
+Forever\WeaveHelper.lua
 Forever\CastBar.lua
 Forever\Auras.lua
 Forever\Buffs.lua
@@ -87,6 +89,7 @@ Modules\Onboarding.lua
 Forever\OnboardingPages.lua
 
 UI\ReactRangeLadder.lua
+UI\ReactWeaveStrip.lua
 UI\Frame_ReactCluster.lua
 UI\Frame_ReactCastBar.lua
 UI\Frame_ReactCooldowns.lua

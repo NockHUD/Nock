@@ -4,6 +4,7 @@
 -- Run from the repo root: luajit Tests/forever_defaults_test.lua
 local pass, fail = 0, 0
 local function ok(c, n) if c then pass = pass + 1 else fail = fail + 1; print("FAIL: " .. n) end end
+local function near(a, b) return type(a) == "number" and math.abs(a - b) < 1e-6 end
 local function load(forever)
   local Nock = { Flavor = { forever = forever }, Constants = setmetatable({}, { __index = function(t, k) local v = {}; rawset(t, k, v); return v end }) }
   _G.LibStub = function() return { GetAddon = function() return Nock end } end
@@ -28,5 +29,11 @@ ok(fv.cueDeadZoneGate == "raid" and fv.cueMeleeGate == "raid" and fv.cueInRangeG
 ok(fv.reactCdFontSize == 14 and tbc.reactCdFontSize == 10, "Forever: cooldown grid text at 14; TBC the reference 10")
 ok(tbc.reactBarTexture == "" and tbc.reactFontSize == 9 and tbc.reactFontShadow == false and tbc.reactMeleeH == 12 and tbc.reactRangeH == 12 and tbc.reactCastH == 16 and tbc.reactShowAspectIcon == false and tbc.reactShowMarkIcon == false, "TBC: the reference skin untouched")
 ok(fv.warnPetDeadEnabled == true and fv.warnPetMissingEnabled == true and fv.warnPetUnhappyEnabled == true and fv.warnNotAttackingEnabled == true and fv.warnNotInRangeEnabled == true, "Forever warning toggles default on")
+-- Forever weave helper (spec 2026-09-28): on by default with the strip, the
+-- melee-bar takeover on (it carries the stage words), seed 1.1 s, strip 18 px.
+ok(fv.weaveHelperEnabled == false and fv.reactShowWeaveStrip == true and near(fv.weaveLegSeed, 1.1) and fv.reactWeaveH == 18, "Forever: weave helper OFF by default (the wizard's Advanced card turns it on), strip on with it, seed 1.1, height 18")
+ok(near(fv.weaveStartWindow, 0.75), "Forever: start window 0.75 s")
+ok(fv.reactMeleeStageCue == true and tbc.reactMeleeStageCue == false, "Forever: the melee-bar takeover on; TBC keeps it opt-in")
+ok(tbc.weaveHelperEnabled == false and tbc.reactWeaveH == 18, "TBC carries the keys unused (one profile shape)")
 print(("forever_defaults: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

@@ -174,6 +174,12 @@ ok(C.notInRange(with({ zone = "LONG", inCombat = false, now = 340 })) == nil and
 Nock.db.profile.warnNotInRangeEnabled = false
 ok(C.notInRange(with({ zone = "LONG", now = 400 })) == nil and C.notInRange(with({ zone = "LONG", now = 410 })) == nil, "disabled: quiet")
 Nock.db.profile.warnNotInRangeEnabled = nil
+-- Weave helper (Forever/WeaveHelper.lua): an intentional crossing (stage
+-- IN or OUT) is not a range fault, however long it takes.
+ok(C.notInRange(with({ zone = "CLOSE", now = 500, weaveStage = "IN" })) == nil and C.notInRange(with({ zone = "CLOSE", now = 503, weaveStage = "IN" })) == nil, "shooting, dead zone, stage IN: quiet past the grace")
+ok(C.notInRange(with({ zone = "CLOSE", now = 505, weaveStage = "OUT" })) == nil, "stage OUT: quiet")
+ok(C.notInRange(with({ zone = "CLOSE", now = 510, weaveStage = nil })) == nil and C.notInRange(with({ zone = "CLOSE", now = 512, weaveStage = nil })) ~= nil, "no stage after a leg: the grace restarts, then DEAD ZONE")
+ok(C.notInRange(with({ zone = "CLOSE", now = 514, weaveStage = "GO" })) ~= nil, "GO with the zone reading dead: warns as before (only a running leg is quiet)")
 
 -- Pet not attacking: in combat with a living pet that has no target, past
 -- a grace (the order lands a beat after the pull). Same key as TBC.

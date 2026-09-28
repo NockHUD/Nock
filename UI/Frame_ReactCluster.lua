@@ -23,6 +23,7 @@ local REACT = {
   MELEE_H = 12,
   RANGE_H = 12,
   MANA_H  = 12,
+  WEAVE_H = 18,  -- Forever weave strip (icons square at this height)
   GAP     = -1,  -- bars overlap their 1px borders → one shared black seam (clamped, reference look)
   FONT_BIG   = 9,    -- auto-bar texts
   FONT_SMALL = 9,    -- melee / range / mana texts
@@ -247,6 +248,9 @@ function ReactCluster:OnInitialize()
   stageF:SetAllPoints(cue)
   stageF:SetFrameLevel(cue:GetFrameLevel() + 2)
   melee.stageText = makeText(stageF, REACT.FONT_STAGE, "CENTER")
+  -- Forever weave helper: the leg countdown / WAIT countdown, right-aligned
+  -- on the stage frame (above the runs). Empty on TBC (Nock.UI.StageLegText).
+  melee.legText = makeText(stageF, REACT.FONT_SMALL, "RIGHT", -3)
   cue:Hide()
   melee.cue = cue
   self.melee = melee
@@ -299,6 +303,15 @@ function ReactCluster:OnInitialize()
       makeText = makeText, bg = REACT.BAR_BG, border = REACT.BORDER, fontSize = REACT.FONT_SMALL,
     })
     self.ladder:Hide()
+  end
+  -- Forever weave strip (UI/ReactWeaveStrip.lua, spec 2026-09-28): its own
+  -- row under the melee bar; the helper module feeds state.weave.
+  if Nock.Flavor and Nock.Flavor.forever and Nock.UI.WeaveStrip then
+    self.weave = Nock.UI.WeaveStrip.Create(container, {
+      makeText = makeText, bg = REACT.BAR_BG, border = REACT.BORDER, fontSize = REACT.FONT_SMALL,
+    })
+    self.weave:Hide()
+    self._weaveLook = {}
   end
 
   -- Mana bar: thin fill + centered percent.
@@ -384,6 +397,11 @@ function ReactCluster:Geometry()
   local ladderLabels = p.reactRangeLabels ~= false
   local hLadder = showLadder and h.range or 0
   local showRangeBar = show.range and not forever
+  -- The weave strip: Forever, the helper on (its own switch and the strip's).
+  local WH = forever and Nock:GetModule("WeaveHelper", true) or nil
+  local showWeave = (self.weave ~= nil and WH ~= nil and WH.Enabled(p) and p.reactShowWeaveStrip ~= false) and true or false
+  show.weave = showWeave
+  h.weave = skinNum("reactWeaveH", REACT.WEAVE_H)
 
   local order = Nock.UI.ResolveReactBarOrder(p.reactBarOrder)
   local ys = {}
@@ -414,6 +432,7 @@ function ReactCluster:Geometry()
     yAuto = ys.auto, yMelee = ys.melee, yRange = ys.range, yMana = ys.mana, yStrip = ys.strip,
     hAuto = h.auto, hMelee = h.melee, hRange = h.range, hMana = h.mana, hStrip = hStrip,
     showLadder = showLadder, yLadder = ys.ladder, hLadder = hLadder, ladderLabels = ladderLabels,
+    showWeave = showWeave, yWeave = ys.weave, hWeave = h.weave,
     total = math.max(y, 1),
   }
 end
@@ -513,6 +532,10 @@ function ReactCluster:ApplyLayout()
     placeBar(self.ladder, g.yLadder or 0, math.max(1, g.hLadder), g.showLadder)
     self._ladderGeo = { w = w, hBar = Nock.UI.DeviceRound(math.max(1, g.hLadder), dev), labels = g.ladderLabels, dev = dev, e = e }
     self._ladderRev = nil
+  end
+  if self.weave then
+    placeBar(self.weave, g.yWeave or 0, math.max(1, g.hWeave), g.showWeave)
+    Nock.UI.WeaveStrip.Layout(self.weave, w, Nock.UI.DeviceRound(math.max(1, g.hWeave), dev), dev, e)
   end
 
   self._halfW  = innerW / 2
@@ -676,6 +699,7 @@ function ReactCluster:ApplyLayout()
   self._lastNotation  = nil
   self._lastMeleeP    = nil
   self._lastMeleeText = nil
+  self._lastLegText   = nil
   self._lastMeleeColor = nil
   self._lastStage     = nil   -- re-arms the takeover (runs rebuilt above)
   self._lastRatio     = nil
@@ -1080,6 +1104,8 @@ function ReactCluster:RefreshMelee(state)
       cue:Show()
     else
       cue:Hide()
+      if melee.legText then melee.legText:SetText("") end
+      self._lastLegText = nil
       self._flashAt = nil
     end
   end
@@ -1103,6 +1129,12 @@ function ReactCluster:RefreshMelee(state)
     if self._lastMeleeText ~= "" then
       melee.text:SetText("")
       self._lastMeleeText = ""
+    end
+    -- Diffed on whole tenths: the string is only built when the digit moves.
+    local tenths = Nock.UI.StageLegTenths(state)
+    if tenths ~= self._lastLegText and melee.legText then
+      melee.legText:SetText(Nock.UI.StageLegText(state))
+      self._lastLegText = tenths
     end
     -- The runs slide every tick: left half toward/away from the centre per
     -- the stage, right half the mirror.
@@ -1315,6 +1347,12 @@ function ReactCluster:RefreshLadder(state)
   Nock.UI.RangeLadder.Paint(self.ladder, t.ladderKey, t.ladderShoot)
 end
 
+-- Forever weave strip: the pure look from state, painted diffed.
+function ReactCluster:RefreshWeave(state)
+  local look = Nock.UI.WeaveStrip.Look(state, GetTime(), self._weaveLook)
+  Nock.UI.WeaveStrip.Paint(self.weave, look, state)
+end
+
 function ReactCluster:PercentCurve()
   if self._pctCurve ~= nil then return self._pctCurve or nil end
   local CU, E = _G.C_CurveUtil, _G.Enum and _G.Enum.LuaCurveType
@@ -1427,5 +1465,6 @@ function ReactCluster:Refresh(state)
   if self.range:IsShown() then self:RefreshRange(state) end
   if self.strip:IsShown() then self:RefreshStrip(state) end
   if self.ladder and self.ladder:IsShown() then self:RefreshLadder(state) end
+  if self.weave and self.weave:IsShown() then self:RefreshWeave(state) end
   if self.mana:IsShown()  then self:RefreshMana(state)  end
 end

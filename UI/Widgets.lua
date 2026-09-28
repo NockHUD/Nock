@@ -1639,9 +1639,34 @@ local function orderSet(order)
   return set
 end
 
-local REACT_BAR_ORDER = { "auto", "melee", "range", "mana" }
-local REACT_BAR_SET   = orderSet(REACT_BAR_ORDER)
+local REACT_BAR_ORDER   = { "auto", "melee", "range", "mana" }
+local REACT_BAR_SET     = orderSet(REACT_BAR_ORDER)
+-- Forever: the weave strip (UI/ReactWeaveStrip.lua) is its own row under the
+-- melee bar. TBC never sees the key (an old profile's order appends it).
+local REACT_BAR_ORDER_F = { "auto", "melee", "weave", "range", "mana" }
+local REACT_BAR_SET_F   = orderSet(REACT_BAR_ORDER_F)
 function Nock.UI.ResolveReactBarOrder(stored)
+  if Nock.Flavor and Nock.Flavor.forever then
+    local out = resolveBarOrder(stored, REACT_BAR_ORDER_F, REACT_BAR_SET_F)
+    -- A stored order from before the weave row would append it at the
+    -- bottom; the row belongs under the melee bar until the user moves it.
+    if type(stored) == "table" then
+      local hasWeave = false
+      for i = 1, #stored do if stored[i] == "weave" then hasWeave = true end end
+      if not hasWeave and out ~= REACT_BAR_ORDER_F then
+        local wi, mi
+        for i = 1, #out do
+          if out[i] == "weave" then wi = i elseif out[i] == "melee" then mi = i end
+        end
+        if wi and mi and wi ~= mi + 1 then
+          table.remove(out, wi)
+          if wi < mi then mi = mi - 1 end
+          table.insert(out, mi + 1, "weave")
+        end
+      end
+    end
+    return out
+  end
   return resolveBarOrder(stored, REACT_BAR_ORDER, REACT_BAR_SET)
 end
 
@@ -2131,7 +2156,14 @@ local REACT_STAGE_LOOK = {
   HOLD    = { text = "HOLD",     fill = { 1.00, 0.70, 0.00, 1.00 }, march =  0 },
   STRUCK  = { text = "BACK OUT", fill = { 0.40, 0.70, 1.00, 1.00 }, march = -1 },
   RELEASE = { text = "RELEASE",  fill = { 0.20, 0.90, 0.30, 1.00 }, march =  0, flash = true },
+  -- Forever weave helper (Forever/WeaveEngine.lua): WAIT = the white swing
+  -- will not be ready on arrival, hold at range; STRIKE = in melee, Raptor
+  -- queued. IN and OUT are the running legs and wear GO's and STRUCK's looks.
+  WAIT    = { text = "WAIT",     fill = { 1.00, 0.72, 0.10, 1.00 }, march =  0 },
+  STRIKE  = { text = "STRIKE",   fill = { 1.00, 0.35, 0.29, 1.00 }, march =  0 },
 }
+REACT_STAGE_LOOK.IN  = REACT_STAGE_LOOK.GO
+REACT_STAGE_LOOK.OUT = REACT_STAGE_LOOK.STRUCK
 
 -- React position strip (experimental, UI/Frame_ReactCluster.lua): the two
 -- segments under the range bar read the probes the finder still knows while
@@ -2164,6 +2196,35 @@ function Nock.UI.ReactStageLook(stage)
   return stage and REACT_STAGE_LOOK[stage] or nil
 end
 
+-- The melee bar's right text during a Forever weave stage: WAIT counts down
+-- to GO, a running leg shows its seconds left, GO shows the learned leg in.
+-- Pure; one decimal; "" when there is nothing to say (TBC stages included).
+local function stageLegValue(state)
+  local w = state and state.weave
+  if not w then return nil end
+  local s, v = w.stage, nil
+  if s == "WAIT" then v = w.waitFor
+  elseif s == "IN" or s == "OUT" then v = w.legRemaining
+  elseif s == "GO" then v = w.legIn end
+  if type(v) ~= "number" or v <= 0.05 then return nil end
+  return v
+end
+
+function Nock.UI.StageLegText(state)
+  local v = stageLegValue(state)
+  if not v then return "" end
+  return string.format("%.1fs", v)
+end
+
+-- The same number in whole tenths (nil = nothing to say): the melee bar
+-- diffs on this and formats only when the digit changes (no string work on
+-- the tick while the value holds).
+function Nock.UI.StageLegTenths(state)
+  local v = stageLegValue(state)
+  if not v then return nil end
+  return math.floor(v * 10 + 0.5)
+end
+
 -- LEFT-anchor x offset of a glyph run that repeats every `pitch` units and
 -- slides one pitch per `period` seconds. dir 1 slides right (-pitch -> 0),
 -- dir -1 slides left (0 -> -pitch); the wrap is seamless because the run is
@@ -2181,12 +2242,15 @@ end
 -- Settings preview (SESSION-ONLY, Nock.UI.stagePreview, never a profile key):
 -- cycles the four stages so the takeover and the Raptor glow can be styled
 -- without a fight. One stage per `period` seconds, in coach order.
-local PREVIEW_STAGES = { "GO", "HOLD", "STRUCK", "RELEASE" }
+local PREVIEW_STAGES   = { "GO", "HOLD", "STRUCK", "RELEASE" }
+-- Forever: the weave helper's stages (Forever/WeaveEngine.lua), in loop order.
+local PREVIEW_STAGES_F = { "GO", "WAIT", "IN", "STRIKE", "OUT", "RELEASE" }
 function Nock.UI.PreviewStage(now, period)
+  local list = (Nock.Flavor and Nock.Flavor.forever) and PREVIEW_STAGES_F or PREVIEW_STAGES
   period = period or 1.5
-  if period <= 0 then return PREVIEW_STAGES[1] end
-  local i = math.floor(now / period) % #PREVIEW_STAGES
-  return PREVIEW_STAGES[i + 1]
+  if period <= 0 then return list[1] end
+  local i = math.floor(now / period) % #list
+  return list[i + 1]
 end
 
 -- THE stage every React consumer reads (melee takeover, Raptor glow): the

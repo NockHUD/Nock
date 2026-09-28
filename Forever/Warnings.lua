@@ -111,6 +111,8 @@ end
 local farSince
 function Checks.notInRange(reads)
   local text
+  -- A weave leg is an intentional crossing of the dead zone (Forever/WeaveHelper.lua).
+  if reads.weaveStage == "IN" or reads.weaveStage == "OUT" then farSince = nil; return nil end
   if isEnabled("warnNotInRangeEnabled") and reads.inCombat == true and reads.targetHostile == true then
     if reads.rangedOn == true then
       text = RANGED_MISSES[reads.zone]
@@ -180,6 +182,7 @@ function Warnings:Reads(state)
   local t = state.target
   r.targetHostile = t and t.exists == true and t.alive == true and t.friendly == false
   r.zone = t and t.rangeState or nil
+  r.weaveStage = state.weave and state.weave.stage or nil
   r.inInstance = self:InInstance()
   r.growlAutocast = nil
   if r.inInstance and r.petExists then r.growlAutocast = self:GrowlAutocast() end
