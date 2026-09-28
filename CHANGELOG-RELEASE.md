@@ -1,7 +1,6 @@
-## 2.0.6
+## 2.0.7
 
 ### WoW Forever (beta)
 
-- **Pet happiness lamps**: Nock HUD → Size & Elements → **Pet happiness lamps** puts three small lamps under the cooldown grid: green while your pet is Happy, amber when it's Content, red and pulsing when it's Unhappy, with FEED NOW under them and the Feed Pet timer while it eats. Hidden with no pet, a dead pet or Lone Wolf. Off by default.
-- **Cooldowns you only use in combat**: a spell you added to the grid yourself that can only be cast in combat (Disengage, Mongoose Bite) showed just a swirl, with no number and no grey, because Nock never got to read its cooldown out of combat. Now the tile counts down from the first cast, and Nock learns the length for next time. A cooldown that ends early (a reset) now also ends on the tile right away.
-- **Mongoose Bite and Counterattack glow**: when a dodge or a parry makes them usable, their tile always lights with the action-button glow, whatever glow style you picked for active tiles.
+- **Cooldown grid picker**: build the cooldown grid without typing spell IDs. Nock HUD → Cooldown Grid now shows a catalog of every cooldown your character has (spells, talents and your own racials, read from the spellbook and talent tree; untrained and untaken ones greyed with when they unlock), one-click packs (Leveling, BM raid, MM raid, Survival, Minimal, Everything I know, with undo), and drag-to-reorder for the two rows. A search field finds anything by name or ID and can add a spell outside the catalog as a custom tile. Spells that share a cooldown (Arcane Shot / Summon Hawk / Hydra Shot, Multi-Shot / Aimed Shot) each get a tile plus a combined one. On the HUD, unlock frames and turn on **Edit tiles** to drag tiles, add one with "+" or move/remove one from its menu; editing ends when combat starts.
+- **Eating / drinking pill**: the centre-screen pill from TBC now runs on Forever too: the food or drink icon, EATING / DRINKING and the seconds left while you sit, and WELL FED in green when the buff lands. Settings under Alerts → **Eating pill** (on/off, chime, size, reset position); move it like any other frame while unlocked.
