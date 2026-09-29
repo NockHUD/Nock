@@ -6344,7 +6344,7 @@ local function buildOptionsTable()
     }
     sizeArgs.weaveLegSeed = {
       type = "range", name = "Leg seed", order = 22.32, min = 0.5, max = 3.0, step = 0.05,
-      desc = "Crossing time until Nock has measured yours.\nSeconds one crossing of the dead zone takes, used for the countdown and the glide until Nock has timed your own crossings. Each leg (in, out) is replaced by its first real crossing on this character, then refined by every crossing after it. Forget learned legs starts over from this value.",
+      desc = "Run time until Nock has measured yours.\nSeconds one run from your resting spot to melee takes, used for the countdown and the glide until Nock has timed your own runs. Each leg (in, out) is replaced by its first real run on this character, then refined by every run after it. Forget learned legs starts over from this value.",
       hidden = notForever,
       disabled = function() return notReact() or Nock.db.profile.weaveHelperEnabled == false end,
       get = function() return tonumber(Nock.db.profile.weaveLegSeed) or 1.1 end,

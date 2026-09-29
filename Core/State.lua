@@ -200,6 +200,7 @@ Nock.state = {
     -- Forever Range Finder ladder (Forever/RangeLadder.lua, Forever/RangeFinder.lua)
     ladderKey    = nil,   -- the segment the target is in | nil (no live hostile target)
     ladderShoot  = false, -- Auto Shot reaches the target (settled with ladderKey)
+    ladderRest   = nil,   -- inside item 9606 and able to shoot (the weave rest band); nil = not known
     ladderLayout = nil,   -- the segment list the Range Finder draws
     ladderRev    = 0,     -- moves whenever ladderLayout is rebuilt (spell / talent change)
     huntersMark = nil,  -- { name, spellId, icon, remaining, duration, fromPlayer,
@@ -256,6 +257,12 @@ Nock.state = {
     waitFor      = nil,
     glide        = 0,
     releaseAt    = nil,
+    -- 2026-09-29: the glide runs on movement-key intent (WeaveHelper.Radial,
+    -- + toward the target in the character's frame), face = 1 facing the
+    -- anchor / -1 turned away, overshot = backed past the rest band's outer edge.
+    radial       = 0,
+    face         = 1,
+    overshot     = false,
   },
   -- "Shot Bars" scrolling timeline (Fluffy-style). Written by ShotPredictor,
   -- read by the ShotBars view. Arrays are reused in place (no per-tick alloc):

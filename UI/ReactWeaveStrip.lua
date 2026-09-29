@@ -13,6 +13,7 @@ WS.COLORS = {
   ranged  = { 0.11, 0.70, 0.67, 1 },   -- in range (the ladder's teal)
   off     = { 0.16, 0.16, 0.16, 1 },   -- no target
   stale   = { 1.00, 0.58, 0.10, 1 },   -- the leg ran past its estimate (the TBC RESYNC orange)
+  overshot = { 1.00, 0.72, 0.20, 1 },  -- backed out past the rest band (item 9606)
   go      = { 0.20, 0.90, 0.30, 1 },
   wait    = { 1.00, 0.72, 0.10, 1 },
   strike  = { 1.00, 0.35, 0.29, 1 },
@@ -48,6 +49,7 @@ function WS.Look(state, now, out)
   if zone == "MELEE" then out.fillKey = "melee" elseif zone == "SWEET" then out.fillKey = "ranged" else out.fillKey = "dead" end
   out.label = WS.LABELS[zone] or ""
   if w and w.legStale then out.borderKey = "stale"
+  elseif w and w.overshot then out.borderKey = "overshot"
   else out.borderKey = STAGE_BORDER[stage] or "border" end
   out.asGlow = stage == "RELEASE"
   out.rsGlow = stage == "STRIKE"

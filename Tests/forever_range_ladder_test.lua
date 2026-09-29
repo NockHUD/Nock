@@ -142,5 +142,10 @@ ok(L.Zone(nil, false) == nil and select(2, L.Zone(nil, false)) == -1, "no segmen
 ok(L.SegColor(base[8], true) == L.COLORS.purple and L.SegColor(base[8], false) == L.COLORS.red, "35-40 purple / red")
 ok(L.SegColor(base[4], false) == L.COLORS.teal, "other segments keep their colour")
 
+-- The weave rest band (2026-09-29 probe: item 9606 flips ~10 yd, 2.3 yd past
+-- the shoot edge): inside it and able to shoot; nil while 9606 has not answered.
+ok(L.Rest(true, true) == true and L.Rest(true, false) == false and L.Rest(false, true) == false, "Rest: shoot and 9606 in range")
+ok(L.Rest(true, nil) == nil and L.Rest(false, nil) == nil, "Rest with i9606 nil is nil")
+
 print(("forever_range_ladder: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

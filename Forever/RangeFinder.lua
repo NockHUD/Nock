@@ -2,8 +2,9 @@
 -- The Forever range finder: reads the range checks that stay plain in combat and publishes the ladder segment and zone.
 
 -- Checks (probe 2026-09-24): Wing Clip = melee reach; items 8149 (~7 yd,
--- melee fallback), 10645 (~20), 13289 (~25), 7734 (~30), 18904 (~35), 4945
--- (~40); CheckInteractDistance 4 (~28); Auto Shot = can shoot. The segment
+-- melee fallback), 9606 (~10, the weave rest band; probe 2026-09-29), 10645
+-- (~20), 13289 (~25), 7734 (~30), 18904 (~35), 4945 (~40);
+-- CheckInteractDistance 4 (~28); Auto Shot = can shoot. The segment
 -- logic lives in Forever/RangeLadder.lua; this file only reads and publishes.
 -- IsSpellInRange on Raptor Strike answers true everywhere here and the
 -- C_SwingTimer range signal never fires, so neither is used.
@@ -15,7 +16,7 @@ RangeFinder.refreshInterval = 0.1
 
 local WING_CLIP = 2974
 -- item checks by reading-table field (Forever/RangeLadder.lua Resolve)
-local ITEMS = { i8149 = 8149, i10645 = 10645, i13289 = 13289, i7734 = 7734, i18904 = 18904, i4945 = 4945 }
+local ITEMS = { i8149 = 8149, i9606 = 9606, i10645 = 10645, i13289 = 13289, i7734 = 7734, i18904 = 18904, i4945 = 4945 }
 local R = {}          -- one set of readings, reused every refresh
 
 -- Pure. The zone from the three first-generation probes (melee, can shoot,
@@ -187,6 +188,8 @@ function RangeFinder:Refresh(state)
   t.ladderKey, t.ladderShoot = key, shoot
   local zone, prog = Nock.RangeLadder.Zone(key, shoot)
   t.rangeState, t.rangeProg = zone, prog
+  -- The weave rest band, from the raw 9606 reading and the settled shoot flag.
+  if live then t.ladderRest = Nock.RangeLadder.Rest(shoot, R.i9606) else t.ladderRest = nil end
   t.rangeBracket, t.rangeEstimateStale = nil, false
   t.inMelee = zone == "MELEE"
   if zone == "MELEE" then t.rangeZone = "TOO_CLOSE"

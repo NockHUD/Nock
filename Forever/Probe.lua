@@ -477,9 +477,9 @@ end
 -- from the reference WA), then other LibRangeCheck candidates, the four
 -- interact distances, and the hunter's spells. Throwaway evidence tooling.
 local RANGE_ITEMS = {
-  { 8149, "~5 melee" }, { 34368, "~8" }, { 32321, "~10" }, { 33069, "~15" },
-  { 10645, "~20" }, { 24268, "~25" }, { 13289, "~25" }, { 835, "~30" },
-  { 7734, "~30" }, { 18904, "~35" }, { 4945, "~40" }, { 28767, "~40" },
+  { 15826, "~5 salve" }, { 8149, "~5 melee" }, { 34368, "~8" }, { 9606, "~10 vessel" }, { 32321, "~10" },
+  { 4559, "~15 chu" }, { 33069, "~15" }, { 1191, "~20 marbles" }, { 10645, "~20" }, { 24268, "~25" },
+  { 13289, "~25" }, { 835, "~30" }, { 7734, "~30" }, { 18904, "~35" }, { 4945, "~40" }, { 28767, "~40" },
 }
 local RANGE_SPELLS = {
   { 75, "Auto Shot" }, { 2973, "Raptor Strike" }, { 2974, "Wing Clip" }, { 1495, "Mongoose Bite" },
@@ -573,6 +573,12 @@ function Probe:RangeRecord(rest)
   if not (T and T.NewTicker) then Nock:Print("No ticker on this client."); return end
   r = { t0 = GetTime(), rows = {}, last = nil, cur = {} }
   self._range = r
+  -- IsItemInRange answers only for items the client has loaded: a probe item
+  -- nobody carries reads "-" from a cold cache until it is requested.
+  local CI = _G.C_Item
+  if CI and CI.RequestLoadItemDataByID then
+    for _, it in ipairs(RANGE_ITEMS) do pcall(CI.RequestLoadItemDataByID, it[1]) end
+  end
   r.ticker = T.NewTicker(0.1, function()
     local cur = r.cur
     local okr, live = pcall(self.RangeReadings, self, cur)
@@ -588,6 +594,109 @@ function Probe:RangeRecord(rest)
     r.rows[#r.rows + 1] = ("  %7.2f  %s"):format(GetTime() - r.t0, key)
   end)
   Nock:Print("Range probe running. Walk slowly from melee straight out past 41 yd and back; /nock probe range mark <note> to mark a spot, /nock probe range again to stop and open the log.")
+end
+
+-- Movement-key spike (2026-09-29): does IsKeyDown answer in combat, and
+-- does W+S count as moving? The weave glide has no velocity on Forever
+-- (GetUnitSpeed secret); the bound movement keys would give it radial
+-- intent without rerouting anything. Throwaway evidence tooling.
+local KEY_ACTIONS = {
+  "MOVEFORWARD", "MOVEBACKWARD", "STRAFELEFT", "STRAFERIGHT", "TURNLEFT", "TURNRIGHT",
+  "MOVEANDSTEER", "TOGGLEAUTORUN",
+}
+local KEY_MOUSE = { "LeftButton", "RightButton" }
+local KEYS_MAX_ROWS = 600
+
+-- Pure: the column list, one per bound key of each action plus the mouse
+-- buttons. `bindingKey(action)` returns the bound keys (GetBindingKey).
+function Probe.KeysColumns(bindingKey)
+  local cols = {}
+  for _, action in ipairs(KEY_ACTIONS) do
+    local k1, k2 = bindingKey(action)
+    if k1 then cols[#cols + 1] = { key = k1, action = action } end
+    if k2 then cols[#cols + 1] = { key = k2, action = action } end
+    if not k1 and not k2 then cols[#cols + 1] = { key = nil, action = action } end
+  end
+  for _, b in ipairs(KEY_MOUSE) do cols[#cols + 1] = { key = b, action = "mouse" } end
+  return cols
+end
+
+function Probe:KeysReadings(cols, out)
+  local IKD, IMBD = _G.IsKeyDown, _G.IsMouseButtonDown
+  local n = 0
+  for _, c in ipairs(cols) do
+    n = n + 1
+    if not c.key then out[n] = "-"
+    elseif IKD then out[n] = rangeToken(pcall(IKD, c.key))
+    else out[n] = "E" end
+  end
+  -- the same forward key with excludeBindingState = true (meaning unknown)
+  local fwd = cols[1] and cols[1].key
+  n = n + 1
+  if fwd and IKD then out[n] = rangeToken(pcall(IKD, fwd, true)) else out[n] = "-" end
+  for _, b in ipairs(KEY_MOUSE) do
+    n = n + 1
+    if IMBD then out[n] = rangeToken(pcall(IMBD, b)) else out[n] = "E" end
+  end
+  n = n + 1
+  if _G.IsPlayerMoving then out[n] = rangeToken(pcall(_G.IsPlayerMoving)) else out[n] = "E" end
+  n = n + 1
+  local okf, f = pcall(_G.GetPlayerFacing or function() return nil end)
+  f = okf and Nock.Flavor.Plain(f) or nil
+  out[n] = type(f) == "number" and ("%.2f"):format(f) or rangeToken(okf, f)
+  for i = n + 1, #out do out[i] = nil end
+end
+
+local function keysHeader(cols)
+  local L = {}
+  L[#L + 1] = "Nock probe keys  (T down, F up, - unbound/no answer, S secret, E error)"
+  L[#L + 1] = "columns:"
+  local c = 0
+  for _, col in ipairs(cols) do c = c + 1; L[#L + 1] = ("  %2d %s  IsKeyDown(%s)"):format(c, col.action, tostring(col.key)) end
+  c = c + 1; L[#L + 1] = ("  %2d MOVEFORWARD key with excludeBindingState = true"):format(c)
+  for _, b in ipairs(KEY_MOUSE) do c = c + 1; L[#L + 1] = ("  %2d IsMouseButtonDown(%s)"):format(c, b) end
+  c = c + 1; L[#L + 1] = ("  %2d IsPlayerMoving"):format(c)
+  c = c + 1; L[#L + 1] = ("  %2d GetPlayerFacing"):format(c)
+  L[#L + 1] = "rows (seconds since start, C = in combat, then columns 1..n; a row only when something changed; MOVE lines = PLAYER_STARTED/STOPPED_MOVING):"
+  return L
+end
+
+function Probe:KeysRecord(rest)
+  local r = self._keys
+  if r then
+    r.ticker:Cancel()
+    self:UnregisterEvent("PLAYER_STARTED_MOVING")
+    self:UnregisterEvent("PLAYER_STOPPED_MOVING")
+    self._keys = nil
+    local L = keysHeader(r.cols)
+    for i = 1, #r.rows do L[#L + 1] = r.rows[i] end
+    if r.capped then L[#L + 1] = "  (row cap reached; later changes not recorded)" end
+    local text = table.concat(L, "\n")
+    if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
+    return
+  end
+  local T = _G.C_Timer
+  if not (T and T.NewTicker) then Nock:Print("No ticker on this client."); return end
+  local GBK = _G.GetBindingKey or function() return nil end
+  r = { t0 = GetTime(), rows = {}, last = nil, cur = {}, cols = Probe.KeysColumns(GBK) }
+  self._keys = r
+  local function mark(text)
+    if #r.rows >= KEYS_MAX_ROWS then r.capped = true; return end
+    r.rows[#r.rows + 1] = ("  %7.2f  %s"):format(GetTime() - r.t0, text)
+  end
+  self:RegisterEvent("PLAYER_STARTED_MOVING", function() mark("MOVE started") end)
+  self:RegisterEvent("PLAYER_STOPPED_MOVING", function() mark("MOVE stopped") end)
+  r.ticker = T.NewTicker(0.05, function()
+    local cur = r.cur
+    local okr, err = pcall(self.KeysReadings, self, r.cols, cur)
+    local line = okr and table.concat(cur, " ") or ("probe error: " .. tostring(err))
+    local inCombat = Nock.Flavor.Plain(_G.InCombatLockdown and InCombatLockdown()) == true
+    local key = (inCombat and "C " or "  ") .. line
+    if key == r.last then return end
+    r.last = key
+    mark(key)
+  end)
+  Nock:Print("Keys probe running. Out of combat then in combat: W, S, W+S together, a strafe, a turn, both mouse buttons; /nock probe keys again to stop and open the log.")
 end
 
 -- The Range Finder font preview (2026-09-24): one numbered row per font,
@@ -645,7 +754,7 @@ function Probe:FontPreview(rest)
   f:SetScript("OnDragStop", f.StopMovingOrSizing)
   local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   title:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
-  title:SetText(("Range Finder label fonts at %d pt. Tell Claude the row number. /nock probe fonts [size] closes."):format(size))
+  title:SetText(("Range Finder label fonts at %d pt. Note the row number. /nock probe fonts [size] closes."):format(size))
   local dev = Nock.UI.PixelScale(f)
   local e = Nock.UI.DeviceWidth(1, dev)
   local compact, detailed = L.Layout(8, 35, true), L.Layout(8, 35, false)
@@ -954,6 +1063,8 @@ function Probe.WeaveReport(src)
   row(("stage: %s  moving: %s"):format(tostring(src.stage), tostring(src.moving)))
   row(("legIn %.2f (%s)  legOut %.2f (%s)"):format(src.legIn or 0, src.learnedIn and "learned" or "seed",
     src.legOut or 0, src.learnedOut and "learned" or "seed"))
+  row(("radial %.2f  face %d  pos %.2f  shootFrac %.2f (%s)"):format(src.radial or 0, src.face or 1, src.pos or 0,
+    src.shootFrac or 0, src.learnedFrac and "learned" or "seed"))
   row(("IsPlayerMoving plain in combat: %s"):format(tostring(src.playerMovingPlain)))
   row(("MainHand PLAYER_SWING_RANGE_UPDATE events: %d"):format(src.mhRangeEvents or 0))
   row("")
@@ -972,8 +1083,9 @@ function Probe.WeaveReport(src)
   -- seconds until the white swing and Raptor are ready, movement.
   row("stage transitions (what the decision saw):")
   for _, x in ipairs(src.transitions or {}) do
-    row(("  %.2f  %s -> %s  zone %s  age %.2f  melee %.2f  raptor %.2f  moving %s"):format(
-      x.t, tostring(x.from), tostring(x.to), tostring(x.zone), x.age or 0, x.melee or 0, x.raptor or 0, tostring(x.moving)))
+    row(("  %.2f  %s -> %s  zone %s  age %.2f  melee %.2f  raptor %.2f  moving %s  radial %.2f  face %d"):format(
+      x.t, tostring(x.from), tostring(x.to), tostring(x.zone), x.age or 0, x.melee or 0, x.raptor or 0, tostring(x.moving),
+      x.radial or 0, x.face or 1))
   end
   row("")
   row("swing events (MainHand = 0, OffHand = 1, Ranged = 2):")
@@ -1007,6 +1119,7 @@ end
 function Probe:Show(which, rest)
   local text
   if which == "range" then self:RangeRecord(rest); return end
+  if which == "keys" then self:KeysRecord(rest); return end
   if which == "camera" then
     local CF = Nock:GetModule("CameraFlip", true)
     if CF then CF:Command(rest) else Nock:Print("The camera flip is only available on WoW Forever.") end
@@ -1020,6 +1133,7 @@ function Probe:Show(which, rest)
     local text = Probe.WeaveReport({
       stage = st.stage, legIn = st.legIn, legOut = st.legOut, learnedIn = st.learnedIn, learnedOut = st.learnedOut,
       moving = st.moving, playerMovingPlain = type(plainMoving) == "boolean",
+      radial = st.radial, face = st.face, pos = st.pos, shootFrac = st.shootFrac, learnedFrac = st.learnedFrac,
       mhRangeEvents = WH and WH.mhRangeEvents or 0,
       raptorId = Nock.Spells and Nock.Spells.RAPTOR_STRIKE,
       helper = (WH and WH.Samples) and WH:Samples() or {},

@@ -10,15 +10,17 @@ local function near(a, b) return type(a) == "number" and math.abs(a - b) < 1e-6 
 local now = 100
 _G.GetTime = function() return now end
 _G.IsPlayerMoving = function() return false end
+_G.IsKeyDown = nil                      -- no key API: moving reads as forward (the fallback)
+_G.GetBindingKey = function() return nil end
 _G.Enum = { PlayerSwingType = { MainHand = 0, OffHand = 1, Ranged = 2 } }
 local Nock = {
   db = { profile = { weaveHelperEnabled = true, weaveLegSeed = 1.1 }, char = {} },
   Flavor = { forever = true, Plain = function(v) return v end },
   state = {
-    target = { exists = true, alive = true, friendly = false, rangeState = "SWEET" },
+    target = { exists = true, alive = true, friendly = false, rangeState = "SWEET", ladderRest = nil },
     melee = { swingStart = 0, swingDuration = 2.0, swingRemaining = 0 },
     ranged = { swingStart = 0, swingDuration = 2.6, swingRemaining = 5, queueWindow = 0.4 },
-    weave = { legProg = 0, legRemaining = 0, legStale = false, legIn = 0, legOut = 0, glide = 0 },
+    weave = { legProg = 0, legRemaining = 0, legStale = false, legIn = 0, legOut = 0, glide = 0, radial = 0, face = 1, overshot = false },
     cooldowns = {},
   },
 }
@@ -28,6 +30,10 @@ function Nock:NewModule(name) local m = { name = name, RegisterEvent = function(
 function Nock:GetModule(name) return modules[name] end
 _G.LibStub = function() return { GetAddon = function() return Nock end } end
 dofile("Forever/WeaveEngine.lua")
+-- The cases up to the intent block predate the rest band: with the shoot
+-- edge at 0 the old geometry (DEAD edge = 0, melee = 1) holds.
+Nock.WeaveEngine.SHOOT_FRAC = 0
+Nock.WeaveEngine.EDGE_GAP = 0
 dofile("Forever/WeaveHelper.lua")
 local H = modules.WeaveHelper
 ok(H and H.refreshInterval == nil, "module WeaveHelper on the fast lane")
@@ -56,8 +62,15 @@ H:PLAYER_STARTED_MOVING()
 -- The melee hit: OUT, and the ranged swing re-anchored on the hit when no Ranged event follows.
 now = 101.9; st.ranged.swingStart = 100
 H:PLAYER_SWING("PLAYER_SWING", 2.0, 0)
+-- the way out is backpedalled: S down (a bound backward key)
+_G.GetBindingKey = function(action) if action == "MOVEBACKWARD" then return "S" end end
+_G.IsKeyDown = function(key) return key == "S" end
+H:RebuildKeys()
 H:Refresh(st)
 ok(w.stage == "OUT" and w.legKind == "out", "MainHand swing: OUT")
+local TT = H:Transitions()
+ok(TT[#TT].from == "IN" and TT[#TT].to == "OUT" and near(TT[#TT].t, 101.9), "the hit's own stage change is logged from the event")
+ok(sent[#sent][1] == "NOCK_WEAVE_STAGE" and sent[#sent][2] == "OUT" and sent[#sent][3] == "IN", "and announced")
 ok(near(st.ranged.swingStart, 100), "inside the grace: the ranged swing is not touched yet")
 now = 102.05; H:Refresh(st)
 ok(near(st.ranged.swingStart, 101.9), "past the grace, no Ranged event: swingStart re-anchored on the hit")
@@ -77,8 +90,10 @@ H:PLAYER_SWING("PLAYER_SWING", 2.6, 2)
 now = 104.3; H:Refresh(st)
 ok(near(st.ranged.swingStart, 104) and H.st.clientResets == true, "client reset seen: nothing re-anchored")
 
+_G.GetBindingKey = function() return nil end; _G.IsKeyDown = nil; H:RebuildKeys()
+
 -- Target change and leaving combat drop everything; the legs stay.
-H:PLAYER_TARGET_CHANGED()
+H:PLAYER_TARGET_CHANGED(); H:PLAYER_STOPPED_MOVING()
 H:Refresh(st)
 ok(w.stage == nil and w.legKind == nil and near(w.legOut, 1.0), "PLAYER_TARGET_CHANGED: idle, legs kept")
 -- (SwingTimer writes ranged.swingStart on the same event; the fixture does it by hand)
@@ -105,9 +120,9 @@ ok(Nock.db.char.weaveLegs == nil and near(w.legIn, 1.1) and near(w.legOut, 1.1),
 -- The swing's age gates the cue: a shot 2 s ago offers nothing, moving or not.
 H:PLAYER_TARGET_CHANGED(); now = 150; st.ranged.swingStart = 150; H:PLAYER_SWING("PLAYER_SWING", 2.6, 2); H:PLAYER_STARTED_MOVING()
 now = 150.5; H:Refresh(st)
-ok(w.stage == "GO", "fresh shot, moving: GO")
+ok(w.stage == "IN", "fresh shot, moving toward: the run-in")
 now = 152; H:Refresh(st)
-ok(w.stage == nil, "the same swing 2 s old: no GO although still moving")
+ok(w.stage == nil, "the same swing 2 s old and range never left: over although still moving")
 H:PLAYER_STOPPED_MOVING()
 
 -- A dead or friendly target reads as no zone.
@@ -187,19 +202,22 @@ Nock.db.profile.weaveStartWindow = nil
 H:ApplyWindow()
 ok(near(H.st.goWindow, 0.75), "unset: the default 0.75")
 
--- The facing reaches the engine: a 180 while running in flips the leg.
+-- The facing reaches the engine: after a shot anchored it, a 180 turns
+-- forward into away; the words follow, the leg keeps its kind.
 local facingNow = 0
 _G.GetPlayerFacing = function() return facingNow end
 H:ResetLegs()
 st.target.rangeState = "SWEET"; st.ranged.swingStart = 0; st.melee.swingStart = 0
 H:PLAYER_STOPPED_MOVING(); now = 200; H:Refresh(st)
+st.ranged.swingStart = 200; H:PLAYER_SWING("PLAYER_SWING", 2.6, 2)
+ok(near(H.st.anchor, 0), "a shot anchors the facing")
 H:PLAYER_STARTED_MOVING(); st.target.rangeState = "CLOSE"; now = 201; H:Refresh(st)
-ok(w.stage == "IN" and w.legKind == "in", "running in on facing 0")
+ok(w.stage == "IN" and w.legKind == "in" and w.face == 1, "running in on facing 0")
 now = 201.5; H:Refresh(st)
 facingNow = math.pi; H:Refresh(st)
-ok(w.stage == "OUT" and w.legKind == "out" and near(w.glide, 0.5 / 1.1), "turned round: the helper hands the facing on, the leg flips")
+ok(w.stage == "OUT" and w.legKind == "in" and w.face == -1 and near(w.glide, 0.5 / 1.1), "turned round: forward is now away, BACK OUT, the leg keeps its kind")
 now = 202.6; H:Refresh(st)
-ok(near(w.glide, 0), "and the glide is back at the ranged end")
+ok(near(w.glide, 0), "and the glide is back at the shoot edge")
 _G.GetPlayerFacing = nil
 H:ResetLegs(); H:PLAYER_STOPPED_MOVING()
 
@@ -213,6 +231,95 @@ now = 301.2; H:Refresh(st)
 ok(#sent == n0 + 1, "no change, no message")
 st.target.rangeState = "MELEE"; now = 302.2; H:Refresh(st)
 ok(sent[#sent][2] == "STRIKE" and sent[#sent][3] == "IN", "STRIKE announced")
+
+-- ---------------------------------------------------------------------------
+-- Intent from the keys (2026-09-29 addendum).
+-- ---------------------------------------------------------------------------
+local R = H.Radial
+ok(R({ fwd = true }, true) == 1 and R({ back = true }, true) == -1, "W = 1, S = -1")
+ok(R({ fwd = true, back = true }, true) == 0, "W+S = 0 although the client says moving")
+ok(R({ strafe = true }, true) == 0 and R({ turn = true, rmb = true }, true) == 0, "a strafe key, or a turn key under the right button: 0")
+ok(R({ turn = true }, false) == 0, "a turn alone: 0")
+ok(R({ lmb = true, rmb = true }, true) == 1 and R({ steer = true }, true) == 1, "both mouse buttons, or move-and-steer: forward")
+ok(near(R({ fwd = true, strafe = true }, true), 0.707) and near(R({ back = true, turn = true, rmb = true }, true), -0.707), "diagonal: the radial share")
+ok(R({}, true) == 1 and R({}, false) == 0, "moving with no key down = autorun forward; standing = 0")
+ok(R({ turn = true }, true) == 0, "moving with only a turn key (mouse steering) is not autorun")
+ok(R({ fwd = true }, false) == 0 and R({ back = true }, false) == 0, "a key held while not moving (rooted, typing in chat): 0")
+
+-- Reading the keys: the bound keys per action, the mouse buttons, nil-safe.
+local down = {}
+_G.IsKeyDown = function(k) return down[k] == true end
+_G.GetBindingKey = function(action)
+  if action == "MOVEFORWARD" then return "W", "UP" end
+  if action == "MOVEBACKWARD" then return "S" end
+  if action == "TURNLEFT" then return "A" end
+  return nil
+end
+H:RebuildKeys()
+local k = {}
+down.UP = true
+H:ReadKeys(k)
+ok(k.fwd == true and k.back == false and k.turn == false and k.lmb == false, "UP (second forward key) reads as forward")
+down.UP, down.A, down.RightButton = nil, true, true
+H:ReadKeys(k)
+ok(k.fwd == false and k.turn == true and k.rmb == true and H.Radial(k, true) == 0, "A under the right button: a strafe, radial 0")
+_G.IsKeyDown = nil
+H:ReadKeys(k)
+ok(k.fwd == false and k.turn == false and k.rmb == false and H.Radial(k, true) == 1, "no IsKeyDown: moving reads as forward")
+_G.IsKeyDown = function(key) if key == "UP" then error("boom") end return down[key] == true end
+down.W = true
+H:ReadKeys(k)
+ok(k.fwd == true, "a key the client throws on reads as up, the rest still read")
+down.W = nil
+_G.GetBindingKey = function(action) if action == "MOVEFORWARD" then return "SHIFT-W" end end
+H:RebuildKeys()
+down.W = true
+H:ReadKeys(k)
+ok(k.fwd == true, "a chord binding reads its base key")
+down.W = nil
+_G.GetBindingKey = function(action)
+  if action == "MOVEFORWARD" then return "W", "UP" end
+  if action == "MOVEBACKWARD" then return "S" end
+  if action == "TURNLEFT" then return "A" end
+  return nil
+end
+H:RebuildKeys()
+_G.IsKeyDown = function(k) return down[k] == true end
+
+-- The tick hands the engine the radial, the facing and the rest band; Publish carries them.
+Nock.WeaveEngine.SHOOT_FRAC = 0.55; H:ResetLegs()   -- the real geometry from here
+H:PLAYER_TARGET_CHANGED(); Nock.db.profile.weaveHelperEnabled = true
+_G.GetPlayerFacing = function() return 1.5 end
+now = 500; st.target.rangeState = "SWEET"; st.target.ladderRest = true; st.ranged.swingStart = 500; st.melee.swingRemaining = 0
+H:Refresh(st)   -- at range first: a Ranged swing from an unknown zone is a shot, from MELEE it is a reset
+H:PLAYER_SWING("PLAYER_SWING", 2.6, 2)
+ok(near(H.st.anchor, 1.5), "a shot anchors the facing")
+H:Refresh(st)
+ok(w.stage == "GO", "GO")
+down.W = true; down.A, down.RightButton = nil, nil
+now = 500.2; H:Refresh(st)
+ok(w.stage == "IN" and w.radial == 1 and w.face == 1 and w.legKind == "in", "W under GO: IN, radial and face published")
+now = 500.4; H:Refresh(st)
+ok(near(w.glide, 0.4 / w.legIn), "the glide ran 0.4 s of intent (the first slice counts from the tick before the key)")
+down.W, down.S = true, true
+now = 500.8; H:Refresh(st)
+ok(near(w.glide, 0.4 / w.legIn), "W+S: frozen")
+down.W, down.S = nil, nil
+st.target.ladderRest = false
+now = 501.0; H:Refresh(st)
+ok(w.overshot == false and near(w.glide, 0), "leaving the band while standing: pos 0, no overshoot")
+st.target.ladderRest = true; _G.GetPlayerFacing = nil
+
+-- Legs are saved as a v2 record with the fraction; an old record is ignored.
+H.st.legIn, H.st.legOut, H.st.shootFrac, H.st.learnedIn, H.st.learnedOut, H.st.learnedFrac = 0.9, 1.2, 0.5, true, true, true
+H:SaveLegs()
+local rec = Nock.db.char.weaveLegs
+ok(rec.v == 2 and near(rec.legIn, 0.9) and near(rec.legOut, 1.2) and near(rec.shootFrac, 0.5), "SaveLegs: v2 record with the fraction")
+H:OnEnable()
+ok(near(H.st.legIn, 0.9) and near(H.st.shootFrac, 0.5) and H.st.learnedFrac == true, "OnEnable reads a v2 record")
+Nock.db.char.weaveLegs = { legIn = 0.6, legOut = 0.6 }
+H:OnEnable()
+ok(H.st.learnedIn == false and near(H.st.legIn, 1.1) and H.st.learnedFrac == false, "old record ignored: seed")
 
 print(("forever_weave_helper: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

@@ -167,6 +167,13 @@ function Ladder.SegColor(seg, shoot)
   return seg.color
 end
 
+-- The weave rest band: able to shoot and inside item 9606 (~10 yd, 2.3 yd
+-- past the shoot edge on a dummy, probe 2026-09-29). nil = 9606 unanswered.
+function Ladder.Rest(shoot, i9606)
+  if i9606 == nil then return nil end
+  return shoot == true and i9606 == true
+end
+
 local LS = rawget(_G, "LibStub")
 local Nock = LS and LS("AceAddon-3.0", true) and LS("AceAddon-3.0"):GetAddon("Nock", true)
 if Nock then Nock.RangeLadder = Ladder end
