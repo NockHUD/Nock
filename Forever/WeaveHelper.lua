@@ -2,8 +2,9 @@
 -- The Forever weave helper: feeds Forever/WeaveEngine.lua with the swing events, movement and the tick, publishes state.weave.
 
 -- Every input is plain in combat on Forever: PLAYER_SWING (both kinds),
--- PLAYER_STARTED/STOPPED_MOVING, the ladder's zone, the swing timers. Speed
--- and distance are never read. The learned legs live in db.char.weaveLegs.
+-- PLAYER_STARTED/STOPPED_MOVING, the ladder's zone, the swing timers, the
+-- character's facing (a turn mid-leg is the reversal signal). Speed and
+-- distance are never read. The learned legs live in db.char.weaveLegs.
 
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 local WeaveHelper = Nock:NewModule("WeaveHelper", "AceEvent-3.0")
@@ -17,6 +18,13 @@ end
 -- Pure: the profile switch (unset = on; Forever's default is on).
 function WeaveHelper.Enabled(p)
   return not (p and p.weaveHelperEnabled == false)
+end
+
+-- The character's facing, radians; nil when the client will not say (then
+-- no leg ever reverses).
+local function facing()
+  local f = _G.GetPlayerFacing and Nock.Flavor.Plain(_G.GetPlayerFacing())
+  return type(f) == "number" and f or nil
 end
 
 local function seed()
@@ -76,7 +84,7 @@ function WeaveHelper:PLAYER_SWING(event, duration, kind)
     local shot = E.RangedSwing(self.st, now)
     S[#S + 1] = { t = now, kind = "Ranged", shot = shot, stage = self.st.stage }
   elseif kind == swingType("MainHand") then
-    E.MeleeHit(self.st, now, self._moving)
+    E.MeleeHit(self.st, now, self._moving, facing())
     S[#S + 1] = { t = now, kind = "MainHand", stage = self.st.stage, legIn = self.st.legIn }
   else
     return
@@ -172,7 +180,7 @@ function WeaveHelper:Refresh(state)
   local raptorReadyIn = (cd and cd.ready == false and type(cd.remaining) == "number") and cd.remaining or 0
   local rangedElapsed = (r.swingStart > 0) and (now - r.swingStart) or 0
   local before = st.stage
-  E.Step(st, now, zone, self._moving, meleeReadyIn, r.swingRemaining, r.queueWindow, raptorReadyIn, rangedElapsed)
+  E.Step(st, now, zone, self._moving, meleeReadyIn, r.swingRemaining, r.queueWindow, raptorReadyIn, rangedElapsed, facing())
   if st.stage ~= before then
     self:LogTransition(now, before, st.stage, zone, rangedElapsed, meleeReadyIn, raptorReadyIn)
   end

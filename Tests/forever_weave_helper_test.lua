@@ -186,5 +186,21 @@ Nock.db.profile.weaveStartWindow = nil
 H:ApplyWindow()
 ok(near(H.st.goWindow, 0.75), "unset: the default 0.75")
 
+-- The facing reaches the engine: a 180 while running in flips the leg.
+local facingNow = 0
+_G.GetPlayerFacing = function() return facingNow end
+H:ResetLegs()
+st.target.rangeState = "SWEET"; st.ranged.swingStart = 0; st.melee.swingStart = 0
+H:PLAYER_STOPPED_MOVING(); now = 200; H:Refresh(st)
+H:PLAYER_STARTED_MOVING(); st.target.rangeState = "CLOSE"; now = 201; H:Refresh(st)
+ok(w.stage == "IN" and w.legKind == "in", "running in on facing 0")
+now = 201.5; H:Refresh(st)
+facingNow = math.pi; H:Refresh(st)
+ok(w.stage == "OUT" and w.legKind == "out" and near(w.glide, 0.5 / 1.1), "turned round: the helper hands the facing on, the leg flips")
+now = 202.6; H:Refresh(st)
+ok(near(w.glide, 0), "and the glide is back at the ranged end")
+_G.GetPlayerFacing = nil
+H:ResetLegs(); H:PLAYER_STOPPED_MOVING()
+
 print(("forever_weave_helper: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

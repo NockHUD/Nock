@@ -2,6 +2,12 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
+## Unreleased
+
+### WoW Forever (beta)
+
+- **Weave helper: turning round reverses the glide.** The glide bar only knew that you were moving, so running back out mid-crossing kept it marching toward the melee end until you were back in range. Now a turn of more than 100° while moving (the camera flip, a mouse turn) flips the leg: the bar slides back the way you came at your measured pace, the melee bar says BACK OUT (or GO IN when you turn back toward the target), and a reversed crossing is never learned as a pace.
+
 ## 2.0.8
 
 ### Both clients

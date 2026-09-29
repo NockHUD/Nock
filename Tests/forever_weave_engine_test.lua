@@ -317,5 +317,75 @@ ok(mm.stage == nil and mm.leg == nil, "a mob walking into a standing hunter: no 
 step(mm, 2, "MELEE", false)
 ok(mm.stage == nil, "into melee reach: still nothing")
 
+-- A reversal (user 2026-09-29): the glide is time-only, so a hunter who
+-- turns and runs back out mid-leg used to be marched to the melee end
+-- until the SWEET edge. The character's facing is plain in combat: a turn
+-- past FLIP_DEG while moving flips the leg, mirrored, never learned.
+local function stepf(s, now, zone, moving, facing)
+  E.Step(s, now, zone, moving, 0, 5, 0.4, 0, 0, facing)
+end
+local fl = E.New(nil, nil, 1.0)
+stepf(fl, 0, "SWEET", false, 0)
+stepf(fl, 1, "CLOSE", true, 0)
+ok(fl.stage == "IN" and fl.leg.kind == "in" and near(fl.leg.facing0, 0), "in leg records the facing it started with")
+stepf(fl, 1.4, "CLOSE", true, 0.3)
+ok(fl.leg.kind == "in" and near(fl.glide, 0.4), "a small turn: still an in leg")
+stepf(fl, 1.4, "CLOSE", true, math.pi)
+ok(fl.leg.kind == "out" and fl.leg.flipped == true and fl.stage == "OUT", "a 180 while moving: the leg flips to out, BACK OUT")
+ok(near(fl.glide, 0.4), "the glide does not jump at the flip")
+stepf(fl, 1.6, "CLOSE", true, math.pi)
+ok(near(fl.glide, 0.2), "and runs back toward the ranged end at the out leg's rate")
+stepf(fl, 1.8, "CLOSE", true, math.pi)
+ok(near(fl.glide, 0) and near(fl.leg.remaining, 0), "clamped at the ranged end while the edge is still to come")
+E.Step(fl, 2.0, "SWEET", true, 0, 0.1, 0.4, 0, 0, math.pi)
+ok(fl.stage == "RELEASE" and fl.leg == nil, "SWEET edge: the leg ends, RELEASE with the shot ready")
+ok(fl.learnedIn == false and fl.learnedOut == false and near(fl.legIn, 1.0) and near(fl.legOut, 1.0), "a flipped leg is never learned")
+
+-- Out leg turned back in: an in leg, IN, STRIKE on arrival, no learning.
+local fo = E.New(nil, nil, 1.0)
+stepf(fo, 0, "MELEE", false, math.pi)
+E.MeleeHit(fo, 0, true, math.pi)
+stepf(fo, 0, "MELEE", true, math.pi)
+stepf(fo, 0.1, "CLOSE", true, math.pi)
+stepf(fo, 0.6, "CLOSE", true, math.pi)
+ok(fo.stage == "OUT" and near(fo.glide, 0.5), "out leg half way")
+stepf(fo, 0.6, "CLOSE", true, 0)
+ok(fo.leg.kind == "in" and fo.stage == "IN" and near(fo.glide, 0.5), "turned back: an in leg from the same spot, IN")
+stepf(fo, 0.8, "CLOSE", true, 0)
+ok(near(fo.glide, 0.7), "climbing again")
+stepf(fo, 1.1, "MELEE", true, 0)
+ok(fo.stage == "STRIKE" and fo.leg == nil and fo.learnedIn == false, "STRIKE on arrival, nothing learned")
+
+-- A second flip flips again (from the new facing).
+local ff = E.New(nil, nil, 1.0)
+stepf(ff, 0, "SWEET", false, 0)
+stepf(ff, 1, "CLOSE", true, 0)
+stepf(ff, 1.5, "CLOSE", true, math.pi)
+ok(ff.leg.kind == "out" and near(ff.leg.facing0, math.pi), "first flip re-bases the facing")
+stepf(ff, 1.5, "CLOSE", true, math.pi * 0.6)
+ok(ff.leg.kind == "out", "72 degrees from the new facing: no second flip")
+stepf(ff, 1.5, "CLOSE", true, 0)
+ok(ff.leg.kind == "in" and ff.stage == "IN" and near(ff.glide, 0.5), "back to the target: an in leg again")
+
+-- No flip while standing still, and none without a facing.
+local fs = E.New(nil, nil, 1.0)
+stepf(fs, 0, "SWEET", false, 0)
+stepf(fs, 1, "CLOSE", true, 0)
+stepf(fs, 1.5, "CLOSE", false, math.pi)
+ok(fs.leg.kind == "in" and near(fs.glide, 0.5), "a turn while stopped: the leg pauses, no flip")
+stepf(fs, 1.5, "CLOSE", true, math.pi)
+ok(fs.leg.kind == "out", "moving again on the new facing: flipped")
+local fn = E.New(nil, nil, 1.0)
+stepf(fn, 0, "SWEET", false, nil)
+stepf(fn, 1, "CLOSE", true, nil)
+stepf(fn, 1.5, "CLOSE", true, math.pi)
+ok(fn.leg.kind == "in", "no facing at the start: no flip ever")
+-- 360 wrap: 350 degrees is a 10 degree turn.
+local fw = E.New(nil, nil, 1.0)
+stepf(fw, 0, "SWEET", false, 0.1)
+stepf(fw, 1, "CLOSE", true, 0.1)
+stepf(fw, 1.5, "CLOSE", true, 2 * math.pi - 0.1)
+ok(fw.leg.kind == "in", "facing wraps at 2 pi")
+
 print(("forever_weave_engine: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

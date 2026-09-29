@@ -26,6 +26,14 @@ E.WAIT_MAX = E.GO_WINDOW
 E.START_MAX = E.GO_WINDOW + E.START_SLACK
 E.RESET_GRACE = 0.1      -- s after a melee hit in which a Ranged swing event is the client's own reset
 E.RELEASE_FLASH = 0.4    -- s the RELEASE stage stays up
+E.FLIP_DEG = 100         -- degrees the facing must turn, moving, for a leg to reverse
+
+-- Pure: unsigned degrees between two facings (radians), 0..180.
+local function turnDeg(a, b)
+  local d = ((b - a) * 180 / math.pi) % 360
+  if d > 180 then d = 360 - d end
+  return d
+end
 
 local function clampLeg(v)
   if v < E.LEG_MIN then return E.LEG_MIN elseif v > E.LEG_MAX then return E.LEG_MAX end
@@ -67,13 +75,34 @@ local function elapsedOf(leg, now)
   return e
 end
 
--- A leg table is allocated on a zone edge, never on the tick.
-local function startLeg(st, kind, now, moving)
+-- A leg table is allocated on a zone edge, never on the tick. facing0 is
+-- the character's facing then (nil when unknown: no reversal is ever seen).
+local function startLeg(st, kind, now, moving, facing)
   st.leg = {
     kind = kind, t0 = now, dur = (kind == "in") and st.legIn or st.legOut,
     moved = 0, running = moving == true, resumeAt = now, prog = 0, stale = false, remaining = 0,
+    facing0 = facing, flipped = false,
   }
   st.pending, st.waitFor, st.goAt = false, nil, nil
+end
+
+-- The hunter turned round mid-leg (user 2026-09-29: running back out used to
+-- march the glide on to the melee end). The leg becomes its mirror: the
+-- other kind, at the same spot on the glide, clocked from here at the other
+-- leg's rate; the words follow the new direction. Never learned.
+local function flipLeg(st, now, facing)
+  local leg = st.leg
+  local p = elapsedOf(leg, now) / leg.dur
+  if p > 1 then p = 1 end
+  local kind = (leg.kind == "in") and "out" or "in"
+  local dur = (kind == "in") and st.legIn or st.legOut
+  st.leg = {
+    kind = kind, t0 = now, dur = dur,
+    moved = (1 - p) * dur, running = leg.running, resumeAt = now, prog = leg.prog, stale = false, remaining = 0,
+    facing0 = facing, flipped = true,
+  }
+  st.pending, st.waitFor, st.goAt = false, nil, nil
+  setStage(st, (kind == "in") and "IN" or "OUT", now)
 end
 
 -- The leg ends at an edge: learn it when the player moved for most of it.
@@ -82,7 +111,7 @@ local function finishLeg(st, now)
   if not leg then return end
   local moved, total = elapsedOf(leg, now), now - leg.t0
   st.leg = nil
-  if total <= 0 or moved < E.MOVE_FRACTION * total then return end
+  if leg.flipped or total <= 0 or moved < E.MOVE_FRACTION * total then return end
   local sample = clampLeg(moved)
   if leg.kind == "in" then
     st.legIn = st.learnedIn and clampLeg(0.5 * st.legIn + 0.5 * sample) or sample
@@ -124,12 +153,12 @@ end
 
 -- A MainHand PLAYER_SWING. The hit proves arrival even when the zone still
 -- reads DEAD (the finder settles 0.15 s), so an in leg finishes here.
-function E.MeleeHit(st, now, moving)
+function E.MeleeHit(st, now, moving, facing)
   st.hitAt, st.rangedSeen, st.reanchored = now, false, false
   local s = st.stage
   if s == "STRIKE" or s == "IN" or s == "GO" or s == "WAIT" then
     if st.leg and st.leg.kind == "in" then finishLeg(st, now) end
-    startLeg(st, "out", now, moving)
+    startLeg(st, "out", now, moving, facing)
     setStage(st, "OUT", now)
   end
 end
@@ -169,7 +198,9 @@ end
 -- unknown); it must be castable on arrival like the white swing.
 -- rangedElapsed: seconds since the last shot (the swing's age); a start is
 -- only offered while it is young (START_MAX).
-function E.Step(st, now, zone, moving, meleeReadyIn, rangedRemaining, queueWindow, raptorReadyIn, rangedElapsed)
+-- facing: the character's facing in radians (GetPlayerFacing, plain in
+-- combat), nil when unknown; a turn past FLIP_DEG while moving reverses a leg.
+function E.Step(st, now, zone, moving, meleeReadyIn, rangedRemaining, queueWindow, raptorReadyIn, rangedElapsed, facing)
   E.SetMoving(st, moving, now)
   moving = st.moving
   local leg = st.leg
@@ -199,17 +230,17 @@ function E.Step(st, now, zone, moving, meleeReadyIn, rangedRemaining, queueWindo
         setStage(st, "STRIKE", now)
       end
     elseif s == "GO" or s == "WAIT" then
-      if zone == "CLOSE" then startLeg(st, "in", now, moving); setStage(st, "IN", now)
+      if zone == "CLOSE" then startLeg(st, "in", now, moving, facing); setStage(st, "IN", now)
       elseif zone == "MELEE" then st.pending, st.waitFor = false, nil; setStage(st, "STRIKE", now) end
     elseif s == "STRIKE" then
-      if zone == "CLOSE" then startLeg(st, "out", now, moving); setStage(st, "OUT", now)
+      if zone == "CLOSE" then startLeg(st, "out", now, moving, facing); setStage(st, "OUT", now)
       elseif zone == "SWEET" then setStage(st, nil, now) end
     elseif s == nil and zone == "CLOSE" and moving then
       -- An uncued crossing (the hunter weaves without a GO): the leg still
       -- runs, so the glide moves, the crossing is learned and the words
       -- follow from here. A mob walking into a standing hunter starts nothing.
-      if prev == "SWEET" then startLeg(st, "in", now, moving); setStage(st, "IN", now)
-      elseif prev == "MELEE" then startLeg(st, "out", now, moving); setStage(st, "OUT", now) end
+      if prev == "SWEET" then startLeg(st, "in", now, moving, facing); setStage(st, "IN", now)
+      elseif prev == "MELEE" then startLeg(st, "out", now, moving, facing); setStage(st, "OUT", now) end
     end
   end
   s = st.stage
@@ -260,6 +291,12 @@ function E.Step(st, now, zone, moving, meleeReadyIn, rangedRemaining, queueWindo
   -- The glide: elapsed moving time over the learned leg, clamped, snapped by
   -- the edges above; 0 = the ranged end, 1 = the melee end.
   leg = st.leg
+  if leg and leg.running and facing ~= nil and leg.facing0 ~= nil
+     and turnDeg(leg.facing0, facing) > E.FLIP_DEG then
+    flipLeg(st, now, facing)
+    leg = st.leg
+    s = st.stage
+  end
   if leg then
     local e = elapsedOf(leg, now)
     -- Abandoned past 3x its estimate of moving time, or on the wall clock
