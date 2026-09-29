@@ -5,6 +5,14 @@
 -- Two macro lines drive it:
 --   Raptor macro, last line:      /run NockCamFlip()   turns away on the next melee hit
 --   Auto Shot spam, last line:    /run NockCamFace()   turns back; idempotent
+-- With cameraFlipAutoFace (on by default) the return also fires on its own
+-- once Auto Shot reaches the target again on the way out (the range finder's
+-- settled shoot probe, state.target.ladderShoot) AND the character has
+-- stopped: a turn under a held W would run it straight back in (user,
+-- 2026-09-29), and no addon can stop movement (MoveForwardStop is protected,
+-- the reason the TBC weave key goes through MovePad). So the turn lands on
+-- the W release, a beat before the shot key; the macro line stays as the
+-- fallback.
 -- Profile: cameraFlipEnabled (off by default) and cameraFlipGate (the range
 -- cues' solo/party/raid ladder, raid by default): a gated-out weave never
 -- arms a turn, so the macro lines can stay in place everywhere.
@@ -53,6 +61,20 @@ local CAMERA_SETUP_TOL = 2.0       -- degrees either side of 180
 -- Pure: the profile switch (off unless set).
 function CameraFlip.Enabled(p)
   return p ~= nil and p.cameraFlipEnabled == true
+end
+
+-- Pure: the automatic return. `st` remembers whether the shoot probe has
+-- read false since the turn away (the settled probe can still say true for
+-- a moment after a hit that landed early): the return is due once the probe
+-- reads true again after that AND the character is not moving (a turn under
+-- a held movement key runs it back in), and only while the switch is on.
+-- Returns true when the return should fire now.
+function CameraFlip.AutoFaceStep(st, p, flipped, shoot, moving)
+  if flipped ~= true then st.armed = false; return false end
+  if p == nil or p.cameraFlipAutoFace == false then return false end
+  if shoot == false then st.armed = true; return false end
+  if shoot == true and st.armed and moving == false then st.armed = false; return true end
+  return false
 end
 
 -- Pure: may a macro turn fire in this group context ("solo" | "party" |
@@ -322,7 +344,8 @@ Raptor Strike (the last line turns you away on the next melee hit):
 /startattack
 /run NockCamFlip()
 
-Auto Shot spam (the last line turns you back; safe to spam):
+Auto Shot spam (the last line turns you back, unless Nock already did when
+you stopped back in range; safe to spam):
 #showtooltip
 /cast !Auto Shot
 /run NockCamFace()
@@ -413,7 +436,15 @@ function CameraFlip:OnCameraSetupEvent(event)
 end
 
 -- Central tick: feed the window (it rebuilds only when a value moves).
-function CameraFlip:Refresh()
+function CameraFlip:Refresh(state)
+  local t = state and state.target
+  local A = self._autoFace
+  if not A then A = { armed = false }; self._autoFace = A end
+  local moving = self._cameraFlipped and _G.IsPlayerMoving and Nock.Flavor.Plain(_G.IsPlayerMoving()) == true or false
+  if CameraFlip.AutoFaceStep(A, Nock.db and Nock.db.profile, self._cameraFlipped, t and t.ladderShoot, moving) then
+    camSay(self, "in range and stopped: turning back")
+    self:CamFace()
+  end
   local S = self._cameraSetup
   local V = Nock.CameraSetupView
   if not (S and S.active and V) then return end

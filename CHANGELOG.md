@@ -6,6 +6,7 @@ A combat HUD for Hunters on TBC Classic Anniversary realms.
 
 ### WoW Forever (beta)
 
+- **Camera flip: turn back when in range.** On the way out the character now turns back on its own once Auto Shot reaches the target again and you let go of the movement key, so the shot key finds you already facing. Never while you are still running (a turn under a held key would run you straight back in, and addons cannot stop movement); the macro's face line stays as the fallback. On by default while the camera flip is on; Utilities → Camera flip → Turn back when in range.
 - **Weave helper: turning round reverses the glide.** The glide bar only knew that you were moving, so running back out mid-crossing kept it marching toward the melee end until you were back in range. Now a turn of more than 100° while moving (the camera flip, a mouse turn) flips the leg: the bar slides back the way you came at your measured pace, the melee bar says BACK OUT (or GO IN when you turn back toward the target), and a reversed crossing is never learned as a pace.
 
 ## 2.0.8

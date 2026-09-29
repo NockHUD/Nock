@@ -75,5 +75,46 @@ ok(P.Allowed({ cameraFlipEnabled = true, cameraFlipGate = "party" }, "party") an
 stubCues(nil)
 ok(P.Allowed({ cameraFlipEnabled = true, cameraFlipGate = "solo" }, "raid") and not P.Allowed({ cameraFlipEnabled = true }, "raid"), "without the cues module only solo passes")
 
+-- The automatic return (user 2026-09-29): due on the first false -> true
+-- edge of the settled shoot probe after a turn away, switch on by default.
+local A = { armed = false }
+local on = { cameraFlipEnabled = true }
+ok(not P.AutoFaceStep(A, on, false, true, false), "no turn outstanding: nothing")
+ok(not P.AutoFaceStep(A, on, true, true, false), "turned away with the probe still true: not yet (no edge)")
+ok(not P.AutoFaceStep(A, on, true, false, true) and A.armed, "probe false: armed")
+ok(not P.AutoFaceStep(A, on, true, nil, true), "probe unknown: waits")
+-- A turn under a held W runs the character back in: wait for the stop.
+ok(not P.AutoFaceStep(A, on, true, true, true) and A.armed, "probe true but still running: holds, stays armed")
+ok(not P.AutoFaceStep(A, on, true, true, nil) and A.armed, "movement unknown: holds")
+ok(P.AutoFaceStep(A, on, true, true, false) and not A.armed, "stopped in range: the return is due once")
+ok(not P.AutoFaceStep(A, on, true, true, false), "and not again")
+P.AutoFaceStep(A, on, true, false, true)
+ok(not P.AutoFaceStep(A, { cameraFlipEnabled = true, cameraFlipAutoFace = false }, true, true, false), "switch off: never")
+ok(not P.AutoFaceStep(A, nil, true, true, false), "no profile: never")
+P.AutoFaceStep(A, on, false, false, false)
+ok(not A.armed, "the arm clears when the turn is over")
+
+-- Through Refresh: the tick hands state.target.ladderShoot in; the return
+-- runs the turn once and clears the latch.
+local turns = {}
+P.CameraTurn = function(self, back) turns[#turns + 1] = back end
+Nock.db = { profile = { cameraFlipEnabled = true } }
+P._cameraFlipped = true
+local movingNow = true
+_G.IsPlayerMoving = function() return movingNow end
+local state = { target = { ladderShoot = false } }
+P:Refresh(state)
+state.target.ladderShoot = true
+P:Refresh(state)
+ok(#turns == 0 and P._cameraFlipped == true, "Refresh: back in range but still running: no return yet")
+movingNow = false
+P:Refresh(state)
+ok(#turns == 1 and turns[1] == true and P._cameraFlipped == false, "Refresh: stopped in range after a turn away, one return")
+P:Refresh(state)
+ok(#turns == 1, "no second return")
+P:Refresh(nil)
+ok(#turns == 1, "a tick without state is harmless")
+Nock.db = nil
+
 print(("forever_camera_flip: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

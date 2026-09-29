@@ -231,7 +231,7 @@ end
 
 -- Utilities -> Camera flip (Forever/CameraFlip.lua): its own page, it is not
 -- a HUD element. Headers render as cards; profile keys cameraFlipEnabled /
--- cameraFlipGate, the setup window and the macros copybox.
+-- cameraFlipGate / cameraFlipAutoFace, the setup window and the macros copybox.
 function F.CameraFlipPage()
   local function CF() return Nock:GetModule("CameraFlip", true) end
   local function styleWrong()
@@ -258,6 +258,13 @@ function F.CameraFlipPage()
       disabled = function() return Nock.db.profile.cameraFlipEnabled ~= true end,
       get = function() return Nock.db.profile.cameraFlipGate or "raid" end,
       set = function(_, v) Nock.db.profile.cameraFlipGate = v end,
+    },
+    cameraFlipAutoFace = {
+      type = "toggle", name = "Turn back when in range", order = 13, width = "full",
+      desc = "On the way out, turn back as soon as Auto Shot reaches the target again and you let go of the movement key, without waiting for the shot key. Never while you are still running: a turn under a held key would run you straight back in. The macro's face line stays as the fallback.",
+      disabled = function() return Nock.db.profile.cameraFlipEnabled ~= true end,
+      get = function() return Nock.db.profile.cameraFlipAutoFace ~= false end,
+      set = function(_, v) Nock.db.profile.cameraFlipAutoFace = v and true or false end,
     },
     cameraHeader = { type = "header", name = "Camera", desc = "The reversed view the turn needs, and the macros.", order = 20 },
     cameraFlipSetup = {
