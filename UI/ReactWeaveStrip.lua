@@ -11,6 +11,7 @@ WS.COLORS = {
   dead    = { 0.48, 0.13, 0.15, 1 },   -- the fill while a leg crosses the dead zone
   melee   = { 0.68, 0.18, 0.20, 1 },   -- in melee (the ladder's melee red)
   ranged  = { 0.11, 0.70, 0.67, 1 },   -- in range (the ladder's teal)
+  sweetSpot = { 0.00, 1.00, 0.10, 1 },
   off     = { 0.16, 0.16, 0.16, 1 },   -- no target
   stale   = { 1.00, 0.58, 0.10, 1 },   -- the leg ran past its estimate (the TBC RESYNC orange)
   go      = { 0.20, 0.90, 0.30, 1 },
@@ -45,8 +46,11 @@ function WS.Look(state, now, out)
   local zone, stage = t.rangeState, w and w.stage or nil
   out.shown = true
   out.fill = (w and w.glide) or 0
-  if zone == "MELEE" then out.fillKey = "melee" elseif zone == "SWEET" then out.fillKey = "ranged" else out.fillKey = "dead" end
-  out.label = WS.LABELS[zone] or ""
+  if t.weaveSweetSpot then out.fillKey = "sweetSpot"
+  elseif zone == "MELEE" then out.fillKey = "melee"
+  elseif zone == "SWEET" then out.fillKey = "ranged"
+  else out.fillKey = "dead" end
+  out.label = t.weaveSweetSpot and "SWEET SPOT" or (WS.LABELS[zone] or "")
   if w and w.legStale then out.borderKey = "stale"
   else out.borderKey = STAGE_BORDER[stage] or "border" end
   out.asGlow = stage == "RELEASE"
@@ -83,6 +87,7 @@ function WS.Create(parent, opts)
   f.rs = makeSlot(f, opts)
   local bar = CreateFrame("Frame", nil, f, "BackdropTemplate")
   Nock.UI.ApplyBackdrop(bar, opts.bg, opts.border)
+  bar.normalBg = opts.bg
   bar.fill = bar:CreateTexture(nil, "ARTWORK")
   bar.fill:SetTexture(WHITE8X8)
   bar.fill:SetWidth(0.01)
@@ -130,6 +135,12 @@ end
 -- Every tick, diffed on the look; the swipes on their start edges.
 function WS.Paint(f, look, state)
   local L, bar = f._look, f.bar
+  local isSweetSpot = look.fillKey == "sweetSpot"
+  if isSweetSpot ~= L.sweetSpot then
+    local bg = isSweetSpot and WS.COLORS.sweetSpot or bar.normalBg
+    bar:SetBackdropColor(bg[1], bg[2], bg[3], bg[4])
+    L.sweetSpot = isSweetSpot
+  end
   if look.fillKey ~= L.fillKey or look.flash > 0 or L.flashing then
     local c = color(look.fillKey)
     local m = look.flash or 0
