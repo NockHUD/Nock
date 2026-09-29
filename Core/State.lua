@@ -261,8 +261,10 @@ Nock.state = {
     -- + toward the target in the character's frame), face = 1 facing the
     -- anchor / -1 turned away, overshot = backed past the rest band's outer edge.
     radial       = 0,
+    lateral      = 0,     -- sideways intent, strafe right +
     face         = 1,
     overshot     = false,
+    legOutBack   = 0,     -- the backpedal's own learned out leg
   },
   -- "Shot Bars" scrolling timeline (Fluffy-style). Written by ShotPredictor,
   -- read by the ShotBars view. Arrays are reused in place (no per-tick alloc):

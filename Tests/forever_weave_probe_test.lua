@@ -30,7 +30,7 @@ local text = P.WeaveReport({
   helper = { { t = 10.00, kind = "MainHand", stage = "OUT", legIn = 1.05 }, { t = 10.05, kind = "Ranged", shot = false, stage = "OUT" } },
   transitions = { { t = 9.00, from = nil, to = "GO", zone = "SWEET", age = 0.05, melee = 0, raptor = 0, moving = false, radial = 1, face = -1 } },
 })
-ok(text:find("stage transitions (what the decision saw):", 1, true) and text:find("9.00  nil -> GO  zone SWEET  age 0.05  melee 0.00  raptor 0.00  moving false  radial 1.00  face -1", 1, true), "transitions printed with their inputs")
+ok(text:find("stage transitions (what the decision saw):", 1, true) and text:find("9.00  nil -> GO  zone SWEET  age 0.05  melee 0.00  raptor 0.00  moving false  radial 1.00  lateral 0.00  face -1", 1, true), "transitions printed with their inputs")
 ok(text:find("helper events (how the engine classed them):", 1, true) and text:find("10.05  Ranged  reset  stage OUT", 1, true) and text:find("10.00  MainHand  stage OUT  legIn 1.05", 1, true), "the helper's own ring: each event with its verdict and stage")
 ok(text:find("stage: OUT", 1, true) and text:find("legIn 1.05 (learned)", 1, true) and text:find("legOut 0.98 (seed)", 1, true), "header: stage and the legs")
 ok(text:find("IsPlayerMoving plain in combat: true", 1, true), "question 4: IsPlayerMoving")

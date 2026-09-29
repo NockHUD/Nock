@@ -1061,8 +1061,8 @@ function Probe.WeaveReport(src)
   local L = {}
   local function row(s) L[#L + 1] = s end
   row(("stage: %s  moving: %s"):format(tostring(src.stage), tostring(src.moving)))
-  row(("legIn %.2f (%s)  legOut %.2f (%s)"):format(src.legIn or 0, src.learnedIn and "learned" or "seed",
-    src.legOut or 0, src.learnedOut and "learned" or "seed"))
+  row(("legIn %.2f (%s)  legOut %.2f (%s)  legOutBack %.2f (%s)"):format(src.legIn or 0, src.learnedIn and "learned" or "seed",
+    src.legOut or 0, src.learnedOut and "learned" or "seed", src.legOutBack or 0, src.learnedOutBack and "learned" or "seed"))
   row(("radial %.2f  face %d  pos %.2f  shootFrac %.2f (%s)"):format(src.radial or 0, src.face or 1, src.pos or 0,
     src.shootFrac or 0, src.learnedFrac and "learned" or "seed"))
   row(("IsPlayerMoving plain in combat: %s"):format(tostring(src.playerMovingPlain)))
@@ -1083,9 +1083,9 @@ function Probe.WeaveReport(src)
   -- seconds until the white swing and Raptor are ready, movement.
   row("stage transitions (what the decision saw):")
   for _, x in ipairs(src.transitions or {}) do
-    row(("  %.2f  %s -> %s  zone %s  age %.2f  melee %.2f  raptor %.2f  moving %s  radial %.2f  face %d"):format(
+    row(("  %.2f  %s -> %s  zone %s  age %.2f  melee %.2f  raptor %.2f  moving %s  radial %.2f  lateral %.2f  face %d"):format(
       x.t, tostring(x.from), tostring(x.to), tostring(x.zone), x.age or 0, x.melee or 0, x.raptor or 0, tostring(x.moving),
-      x.radial or 0, x.face or 1))
+      x.radial or 0, x.lateral or 0, x.face or 1))
   end
   row("")
   row("swing events (MainHand = 0, OffHand = 1, Ranged = 2):")
@@ -1132,6 +1132,7 @@ function Probe:Show(which, rest)
     local plainMoving = _G.IsPlayerMoving and Nock.Flavor.Plain(_G.IsPlayerMoving())
     local text = Probe.WeaveReport({
       stage = st.stage, legIn = st.legIn, legOut = st.legOut, learnedIn = st.learnedIn, learnedOut = st.learnedOut,
+      legOutBack = st.legOutBack, learnedOutBack = st.learnedOutBack,
       moving = st.moving, playerMovingPlain = type(plainMoving) == "boolean",
       radial = st.radial, face = st.face, pos = st.pos, shootFrac = st.shootFrac, learnedFrac = st.learnedFrac,
       mhRangeEvents = WH and WH.mhRangeEvents or 0,

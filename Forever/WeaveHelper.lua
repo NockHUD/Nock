@@ -15,30 +15,36 @@ local E = Nock.WeaveEngine
 -- Bound keys per movement group (GetBindingKey, rebuilt on UPDATE_BINDINGS).
 local ACTIONS = {
   fwd = { "MOVEFORWARD" }, back = { "MOVEBACKWARD" },
-  strafe = { "STRAFELEFT", "STRAFERIGHT" }, turn = { "TURNLEFT", "TURNRIGHT" },
+  strafeL = { "STRAFELEFT" }, strafeR = { "STRAFERIGHT" },
+  turnL = { "TURNLEFT" }, turnR = { "TURNRIGHT" },
   steer = { "MOVEANDSTEER" },
 }
-local GROUPS = { "fwd", "back", "strafe", "turn", "steer" }
+local GROUPS = { "fwd", "back", "strafeL", "strafeR", "turnL", "turnR", "steer" }
 local LEGS_VERSION = 2
+local DIAGONAL = 0.707
 
--- Pure: the movement keys' radial intent in the character's frame, -1..1.
--- Forward keys, move-and-steer or both mouse buttons = 1; backward = -1;
--- both = 0 (W+S stands still on Forever, probe 2026-09-29); a strafe key,
--- or a turn key under the right button, is sideways: 0 alone, 0.707 of a
--- forward or backward. Moving with no key down is autorun (forward); a key
--- held while the client says not moving (rooted, stunned, typing in chat)
--- is nothing.
+-- Pure: the movement keys' intent in the character's frame, two numbers in
+-- -1..1: forward (forward keys, move-and-steer or both mouse buttons = 1,
+-- backward = -1, both = 0: W+S stands still on Forever, probe 2026-09-29)
+-- and sideways (strafe keys, or a turn key under the right button, right =
+-- 1). A diagonal scales both by 0.707. Moving with no key down is autorun
+-- (forward); a key held while the client says not moving (rooted, stunned,
+-- typing in chat) is nothing. The engine projects the pair onto the
+-- target bearing.
 function WeaveHelper.Radial(k, moving)
-  if not moving then return 0 end
+  if not moving then return 0, 0 end
   local fwd = k.fwd or k.steer or (k.lmb and k.rmb)
   local back = k.back
-  local strafe = k.strafe or (k.turn and k.rmb)
   local axis = (fwd and 1 or 0) - (back and 1 or 0)
-  if axis == 0 then
-    if moving and not fwd and not back and not strafe and not k.turn then return 1 end
-    return 0
+  local lat = (k.strafeR and 1 or 0) - (k.strafeL and 1 or 0)
+  if k.rmb then lat = lat + (k.turnR and 1 or 0) - (k.turnL and 1 or 0) end
+  if lat > 1 then lat = 1 elseif lat < -1 then lat = -1 end
+  if axis == 0 and lat == 0 then
+    if not fwd and not back and not k.strafeL and not k.strafeR and not k.turnL and not k.turnR then return 1, 0 end
+    return 0, 0
   end
-  return axis * (strafe and 0.707 or 1)
+  if axis ~= 0 and lat ~= 0 then return axis * DIAGONAL, lat * DIAGONAL end
+  return axis, lat
 end
 
 function WeaveHelper:RebuildKeys()
@@ -78,7 +84,8 @@ function WeaveHelper:ReadKeys(k)
   local K = self._keys
   if not K then self:RebuildKeys(); K = self._keys end
   if not IKD then
-    k.fwd, k.back, k.strafe, k.turn, k.steer, k.lmb, k.rmb = false, false, false, false, false, false, false
+    for _, group in ipairs(GROUPS) do k[group] = false end
+    k.lmb, k.rmb = false, false
     return k
   end
   for _, group in ipairs(GROUPS) do k[group] = anyDown(IKD, K[group]) end
@@ -118,7 +125,7 @@ end
 function WeaveHelper:OnEnable()
   local legs = Nock.db and Nock.db.char and Nock.db.char.weaveLegs
   if legs and legs.v ~= LEGS_VERSION then legs = nil end   -- pre-v2 legs were shoot-edge legs
-  self.st = E.New(legs and legs.legIn, legs and legs.legOut, seed(), legs and legs.shootFrac)
+  self.st = E.New(legs and legs.legIn, legs and legs.legOut, seed(), legs and legs.shootFrac, legs and legs.legOutBack)
   self:ApplyWindow()
   self._moving = (_G.IsPlayerMoving and _G.IsPlayerMoving() == true) or false
   self._samples = {}
@@ -169,7 +176,7 @@ function WeaveHelper:PLAYER_SWING(event, duration, kind)
     S[#S + 1] = { t = now, kind = "MainHand", stage = self.st.stage, legIn = self.st.legIn }
     -- the hit's own stage change (STRIKE -> OUT) happens here, between ticks
     if self.st.stage ~= before then
-      self:LogTransition(now, before, self.st.stage, self.st.zone, 0, 0, 0, self.st.radial, self.st.face)
+      self:LogTransition(now, before, self.st.stage, self.st.zone, 0, 0, 0, self.st.radial, self.st.face, self.st.lateral)
       self:SendMessage("NOCK_WEAVE_STAGE", self.st.stage, before)
     end
   else
@@ -192,6 +199,7 @@ function WeaveHelper:SaveLegs()
   c.weaveLegs = c.weaveLegs or {}
   c.weaveLegs.v, c.weaveLegs.legIn, c.weaveLegs.legOut, c.weaveLegs.shootFrac =
     LEGS_VERSION, self.st.legIn, self.st.legOut, self.st.shootFrac
+  c.weaveLegs.legOutBack = self.st.learnedOutBack and self.st.legOutBack or nil
 end
 
 -- The seed slider: every leg not learned yet follows it at once; a learned
@@ -202,6 +210,7 @@ function WeaveHelper:ApplySeed()
   local s = E.New(nil, nil, seed())
   if not st.learnedIn then st.legIn = s.legIn end
   if not st.learnedOut then st.legOut = s.legOut end
+  if not st.learnedOutBack then st.legOutBack = st.legOut end
 end
 
 -- Settings button: forget the learned legs, back to the seed.
@@ -216,7 +225,7 @@ end
 -- reproduce needs its evidence (/nock probe weave). Entries are pooled and
 -- reused in a ring (no allocation once it is full).
 local TRANSITION_MAX = 40
-function WeaveHelper:LogTransition(now, from, to, zone, age, melee, raptor, radial, face)
+function WeaveHelper:LogTransition(now, from, to, zone, age, melee, raptor, radial, face, lateral)
   local T = self._transitions
   if not T then T = { n = 0, head = 0 }; self._transitions = T end
   T.head = T.head % TRANSITION_MAX + 1
@@ -224,7 +233,7 @@ function WeaveHelper:LogTransition(now, from, to, zone, age, melee, raptor, radi
   local e = T[T.head]
   if not e then e = {}; T[T.head] = e end
   e.t, e.from, e.to, e.zone, e.age, e.melee, e.raptor, e.moving = now, from, to, zone, age, melee, raptor, self._moving == true
-  e.radial, e.face = radial, face
+  e.radial, e.face, e.lateral = radial, face, lateral
 end
 
 -- Oldest first.
@@ -269,11 +278,11 @@ function WeaveHelper:Refresh(state)
   local rangedElapsed = (r.swingStart > 0) and (now - r.swingStart) or 0
   local rest = t and t.ladderRest
   local k = self:ReadKeys(self._k)
-  local radial = WeaveHelper.Radial(k, self._moving)
+  local radial, lateral = WeaveHelper.Radial(k, self._moving)
   local before = st.stage
-  E.Step(st, now, zone, rest, radial, facing(), meleeReadyIn, r.swingRemaining, r.queueWindow, raptorReadyIn, rangedElapsed)
+  E.Step(st, now, zone, rest, radial, facing(), meleeReadyIn, r.swingRemaining, r.queueWindow, raptorReadyIn, rangedElapsed, lateral)
   if st.stage ~= before then
-    self:LogTransition(now, before, st.stage, zone, rangedElapsed, meleeReadyIn, raptorReadyIn, st.radial, st.face)
+    self:LogTransition(now, before, st.stage, zone, rangedElapsed, meleeReadyIn, raptorReadyIn, st.radial, st.face, st.lateral)
     -- The cue sounds (Forever/RangeCues.lua) and anything else that wants a
     -- stage edge listen here; no module calls another's internals.
     self:SendMessage("NOCK_WEAVE_STAGE", st.stage, before)

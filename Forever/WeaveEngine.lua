@@ -27,16 +27,18 @@ E.START_MAX = E.GO_WINDOW + E.START_SLACK
 E.RESET_GRACE = 0.1      -- s after a melee hit in which a Ranged swing event is the client's own reset
 E.MELEE_LATE = 0.5       -- s after a hit in which a MELEE reading is the finder catching up (worst case ~0.3), not a return
 E.RELEASE_FLASH = 0.4    -- s the RELEASE stage stays up
-E.FACE_DEG = 90          -- facing this far from the anchor: forward runs away from the target
+
 E.SHOOT_FRAC = 0.55      -- seed: the shoot edge's spot between the rest edge (0) and melee (1)
 E.FRAC_MIN, E.FRAC_MAX = 0, 0.9
 E.DT_MAX = 2.0           -- s one tick may integrate (a loading screen is not a run)
-E.EDGE_GAP = 0.05        -- of the dead zone the estimate stops short of either end until the ladder reports it
+E.EDGE_GAP_DEFAULT = 0   -- of the dead zone the estimate stops short of either end until the ladder reports
+E.EDGE_GAP = E.EDGE_GAP_DEFAULT   --   it; a 0.05 stall read worse than a full bar under the label (user 2026-09-30)
 
--- Pure: unsigned degrees between two facings (radians), 0..180.
-local function turnDeg(a, b)
-  local d = ((b - a) * 180 / math.pi) % 360
-  if d > 180 then d = 360 - d end
+-- Pure: the signed turn from facing a to facing b, radians in (-pi, pi];
+-- turning left raises the facing (keys probe 2026-09-29), so left is +.
+local function turnRad(a, b)
+  local d = (b - a) % (2 * math.pi)
+  if d > math.pi then d = d - 2 * math.pi end
   return d
 end
 
@@ -50,21 +52,26 @@ local function clampFrac(v)
   return v
 end
 
-function E.New(legIn, legOut, seed, shootFrac)
+-- legOutBack: the backpedal's own out leg (S while facing the target runs
+-- a different distance at a different speed than a run behind a turn);
+-- unlearned it follows the run leg.
+function E.New(legIn, legOut, seed, shootFrac, legOutBack)
   seed = clampLeg(tonumber(seed) or E.SEED)
+  local out = legOut and clampLeg(legOut) or seed
   return {
     stage = nil, stageAt = 0, zone = nil, rest = true, moving = false,
     legIn = legIn and clampLeg(legIn) or seed,
-    legOut = legOut and clampLeg(legOut) or seed,
-    learnedIn = legIn ~= nil, learnedOut = legOut ~= nil,
-    sampleIn = nil, sampleOut = nil, learnedAt = nil,
+    legOut = out,
+    legOutBack = legOutBack and clampLeg(legOutBack) or out,
+    learnedIn = legIn ~= nil, learnedOut = legOut ~= nil, learnedOutBack = legOutBack ~= nil,
+    sampleIn = nil, sampleOut = nil, sampleOutBack = nil, learnedAt = nil,
     shootFrac = shootFrac and clampFrac(shootFrac) or clampFrac(E.SHOOT_FRAC),
     learnedFrac = shootFrac ~= nil, sampleFrac = nil,
     pos = 0,                  -- position estimate: 0 rest edge, shootFrac shoot edge, 1 melee
     posKnown = false,         -- an edge, a hit or a stop at rest has pinned pos since the target came
     outMap = false,           -- the strip draws the dead zone alone (hit = full, shoot edge = empty)
     leg = nil,                -- { kind, armAt, t0, net, netAtShoot, fromRest, remaining }
-    radial = 0, face = 1, anchor = nil, lastNow = nil,
+    radial = 0, lateral = 0, face = 1, theta = 0, anchor = nil, lastNow = nil,
     pinnedFor = 0, stale = false, overshot = false,
     pending = false,          -- an auto fired: a GO or a WAIT is owed
     goAt = nil,               -- when the GO window opened
@@ -87,13 +94,15 @@ local function setStage(st, stage, now)
 end
 
 -- A leg is armed at an edge or a hit (armAt, for the abandon rule); its
--- clock starts on the first tick with intent (t0, for the sample). netAtShoot
--- is the net time at the shoot edge: 0 for a leg that starts there, nil
--- until a rest-band start crosses it. Allocated on the edge, never on the tick.
+-- clock starts on the first tick with intent (t0, for the sample), which
+-- also keys an out leg's method: "back" (the backward key while facing) or
+-- "run" (anything else). netAtShoot is the net time at the shoot edge: 0
+-- for a leg that starts there, nil until a rest-band start crosses it.
+-- Allocated on the edge, never on the tick.
 local function startLeg(st, kind, now, fromRest, netAtShoot)
   st.leg = {
     kind = kind, armAt = now, t0 = nil, net = 0, netAtShoot = netAtShoot,
-    fromRest = fromRest == true, remaining = 0,
+    fromRest = fromRest == true, remaining = 0, method = "run",
   }
   st.pending, st.waitFor, st.goAt = false, nil, nil
   st.outMap = kind == "out"
@@ -105,10 +114,25 @@ local function learnIn(st, sample)
   st.learnedIn, st.sampleIn = true, sample
 end
 
-local function learnOut(st, sample)
+local function learnOut(st, sample, method)
   sample = clampLeg(sample)
-  st.legOut = st.learnedOut and clampLeg(0.5 * st.legOut + 0.5 * sample) or sample
-  st.learnedOut, st.sampleOut = true, sample
+  if method == "back" then
+    st.legOutBack = st.learnedOutBack and clampLeg(0.5 * st.legOutBack + 0.5 * sample) or sample
+    st.learnedOutBack, st.sampleOutBack = true, sample
+  else
+    st.legOut = st.learnedOut and clampLeg(0.5 * st.legOut + 0.5 * sample) or sample
+    if not st.learnedOutBack then st.legOutBack = st.legOut end
+    st.learnedOut, st.sampleOut = true, sample
+  end
+end
+
+-- The out leg the glide runs on: the leg's own method, or, with no leg,
+-- whatever the keys say now.
+local function outLeg(st, leg, radial)
+  if leg and leg.kind == "out" and leg.t0 ~= nil then
+    return (leg.method == "back") and st.legOutBack or st.legOut
+  end
+  return (radial < 0) and st.legOutBack or st.legOut
 end
 
 -- The in leg ends at melee (the zone or the hit). A leg that began at the
@@ -151,21 +175,26 @@ local function finishOut(st, now)
   if not leg or leg.kind ~= "out" or leg.t0 == nil then return end
   local wall, net = now - leg.t0, -leg.net
   if wall <= 0 or net <= 0 or net < E.MOVE_FRACTION * wall then return end
-  learnOut(st, net / (1 - st.shootFrac))
+  -- over the legs it covered: from the hit spot (1 + its depth) to the shoot edge
+  local span = (leg.pos0 or 1) - st.shootFrac
+  if span < 0.05 then return end
+  learnOut(st, net / span, leg.method)
   st.learnedAt = now
 end
 
 -- pos and the running leg's net move by dt of intent rin (the target's
--- frame) up to now; a leg's clock opens at the start of its first slice.
+-- frame) up to now; a leg's clock opens at the start of its first slice,
+-- and that first slice keys an out leg's method.
 local function integrate(st, dt, rin, now)
   if dt <= 0 or rin == 0 then return end
-  local dur = (rin > 0) and st.legIn or st.legOut
-  st.pos = st.pos + dt * rin / dur
   local leg = st.leg
-  if leg then
-    if leg.t0 == nil then leg.t0 = now - dt end
-    leg.net = leg.net + dt * rin
+  if leg and leg.t0 == nil then
+    leg.t0, leg.pos0 = now - dt, st.pos
+    if leg.kind == "out" then leg.method = (st.radial < 0) and "back" or "run" end
   end
+  local dur = (rin > 0) and st.legIn or outLeg(st, leg, st.radial)
+  st.pos = st.pos + dt * rin / dur
+  if leg then leg.net = leg.net + dt * rin end
 end
 
 local function idle(st, now)
@@ -200,12 +229,22 @@ end
 function E.MeleeHit(st, now, facing)
   st.hitAt, st.rangedSeen, st.reanchored = now, false, false
   if type(facing) == "number" then st.anchor = facing end
-  st.pos, st.posKnown, st.lastNow = 1, true, now   -- the estimate is the truth at the hit; the clock restarts here
+  -- A white swing landing on a way out already under way (still inside
+  -- reach) changes nothing about where the hunter is: the drain goes on.
+  -- Otherwise the estimate is the truth at the hit and the clock restarts.
+  local leg = st.leg
+  if leg and leg.kind == "out" and leg.t0 ~= nil then return end
+  st.pos, st.posKnown, st.lastNow = 1, true, now
+  -- Every hit arms the way out (the glide drains from here); the words say
+  -- so only when a weave stage led here, a run-in the anchor missed (a
+  -- stale bearing after circling the mob) or a melee hunter's swing stays
+  -- silent until an edge speaks.
   local s = st.stage
-  if s == "STRIKE" or s == "IN" or s == "GO" or s == "WAIT" then
-    if st.leg and st.leg.kind == "in" then finishIn(st, now) end
+  local cued = s == "STRIKE" or s == "IN" or s == "GO" or s == "WAIT"
+  if leg and leg.kind == "in" then finishIn(st, now) end
+  if not (st.leg and st.leg.kind == "out") then
     startLeg(st, "out", now, false, nil)
-    setStage(st, "OUT", now)
+    if cued then setStage(st, "OUT", now) end
   end
 end
 
@@ -242,19 +281,28 @@ function E.SetMoving(st, moving, now)
 end
 
 -- zone: the ladder's; rest: inside item 9606 and able to shoot (nil = not
--- known = inside); radial: the movement keys' intent in the character's
--- frame, -1..1; facing: radians (GetPlayerFacing) or nil; meleeReadyIn /
--- raptorReadyIn: seconds until the white swing / Raptor are ready;
--- rangedElapsed: the ranged swing's age.
-function E.Step(st, now, zone, rest, radial, facing, meleeReadyIn, rangedRemaining, queueWindow, raptorReadyIn, rangedElapsed)
+-- known = inside); radial / lateral: the movement keys' intent in the
+-- character's frame (forward +, strafe right +), -1..1; facing: radians
+-- (GetPlayerFacing) or nil; meleeReadyIn / raptorReadyIn: seconds until the
+-- white swing / Raptor are ready; rangedElapsed: the ranged swing's age.
+function E.Step(st, now, zone, rest, radial, facing, meleeReadyIn, rangedRemaining, queueWindow, raptorReadyIn, rangedElapsed, lateral)
   local dt = st.lastNow and (now - st.lastNow) or 0
   if dt < 0 then dt = 0 elseif dt > E.DT_MAX then dt = E.DT_MAX end
   st.lastNow = now
-  radial = tonumber(radial) or 0
-  local face = 1
-  if type(facing) == "number" and st.anchor ~= nil and turnDeg(st.anchor, facing) > E.FACE_DEG then face = -1 end
-  st.radial, st.face = radial, face
-  local rin = radial * face      -- intent in the target's frame: + toward, - away
+  radial, lateral = tonumber(radial) or 0, tonumber(lateral) or 0
+  -- The intent projected onto the target bearing: forward counts the
+  -- cosine of the turn since the anchor, a strafe the sine. The strafe's
+  -- sign is the client's, measured (range probe 2026-09-30: a turn that
+  -- lowers the facing followed by a strafe LEFT walked away), not the
+  -- textbook frame's. No anchor: facing the target.
+  local theta = 0
+  if type(facing) == "number" and st.anchor ~= nil then theta = turnRad(st.anchor, facing) end
+  local c = math.cos(theta)
+  st.radial, st.lateral, st.theta, st.face = radial, lateral, theta, (c >= 0) and 1 or -1
+  -- A strafe counts nothing: its sign came out both ways in game (probe
+  -- and weave logs 2026-09-30), so a strafe-out is drawn at the edges only.
+  local rin = radial * c
+  if rin > -1e-9 and rin < 1e-9 then rin = 0 end
   local prev, prevRest = st.zone, st.rest
   rest = rest ~= false
   st.zone, st.rest = zone, rest
@@ -294,6 +342,9 @@ function E.Step(st, now, zone, rest, radial, facing, meleeReadyIn, rangedRemaini
         -- an out leg that had backed out, back in melee: the hunter turned
         -- round. Right after the hit it is the finder catching up (its settle).
         st.leg = nil; setStage(st, "STRIKE", now)
+      elseif zone == "CLOSE" and prev == "MELEE" and s == nil and rin < 0 then
+        -- a silently armed way out (a hit with no stage) leaving reach: the edge speaks
+        setStage(st, "OUT", now)
       end
     elseif s == "GO" or s == "WAIT" then
       if zone == "CLOSE" then
@@ -372,17 +423,21 @@ function E.Step(st, now, zone, rest, radial, facing, meleeReadyIn, rangedRemaini
     st.releaseAt = nil
     setStage(st, nil, now)
   end
-  -- The run from the rest spot: intent toward the target under a GO or WAIT
-  -- starts the in leg at once, so the glide draws the first step.
-  if (s == "GO" or s == "WAIT") and zone == "SWEET" and rin > 0 and not st.leg then
-    startLeg(st, "in", now, st.posKnown and (st.pos - dt * rin / st.legIn) <= 0.001, nil)
+  -- The run from the rest spot: intent toward the target starts the in leg
+  -- at once, so the glide draws the first step, under a GO or WAIT, or
+  -- uncued from a known rest spot (a GO withheld by Raptor's cooldown must
+  -- not leave the bar asleep until the dead-zone edge, user 2026-09-30).
+  local atRest = st.posKnown and (st.pos - dt * rin / st.legIn) <= 0.001
+  if (s == "GO" or s == "WAIT" or (s == nil and atRest and zone == prev)) and zone == "SWEET" and rest and rin > 0 and not st.leg then
+    startLeg(st, "in", now, atRest, nil)
     st.leg.t0, st.leg.net = now - dt, dt * rin      -- this tick's slice was the first step
     setStage(st, "IN", now)
     s = "IN"
   end
   -- A rest-band run-in that never reached the shoot edge is over when the
-  -- next shot is due, like the GO it grew from.
-  if st.leg and st.leg.kind == "in" and st.leg.netAtShoot == nil and (rangedElapsed or 0) > startMax then
+  -- next shot is due, like the GO it grew from, or when the hunter stops.
+  if st.leg and st.leg.kind == "in" and st.leg.netAtShoot == nil
+     and ((rangedElapsed or 0) > startMax or (rin == 0 and not st.moving)) then
     idle(st, now)
     s = nil
   end
@@ -395,6 +450,9 @@ function E.Step(st, now, zone, rest, radial, facing, meleeReadyIn, rangedRemaini
   local lo, hi
   local gap = E.EDGE_GAP * (1 - st.shootFrac)
   if zone == "MELEE" then
+    -- an out leg drains from the hit while the ladder still reads MELEE;
+    -- how deep the hunter went is not knowable (tried: a depth estimate
+    -- held the bar full through the way out, reverted 2026-09-30)
     lo, hi = (leg and leg.kind == "out") and (st.shootFrac + gap) or 1, 1
   elseif zone == "CLOSE" then
     -- a hair short of both ends: the finder's settle reports the crossing
@@ -451,10 +509,10 @@ function E.Step(st, now, zone, rest, radial, facing, meleeReadyIn, rangedRemaini
   if st.outMap then
     local span = 1 - st.shootFrac
     st.glide = (span > 0) and (st.pos - st.shootFrac) / span or 0
-    if st.glide < 0 then st.glide = 0 end
   else
     st.glide = st.pos
   end
+  if st.glide < 0 then st.glide = 0 elseif st.glide > 1 then st.glide = 1 end
 end
 
 -- Flat fields on state.weave (Core/State.lua declares them); no allocation.
@@ -469,7 +527,8 @@ function E.Publish(st, w)
   w.waitFor = st.waitFor
   w.glide = st.glide
   w.releaseAt = st.releaseAt
-  w.radial, w.face, w.overshot = st.radial, st.face, st.overshot
+  w.radial, w.lateral, w.face, w.overshot = st.radial, st.lateral, st.face, st.overshot
+  w.legOutBack = st.legOutBack
 end
 
 local LibStub = _G.LibStub

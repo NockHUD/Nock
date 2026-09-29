@@ -31,9 +31,18 @@ local function radialFor(s, moving)
   local out = (s.leg and s.leg.kind == "out") or s.zone == "MELEE" or s.stage == "STRIKE" or s.stage == "OUT"
   return out and -1 or 1
 end
+-- The old cases run out on a turned character (forward intent, facing
+-- away from an anchor at 0), never on a backpedal: their samples land in
+-- the run leg as they always did.
 local function step(s, now, zone, moving, mri, rr, qw, rap, rel, radial)
   E.SetMoving(s, moving, now)
-  E.Step(s, now, zone, nil, radial or radialFor(s, moving), nil, mri or 0, rr or 5, qw or 0.4, rap or 0, rel or 0)
+  if radial ~= nil then
+    E.Step(s, now, zone, nil, radial, nil, mri or 0, rr or 5, qw or 0.4, rap or 0, rel or 0)
+    return
+  end
+  if s.anchor == nil then s.anchor = 0 end
+  local r = radialFor(s, moving)
+  E.Step(s, now, zone, nil, (r ~= 0) and 1 or 0, (r < 0) and math.pi or 0, mri or 0, rr or 5, qw or 0.4, rap or 0, rel or 0)
 end
 
 -- Idle in range: nothing.
@@ -337,8 +346,8 @@ ok(mm.stage == nil, "into melee reach: still nothing")
 -- character's frame; the facing anchor from the last shot / hit flips it.
 -- ---------------------------------------------------------------------------
 E.SHOOT_FRAC = 0
-local function stepi(s, now, zone, radial, facing, rest)
-  E.Step(s, now, zone, rest, radial, facing, 0, 5, 0.4, 0, 0)
+local function stepi(s, now, zone, radial, facing, rest, lateral)
+  E.Step(s, now, zone, rest, radial, facing, 0, 5, 0.4, 0, 0, lateral)
 end
 
 -- W+S together: the client says moving, the keys say 0. Frozen.
@@ -370,9 +379,11 @@ ok(ex.stage == nil and ex.leg == nil, "1.75 s after the shot, still in range: ov
 local bk = E.New(1.0, 1.0, 1.0)
 stepi(bk, 0, "MELEE", 0); E.MeleeHit(bk, 0)
 stepi(bk, 0, "MELEE", 0)
-ok(bk.stage == nil, "a hit with no stage starts nothing")
+ok(bk.stage == nil and bk.leg and bk.leg.kind == "out", "a hit with no stage arms the way out silently (in-game 2026-09-30: a run-in the anchor missed left the bar pinned full)")
+stepi(bk, 0.1, "MELEE", -1)
+ok(near(bk.glide, 0.9), "and the bar drains from the hit")
 stepi(bk, 0.2, "CLOSE", -1)
-ok(bk.stage == "OUT" and bk.leg.t0 ~= nil, "leaving melee with intent out: an uncued out leg")
+ok(bk.stage == "OUT" and bk.leg.t0 ~= nil, "leaving melee with intent out: the words follow")
 stepi(bk, 0.5, "CLOSE", -1)
 stepi(bk, 0.6, "MELEE", 1)
 ok(bk.stage == "STRIKE" and bk.leg == nil, "back into melee on a leg that had backed out: STRIKE")
@@ -423,7 +434,7 @@ stepi(sn, 1.6, "CLOSE", -1, 0)
 stepi(sn, 2.0, "CLOSE", -1, 0)
 stepi(sn, 2.2, "CLOSE", -1, 0)
 E.Step(sn, 2.2, "SWEET", nil, -1, 0, 0, 0.1, 0.4, 0, 0)
-ok(sn.stage == "RELEASE" and near(sn.sampleOut, 1.0), "identical outcome")
+ok(sn.stage == "RELEASE" and near(sn.sampleOutBack, 1.0), "identical outcome, learned as the backpedal leg")
 
 -- The face-back at range: the anchor still holds, so W is in again.
 -- (The GO decision runs before the RELEASE flash clears: one tick later.)
@@ -499,7 +510,7 @@ ok(near(rb.pos, 0.85) and near(rb.glide, 0.30 / 0.45), "out of melee reach repor
 stepi(rb, 1.75, "CLOSE", -1, nil, true)
 ok(near(rb.pos, 0.55) and near(rb.glide, 0), "0.45 s out: the shoot edge, the bar empty")
 E.Step(rb, 1.75, "SWEET", true, -1, nil, 0, 0.1, 0.4, 0, 0)
-ok(rb.stage == "RELEASE" and near(rb.glide, 0) and near(rb.sampleOut, 1.0), "RELEASE on empty: 0.45 s of intent from the hit / 0.45 = 1.0")
+ok(rb.stage == "RELEASE" and near(rb.glide, 0) and near(rb.sampleOutBack, 1.0), "RELEASE on empty: 0.45 s of backpedal from the hit / 0.45 = 1.0")
 stepi(rb, 2.30, "SWEET", -1, nil, true)
 ok(near(rb.pos, 0) and near(rb.glide, 0), "backing to the rest edge: still empty")
 stepi(rb, 2.6, "SWEET", -1, nil, false)
@@ -523,7 +534,7 @@ stepi(rs, 0.6, "CLOSE", -1, nil, true)
 E.Step(rs, 0.65, "SWEET", true, -1, nil, 0, 0.1, 0.4, 0, 0)
 ok(rs.stage == "RELEASE" and near(rs.pos, 0.55) and near(rs.glide, 0), "RELEASE at the shoot edge: the bar empty")
 stepi(rs, 0.75, "SWEET", -1, nil, true)
-ok(near(rs.pos, 0.45) and near(rs.glide, 0), "still backing: the estimate drains on, the bar stays empty")
+ok(rs.pos < 0.55 and rs.pos > 0.4 and near(rs.glide, 0), "still backing: the estimate drains on, the bar stays empty")
 E.SetMoving(rs, false, 0.8)
 stepi(rs, 0.8, "SWEET", 0, nil, true)
 ok(near(rs.pos, 0) and near(rs.glide, 0), "stopped in the band: settled to the rest edge")
@@ -624,7 +635,7 @@ stepi(dp, 2.2, "CLOSE", -1, nil, true)
 ok(near(dp.pos, 0.65), "the melee edge reported: no snap, the drain goes on")
 stepi(dp, 2.4, "CLOSE", -1, nil, true)
 E.Step(dp, 2.4, "SWEET", true, -1, nil, 0, 0.1, 0.4, 0, 0)
-ok(dp.stage == "RELEASE" and near(dp.glide, 0) and near(dp.sampleOut, 2.0), "RELEASE on empty: 0.9 s of intent from the hit = a 2.0 s out leg")
+ok(dp.stage == "RELEASE" and near(dp.glide, 0) and near(dp.sampleOutBack, 2.0), "RELEASE on empty: 0.9 s of backpedal from the hit = a 2.0 s out leg")
 
 -- Inside the dead zone the bar stops a hair short of both ends until the
 -- ladder reports the crossing (user 2026-09-30: "100% but the text says
@@ -634,7 +645,8 @@ local eg = E.New(1.0, 1.0, 1.0)
 stepi(eg, 0, "SWEET", 0, nil, true); E.RangedSwing(eg, 0); stepi(eg, 0, "SWEET", 0, nil, true)
 stepi(eg, 0.2, "CLOSE", 0, nil, true)
 stepi(eg, 1.2, "CLOSE", 1, nil, true)
-ok(near(eg.pos, 1 - 0.05 * 0.45) and near(eg.glide, 1 - 0.05 * 0.45), "pushing past the estimate in the dead zone: a hair short of full")
+ok(near(eg.pos, 1 - 0.05 * 0.45) and near(eg.glide, 1 - 0.05 * 0.45), "pushing past the estimate in the dead zone: a hair short of full (opt-in; the default gap is 0 since the stall read worse)")
+ok(E.EDGE_GAP_DEFAULT == 0, "the default edge gap is 0")
 stepi(eg, 1.3, "MELEE", 1, nil, true)
 ok(near(eg.glide, 1), "MELEE reported: full")
 E.MeleeHit(eg, 1.3)
@@ -644,6 +656,112 @@ ok(near(eg.pos, 0.55 + 0.05 * 0.45) and near(eg.glide, 0.05), "backing past the 
 E.Step(eg, 2.6, "SWEET", true, -1, nil, 0, 0.1, 0.4, 0, 0)
 ok(eg.stage == "RELEASE" and near(eg.glide, 0), "SWEET reported: empty")
 E.EDGE_GAP = 0
+
+-- Intent projected onto the target bearing (2026-09-30, second round):
+-- forward counts cos(turn), turn left = facing up (keys probe). A strafe
+-- counts NOTHING: its sign came out both ways in game (a range probe
+-- walked away on a facing-down turn + strafe left; a later weave backing
+-- and strafing left on a facing-up turn reached range while the same
+-- sign said toward), so a strafe-out is drawn at the edges only.
+E.SHOOT_FRAC = 0
+local pj = E.New(1.0, 1.0, 1.0)
+stepi(pj, 0, "SWEET", 0, 0); E.RangedSwing(pj, 0, 0); stepi(pj, 0, "SWEET", 0, 0)
+stepi(pj, 0.2, "CLOSE", 1, 0)
+stepi(pj, 0.6, "MELEE", 1, 0); E.MeleeHit(pj, 0.6, 0)
+stepi(pj, 0.7, "MELEE", 0, -math.pi / 2)
+ok(near(pj.glide, 1) and pj.face == 1, "turned 90 (facing down), standing: nothing moves, forward would be sideways")
+stepi(pj, 1.0, "MELEE", 0, -math.pi / 2, nil, -1)
+ok(near(pj.glide, 1) and pj.lateral == -1, "RMB+A (strafe left) on the turn: frozen, the strafe is read but not trusted")
+stepi(pj, 1.3, "MELEE", 0, -math.pi / 2, nil, 1)
+ok(near(pj.glide, 1), "strafe right: frozen too")
+stepi(pj, 1.6, "MELEE", 1, math.pi, nil, 1)
+ok(near(pj.glide, 0.7), "W on the flipped character with a strafe key held: the forward share alone, away")
+local pd = E.New(1.0, 1.0, 1.0)
+stepi(pd, 0, "SWEET", 0, 0); E.RangedSwing(pd, 0, 0); stepi(pd, 0, "SWEET", 0, 0)
+stepi(pd, 0.2, "CLOSE", 0, 0)
+stepi(pd, 0.6, "CLOSE", 1, math.pi / 3)
+ok(near(pd.glide, 0.2), "W at 60 degrees off the target: half rate, 0.4 s = 0.2")
+stepi(pd, 0.6, "CLOSE", 0.707, 0, nil, 0.707)
+stepi(pd, 1.0, "CLOSE", 0.707, 0, nil, 0.707)
+ok(near(pd.glide, 0.2 + 0.4 * 0.707), "W+D+RMB facing the target (the reader's diagonal pair): the forward share")
+
+-- No depth (tried and reverted 2026-09-30: letting the estimate run past
+-- the melee edge held the bar full through the deep part of the way out,
+-- the stall the user rejects, and rescaled the learned leg). Inside reach
+-- the estimate stays at the edge and the way out drains from the hit.
+E.SHOOT_FRAC = 0.55
+local dd = E.New(1.0, 2.0, 1.0)
+stepi(dd, 0, "SWEET", 0, 0, true); E.RangedSwing(dd, 0, 0); stepi(dd, 0, "SWEET", 0, 0, true)
+stepi(dd, 0.2, "CLOSE", 0, 0, true)
+stepi(dd, 0.65, "MELEE", 1, 0, true)
+stepi(dd, 1.0, "MELEE", 1, 0, true)
+ok(dd.stage == "STRIKE" and near(dd.pos, 1), "0.35 s further in: the estimate stays at the edge")
+E.MeleeHit(dd, 1.0, 0)
+stepi(dd, 1.5, "MELEE", -1, 0, true)
+ok(near(dd.pos, 0.75) and near(dd.glide, 0.2 / 0.45), "0.5 s of backpedal (2.0 s leg): the drain runs from the hit")
+E.SHOOT_FRAC = 0
+
+-- A white swing landing on the way out (still inside reach) must not pin
+-- the estimate back to full (recording 2026-09-30: the bar snapped back
+-- mid-drain); only a fresh hit does.
+local wh = E.New(1.0, 2.0, 1.0)
+stepi(wh, 0, "SWEET", 0, 0); E.RangedSwing(wh, 0, 0); stepi(wh, 0, "SWEET", 0, 0)
+stepi(wh, 0.2, "CLOSE", 1, 0); stepi(wh, 0.6, "MELEE", 1, 0); E.MeleeHit(wh, 0.6, 0)
+stepi(wh, 1.0, "MELEE", -1, 0)
+ok(near(wh.pos, 0.8), "0.4 s of backpedal on a 2.0 s leg: 0.8")
+E.MeleeHit(wh, 1.0, 0)
+stepi(wh, 1.2, "MELEE", -1, 0)
+ok(wh.stage == "OUT" and near(wh.pos, 0.7) and wh.leg and wh.leg.kind == "out", "a white hit mid way out: the drain goes on from 0.8, the leg is kept")
+
+-- Two learned out legs: a backpedal (S while facing) has its own time;
+-- a run or strafe out keeps the other. Keyed at the first step out.
+E.SHOOT_FRAC = 0.55
+local tl = E.New(1.0, 2.0, 1.0, nil, 4.0)
+ok(near(tl.legOutBack, 4.0) and tl.learnedOutBack == true, "New takes a stored backpedal leg")
+ok(near(E.New(1.0, 2.0, 1.0).legOutBack, 2.0) and E.New(1.0, 2.0, 1.0).learnedOutBack == false, "no stored backpedal leg: seeded from the out leg")
+stepi(tl, 0, "SWEET", 0, 0, true); E.RangedSwing(tl, 0, 0); stepi(tl, 0, "SWEET", 0, 0, true)
+stepi(tl, 0.2, "CLOSE", 0, 0, true); stepi(tl, 0.6, "MELEE", 0, 0, true); E.MeleeHit(tl, 0.6, 0)
+stepi(tl, 1.5, "MELEE", -1, 0, true)
+ok(tl.leg.method == "back" and near(tl.pos, 1 - 0.9 / 4.0), "S out: the backpedal leg, 0.9 s on 4.0")
+stepi(tl, 2.4, "CLOSE", -1, 0, true)
+E.Step(tl, 2.4, "SWEET", true, -1, 0, 0, 0.1, 0.4, 0, 0)
+ok(near(tl.sampleOutBack, 4.0) and near(tl.legOutBack, 4.0) and near(tl.legOut, 2.0) and tl.sampleOut == nil, "1.8 s of backpedal / 0.45 = 4.0 learned into the backpedal leg; the run leg untouched")
+E.SetMoving(tl, false, 2.5); stepi(tl, 2.5, "SWEET", 0, 0, true)
+E.RangedSwing(tl, 3.0, 0); stepi(tl, 3.0, "SWEET", 0, 0, true)
+E.SetMoving(tl, true, 3.0)
+stepi(tl, 3.4, "SWEET", 1, 0, true); stepi(tl, 3.55, "CLOSE", 1, 0, true); stepi(tl, 4.0, "MELEE", 1, 0, true); E.MeleeHit(tl, 4.0, 0)
+stepi(tl, 4.45, "MELEE", 1, math.pi, true)
+ok(tl.leg.method == "run" and near(tl.pos, 1 - 0.45 / 2.0), "W on the flipped character: the run leg, 0.45 s on 2.0")
+stepi(tl, 4.9, "CLOSE", 1, math.pi, true)
+E.Step(tl, 4.9, "SWEET", true, 1, math.pi, 0, 0.1, 0.4, 0, 0)
+ok(near(tl.sampleOut, 2.0) and near(tl.legOutBack, 4.0), "0.9 s of run / 0.45 = 2.0 into the run leg; the backpedal leg untouched")
+local pw = {}
+E.Publish(tl, pw)
+ok(pw.lateral == tl.lateral and pw.legOutBack == tl.legOutBack, "Publish: lateral and the backpedal leg")
+E.SHOOT_FRAC = 0.55
+
+-- An uncued run-in from rest (user 2006-09-30: Raptor's cooldown beyond
+-- the window withholds the GO, so the bar only woke at the dead-zone edge,
+-- 0.5-1 s after the first step): a run toward the target from the rest
+-- edge starts the leg on its own; a stop before the shoot edge ends it.
+E.SHOOT_FRAC = 0.55
+local ur = E.New(1.0, 1.0, 1.0)
+stepi(ur, 0, "SWEET", 0, 0, true)
+E.RangedSwing(ur, 0, 0)
+E.Step(ur, 0, "SWEET", true, 0, 0, 0, 5, 0.4, 2.5, 0)   -- Raptor 2.5 s out: no GO this shot
+ok(ur.stage == nil and ur.pending == false and near(ur.pos, 0), "Raptor on cooldown: no GO, at rest")
+E.SetMoving(ur, true, 0.1)
+stepi(ur, 0.3, "SWEET", 1, 0, true)
+ok(ur.stage == "IN" and ur.leg.fromRest == true and near(ur.glide, 0.2), "W from rest without a GO: IN at once, the bar rises from the first step")
+E.SetMoving(ur, false, 0.4)
+stepi(ur, 0.4, "SWEET", 0, 0, true)
+ok(ur.stage == nil and ur.leg == nil and near(ur.pos, 0), "stopped before the shoot edge: over, settled at rest")
+-- A run-in from an unknown spot still waits for the dead-zone edge.
+local uu = E.New(1.0, 1.0, 1.0)
+E.SetMoving(uu, true, 0)
+stepi(uu, 0, "SWEET", 1, 0, true)
+stepi(uu, 0.3, "SWEET", 1, 0, true)
+ok(uu.stage == nil, "moving on a fresh target with no known spot: nothing yet")
 
 -- rest nil (item 9606 unanswered) reads as inside: GO anywhere in SWEET.
 local rn = E.New(1.0, 1.0, 1.0)
