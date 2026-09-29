@@ -18,7 +18,9 @@ local Nock = { db = { profile = {
   cueOutOfRangeEnabled = false, cueOutOfRangeSound = "Nock Out of Range",
 } } }
 local module
-function Nock:NewModule(name) module = { name = name }; return module end
+function Nock:NewModule(name) module = { name = name, messages = {} }
+  function module:RegisterMessage(m, h) self.messages[m] = h or m end
+  return module end
 _G.LibStub = function(lib, silent)
   if lib == "LibSharedMedia-3.0" then return { Fetch = function(_, kind, name) return "path:" .. name end } end
   return { GetAddon = function() return Nock end }
@@ -124,6 +126,28 @@ p.cueInRangeEnabled = false
 st.target.rangeState = nil; now = 103; R:Refresh(st); now = 103.2; R:Refresh(st)
 st.target.rangeState = "SWEET"; now = 104; R:Refresh(st); now = 104.2; R:Refresh(st)
 ok(#played == 5, "target loss and a new target are silent")
+
+-- Weave stage cues: STRIKE and RELEASE from the helper's message, each its
+-- own switch and clip, the dead-zone channel, the master switch respected.
+ok(R.messages.NOCK_WEAVE_STAGE == "OnWeaveStage", "listens for the helper's stage message")
+p.weaveStrikeEnabled, p.weaveStrikeSound = true, "Nock Strike"
+p.weaveReleaseEnabled, p.weaveReleaseSound = false, "Nock Release"
+ok(R.StageCue("STRIKE", p) == "weaveStrikeSound" and R.StageCue("RELEASE", p) == nil and R.StageCue("IN", p) == nil, "StageCue picks the switched-on stage only")
+p.weaveReleaseEnabled = true
+ok(R.StageCue("RELEASE", p) == "weaveReleaseSound", "release on")
+p.weaveReleaseSound = "None"
+ok(R.StageCue("RELEASE", p) == nil, "a None clip is silent")
+p.weaveReleaseSound = "Nock Release"
+p.soundCuesEnabled = false
+ok(R.StageCue("STRIKE", p) == nil, "master switch off: silent")
+p.soundCuesEnabled = true
+local n = #played
+R:OnWeaveStage("NOCK_WEAVE_STAGE", "STRIKE", "IN")
+ok(#played == n + 1 and played[#played][1] == "path:Nock Strike", "STRIKE plays its clip")
+R:OnWeaveStage("NOCK_WEAVE_STAGE", "OUT", "STRIKE")
+ok(#played == n + 1, "OUT plays nothing")
+R:OnWeaveStage("NOCK_WEAVE_STAGE", "RELEASE", "OUT")
+ok(#played == n + 2 and played[#played][1] == "path:Nock Release", "RELEASE plays its clip")
 
 print(("forever_range_cues: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

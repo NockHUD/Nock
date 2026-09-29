@@ -288,5 +288,32 @@ do
   Nock.Flavor.forever = false
 end
 
+-- Utilities -> Weave key (Forever/WeaveKey.lua): the mode, the key, both
+-- bodies with resets, the pad switch, the report.
+Nock.SendMessage = Nock.SendMessage or function() end
+dofile("Core/WeaveMacro.lua")
+dofile("Forever/WeaveKey.lua")
+F.Apply(opts)
+local wk = nodeAt(opts, "utilities.weaveKey")
+ok(wk ~= nil and wk.type == "group", "the Weave key page survives the prune")
+for _, k in ipairs({ "weaveKeyEnabled", "weaveKey", "weaveKeyMovePad", "weaveKeyMacroDown", "weaveKeyResetDown", "weaveKeyMacroUp", "weaveKeyResetUp", "weaveKeyErrors", "weaveKeyReport" }) do
+  ok(nodeAt(opts, "utilities.weaveKey." .. k) ~= nil, "row " .. k)
+end
+local p = Nock.db.profile
+p.weaveKeyEnabled, p.weaveKeyMacroDown, p.weaveKeyMacroUp = true, nil, nil
+ok(wk.args.weaveKeyMacroUp.get() == Nock.WeaveKey.STOCK_UP, "release box shows the stock body while unset")
+wk.args.weaveKeyMovePad.set(nil, false)
+ok(not Nock.WeaveMacro.HasMovePad(p.weaveKeyMacroDown) and not Nock.WeaveMacro.HasMovePad(p.weaveKeyMacroUp), "pad switch off strips the pad line from both")
+wk.args.weaveKeyMovePad.set(nil, true)
+ok(p.weaveKeyMacroDown == Nock.WeaveKey.PAD_LINE and p.weaveKeyMacroUp:sub(1, #Nock.WeaveKey.PAD_LINE) == Nock.WeaveKey.PAD_LINE, "pad switch on puts the FORWARD line back on top of both")
+wk.args.weaveKeyMacroUp.set(nil, "/cast !Auto Shot")
+ok(p.weaveKeyMacroUp == "/cast !Auto Shot", "typing stores the body verbatim")
+wk.args.weaveKeyResetUp.func()
+ok(p.weaveKeyMacroUp == nil and wk.args.weaveKeyMacroUp.get() == Nock.WeaveKey.STOCK_UP, "reset returns the box to stock (unset)")
+ok(wk.args.weaveKey.type == "keybinding", "the key row is a keybinding control")
+ok(wk.args.weaveKey.disabled() == false, "key row live while the mode is on")
+p.weaveKeyEnabled = false
+ok(wk.args.weaveKey.disabled() == true, "key row greyed while the mode is off")
+
 print(("options_forever: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

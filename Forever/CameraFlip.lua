@@ -3,7 +3,7 @@
 
 -- After the SoD "Melee Weave Smart Camera Flip" WeakAura (wago tYbtnSVt4).
 -- Two macro lines drive it:
---   Raptor macro, last line:      /run NockCamFlip()   turns away on the next melee hit
+--   Raptor macro, last line:      /run NockCamFlip()   turns away on the Raptor hit (or the next melee hit)
 --   Auto Shot spam, last line:    /run NockCamFace()   turns back; idempotent
 -- With cameraFlipAutoFace (on by default) the return also fires on its own
 -- once Auto Shot reaches the target again on the way out (the range finder's
@@ -55,7 +55,7 @@ local CAMERA_TRIAL_MAX, CAMERA_BLOCKED_MAX = 24, 20
 local CAMERA_COOLDOWN = 0.5        -- s between two turns
 local CAMERA_DELAY_DEFAULT = 0       -- s from SetView(1) to the pair, 0 = next frame (out)
 local CAMERA_DELAY_BACK_DEFAULT = 0  -- same for the return
-local CAMERA_ARM_WINDOW = 1.5      -- s a macro-armed turn waits for the melee hit
+local CAMERA_ARM_MIN = 1.5         -- s floor of the window a macro-armed turn waits for the hit
 local CAMERA_SETUP_TOL = 2.0       -- degrees either side of 180
 
 -- Pure: the profile switch (off unless set).
@@ -85,6 +85,22 @@ function CameraFlip.Allowed(p, ctx)
   local gate = p.cameraFlipGate or "raid"
   if RC and RC.GateAllows then return RC.GateAllows(gate, ctx or "solo") end
   return gate == "solo"
+end
+
+-- Pure: how long an armed turn waits for the hit: one melee swing plus slack
+-- (a stale white swing landing on arrival puts Raptor on the NEXT swing),
+-- never under CAMERA_ARM_MIN.
+function CameraFlip.ArmWindow(swingDuration)
+  local w = CAMERA_ARM_MIN
+  if type(swingDuration) == "number" and swingDuration > 0 then w = swingDuration + 0.5 end
+  if w < CAMERA_ARM_MIN then w = CAMERA_ARM_MIN end
+  return w
+end
+
+-- Pure: is this own-cast event the Raptor that carries the swing? By name:
+-- ranks are separate spells on Forever.
+function CameraFlip.CastFires(unit, name, raptorName)
+  return unit == "player" and name ~= nil and raptorName ~= nil and name == raptorName
 end
 
 function CameraFlip:OnEnable()
@@ -277,7 +293,7 @@ function CameraFlip:CamFace()
   return true
 end
 
--- Macro hook: arm a turn for the next MainHand hit (within CAMERA_ARM_WINDOW),
+-- Macro hook: arm a turn for the Raptor success or the next MainHand hit (within ArmWindow),
 -- so it can never land before the swing; `NockCamFlip(true)` turns at once.
 function CameraFlip:CamFlipRequest(now)
   local p = Nock.db and Nock.db.profile
@@ -288,22 +304,39 @@ function CameraFlip:CamFlipRequest(now)
   if now then
     self:CamDoFlip(true)
   else
-    camSay(self, "armed for the next melee hit")
-    self._cameraArm = GetTime() + CAMERA_ARM_WINDOW
+    camSay(self, "armed for the Raptor or the next melee hit")
+    local m = Nock.state and Nock.state.melee
+    self._cameraArm = GetTime() + CameraFlip.ArmWindow(m and m.swingDuration)
     self:RegisterEvent("PLAYER_SWING", "OnCameraSwing")
+    self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", "OnCameraCast")
   end
 end
 
 _G.NockCamFlip = function(now) CameraFlip:CamFlipRequest(now) end
 _G.NockCamFace = function() CameraFlip:CamFace() end
 
-function CameraFlip:OnCameraSwing(event, duration, kind)
-  local T = _G.Enum and _G.Enum.PlayerSwingType
-  if not (T and kind == T.MainHand) or not self._cameraArm then return end
+-- The armed turn, from either signal: due inside the window, expired past it.
+function CameraFlip:ArmFire(what)
+  if not self._cameraArm then return end
   local due = GetTime() <= self._cameraArm
   self._cameraArm = nil
-  camSay(self, due and "melee hit: armed turn fires" or "melee hit: arm expired")
+  camSay(self, due and (what .. ": armed turn fires") or (what .. ": arm expired"))
   if due then self:CamDoFlip(true) end
+end
+
+function CameraFlip:OnCameraSwing(event, duration, kind)
+  local T = _G.Enum and _G.Enum.PlayerSwingType
+  if not (T and kind == T.MainHand) then return end
+  self:ArmFire("melee hit")
+end
+
+function CameraFlip:OnCameraCast(event, unit, castGUID, spellID)
+  if not self._cameraArm then return end
+  local API = Nock.API
+  local name = spellID and API and API.SpellName and Nock.Flavor.Plain(API.SpellName(spellID))
+  local raptor = Nock.Spells and API and API.SpellName and Nock.Flavor.Plain(API.SpellName(Nock.Spells.RAPTOR_STRIKE))
+  if not CameraFlip.CastFires(unit, name, raptor) then return end
+  self:ArmFire("Raptor Strike")
 end
 
 function CameraFlip:CameraData()

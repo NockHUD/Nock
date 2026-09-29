@@ -53,7 +53,7 @@ local O = Nock.Onboarding
 
 local keys = {}
 for i, pg in ipairs(O.Pages) do keys[i] = pg.key end
-ok(table.concat(keys, ",") == "start,welcome,hud,range,weave,corners,warnings,cues,ring,qol,done", "page order, got " .. table.concat(keys, ","))
+ok(table.concat(keys, ",") == "start,welcome,hud,range,weave,weaveKey,weaveKeyBind,corners,warnings,cues,ring,qol,done", "page order, got " .. table.concat(keys, ","))
 
 -- The weave page: weave (recommended) switches the helper and its strip on,
 -- turret switches the helper off; the choice reads back from the profile.
@@ -148,7 +148,12 @@ ok(#recap >= 5 and #recap <= 6, "recap fits the finish page (5-6 rows)")
 ok(recap[5][2] == "SHIFT-R", "recap names the ring key")
 ok(recap[6] and recap[6][1] == "Weaving" and recap[6][2] == "turret", "recap: turret (the Forever default)")
 Nock.db.profile.weaveHelperEnabled = true
-ok(O:BuildRecap()[6][2] == "helper on", "recap: helper on when chosen")
+ok(O:BuildRecap()[6][2] == "helper on, macros", "recap: helper on, the macro way")
+Nock.db.profile.weaveKeyEnabled, Nock.db.profile.weaveKey = true, "SHIFT-F"
+ok(O:BuildRecap()[6][2] == "helper on, weave key SHIFT-F", "recap: helper on with the key")
+Nock.db.profile.weaveKey = nil
+ok(O:BuildRecap()[6][2] == "helper on, weave key not set", "recap: the mode without a key yet")
+Nock.db.profile.weaveKeyEnabled = false
 Nock.db.profile.weaveHelperEnabled = false
 
 -- First run stamps seenVersion as the wizard opens.
@@ -162,6 +167,32 @@ local scheduled = false
 O.ScheduleTimer = function() scheduled = true end
 O:OnEnteringWorld()
 ok(scheduled == false, "stamped: no auto-open on the next login")
+
+-- The weave key pages: only for weavers, the bind page only in key mode.
+local kp, bp
+for _, pg in ipairs(O.Pages) do if pg.key == "weaveKey" then kp = pg elseif pg.key == "weaveKeyBind" then bp = pg end end
+local P = Nock.db.profile
+P.weaveHelperEnabled, P.weaveKeyEnabled, P.weaveKeyMacroDown, P.weaveKeyMacroUp = false, false, nil, nil
+ok(kp.kind == "cards" and O:IsPageVisible(kp) == false and O:IsPageVisible(bp) == false, "turret: neither page")
+P.weaveHelperEnabled = true
+ok(O:IsPageVisible(kp) == true and O:IsPageVisible(bp) == false, "weaver: the mode page, not the bind page yet")
+ok(kp.options[1].value == "macros" and kp.options[1].isSelected(P), "macros is the live answer by default")
+kp.options[2].apply(P)
+ok(P.weaveKeyEnabled == true and P.weaveKeyMacroDown == nil and P.weaveKeyMacroUp == nil and kp.options[2].isSelected(P), "weave key card: mode on, bodies left unset (stock)")
+ok(O:IsPageVisible(bp) == true and bp.kind == "intro" and bp.keyCapture and bp.keyCapture.get(P) == nil, "bind page appears with an empty capture")
+bp.keyCapture.set(P, "SHIFT-F")
+ok(P.weaveKey == "SHIFT-F", "capture stores the key")
+bp.keyCapture.set(P, "")
+ok(P.weaveKey == nil, "clearing the capture unsets it")
+P.weaveKeyMacroUp = "/cast !Auto Shot"
+kp.options[3].apply(P)
+ok(P.weaveKeyEnabled == true and P.weaveKeyMacroDown == "" and P.weaveKeyMacroUp == "" and kp.options[3].isSelected(P), "empty card: both bodies blank")
+kp.options[2].apply(P)
+ok(P.weaveKeyMacroDown == nil and P.weaveKeyMacroUp == nil, "weave key card over two blank bodies: back to stock")
+kp.options[3].apply(P)
+kp.options[1].apply(P)
+ok(P.weaveKeyEnabled == false and P.weaveKeyMacroDown == "" and kp.options[1].isSelected(P), "macros card: mode off, bodies untouched")
+ok(kp.message == "NOCK_WEAVEKEY_CHANGED" and bp.message == "NOCK_WEAVEKEY_CHANGED", "both pages tell the module")
 
 print(("onboarding_forever: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

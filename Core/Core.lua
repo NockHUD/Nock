@@ -599,6 +599,10 @@ function Nock:HandleSlashCommand(input)
     local CF = self:GetModule("CameraFlip", true)
     local rest = input:match("^camera%s+(.*)$") or ""
     if CF and CF.Command then CF:Command(rest) else self:Print("The camera flip is only available on WoW Forever.") end
+  elseif input == "weavekey" or input:match("^weavekey%s") then
+    local WK = self:GetModule("WeaveKey", true)
+    local rest = input:match("^weavekey%s+(.*)$") or ""
+    if WK and WK.Command then WK:Command(rest) else self:Print("The weave key is only available on WoW Forever.") end
   elseif input == "probe" or input:match("^probe%s") then
     local pr = self:GetModule("ForeverProbe", true)
     local which, rest = input:match("^probe%s+(%w+)%s*(.*)$")

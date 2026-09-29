@@ -13,7 +13,7 @@ F.FAMILIES = { general = true, hud = true, profiles = true, alerts = true, utili
 -- Utilities is the TBC toolbox (practice, mailbox, weave binds, ...); only
 -- the Quality of life page has a feed on Forever (Modules/QoL.lua), plus the
 -- Forever-only Aspect ring, Tracking wheel and Camera flip pages added below.
-F.KEEP_PAGES = { utilities = { qol = true, aspectRing = true, cameraFlip = true, trackingWheel = true } }
+F.KEEP_PAGES = { utilities = { qol = true, aspectRing = true, cameraFlip = true, trackingWheel = true, weaveKey = true } }
 
 -- Dotted args paths removed inside the surviving families. A trailing `*`
 -- matches every key with that prefix (same convention as OptionsLayout rows).
@@ -302,6 +302,124 @@ function F.CameraFlipPage()
   return { type = "group", name = "Camera flip", order = 13, args = args }
 end
 
+-- Utilities -> Weave key (Forever/WeaveKey.lua): the optional one-key weave
+-- beside the macro way. The TBC Weave Bind page's shape: mode, key, both
+-- bodies as text with resets, the pad switch. Profile keys weaveKeyEnabled /
+-- weaveKey / weaveKeyMacroDown / weaveKeyMacroUp.
+function F.WeaveKeyPage()
+  local function WK() return Nock.WeaveKey end
+  local function WM() return Nock.WeaveMacro end
+  local function p() return Nock.db.profile end
+  local function changed() Nock:SendMessage("NOCK_WEAVEKEY_CHANGED") end
+  local function off() return p().weaveKeyEnabled ~= true end
+  local function body(which)
+    local d, u = WK().Bodies(p())
+    return which == "down" and d or u
+  end
+  local args = {
+    intro = {
+      type = "description", order = 1, fontSize = "medium",
+      name = "Two ways to weave. Macros: your own Raptor Strike and Auto Shot macros with the camera lines, W does the running. Weave key: one held key runs you in, its release strikes, the next hold runs you out on the turned character, and the last release shoots. Both use the melee bar's words and the camera flip.\n",
+    },
+    modeHeader = { type = "header", name = "Mode", desc = "Which way you weave.", order = 10 },
+    weaveKeyEnabled = {
+      type = "toggle", name = "Weave with one key", order = 11, width = "full",
+      desc = "Hold to run in, let go to strike, hold to run out, let go to shoot. Wants the camera flip on: without it the second hold runs you toward the target. Off, nothing is bound and your macros work as before.",
+      get = function() return p().weaveKeyEnabled == true end,
+      set = function(_, v) p().weaveKeyEnabled = v and true or false; changed() end,
+    },
+    weaveKey = {
+      type = "keybinding", name = "Weave key", order = 12,
+      desc = "The key to hold. Mouse buttons work too: click the box, then press the button. It overrides the key's normal action while the mode is on; a change made in combat applies when combat ends. Also under Nock in the game's Key Bindings.",
+      disabled = off,
+      get = function() return p().weaveKey or "" end,
+      set = function(_, v)
+        if v and v ~= "" then
+          local action = GetBindingAction and GetBindingAction(v)
+          if action == "OPENCHAT" or action == "OPENCHATSLASH" or action == "TOGGLEGAMEMENU" then
+            Nock:Print(("Weave key: refusing to override the '%s' key, you would lose chat or the game menu."):format(_G["BINDING_NAME_" .. action] or action))
+            return
+          end
+        end
+        p().weaveKey = (type(v) == "string" and v ~= "") and v or nil
+        changed()
+      end,
+    },
+    weaveKeyNote = {
+      type = "description", order = 13, fontSize = "small",
+      name = function()
+        local CF = Nock.CameraFlip
+        if off() then return "" end
+        if not _G.MovePadForward and not (WK() and WK().LoadPad and WK():LoadPad()) then
+          return "|cffff9900The Movement Pad is not available on this client: the key cannot run you.|r"
+        end
+        if CF and CF.Enabled and not CF.Enabled(p()) then
+          return "|cffff9900Camera flip is off: the second hold runs you toward the target. Utilities > Camera flip.|r"
+        end
+        return "Camera flip on, Movement Pad loaded."
+      end,
+    },
+    bodiesHeader = { type = "header", name = "What the key runs", desc = "The press body and the release body, yours to edit.", order = 20 },
+    weaveKeyMovePad = {
+      type = "toggle", name = "Movement pad", order = 21, width = "full",
+      desc = "Keep /click MovePadForward at the top of both bodies: the press starts the run, the release stops it. Off, the key only casts and you run on W.",
+      disabled = off,
+      get = function() return WM().HasMovePad(body("down")) or WM().HasMovePad(body("up")) end,
+      set = function(_, v)
+        local d, u = WK().Bodies(p())
+        if v then
+          p().weaveKeyMacroDown, p().weaveKeyMacroUp = WM().WithMovePad(d, WK().PAD_LINE), WM().WithMovePad(u, WK().PAD_LINE)
+        else
+          p().weaveKeyMacroDown, p().weaveKeyMacroUp = WM().WithoutMovePad(d), WM().WithoutMovePad(u)
+        end
+        changed()
+      end,
+    },
+    weaveKeyMacroDown = {
+      type = "input", name = "Press", order = 22, width = "full", multiline = 3,
+      desc = "Runs on the key press. A cast here would go off before you arrive; keep it to the pad line.",
+      disabled = off,
+      get = function() return body("down") end,
+      set = function(_, v) p().weaveKeyMacroDown = v or ""; changed() end,
+    },
+    weaveKeyResetDown = {
+      type = "execute", name = "Reset press", order = 23, width = 0.8,
+      desc = "Back to the stock press body.",
+      disabled = function() return off() or WK().IsStock(body("down"), WK().STOCK_DOWN) end,
+      func = function() p().weaveKeyMacroDown = nil; changed() end,
+    },
+    weaveKeyMacroUp = {
+      type = "input", name = "Release", order = 24, width = "full", multiline = 6,
+      desc = "Runs when you let go. The stock order matters: Raptor Strike before /startattack (the ready swing must carry it), !Auto Shot as the last attack line (it wins the attack state). NockCamFlip() arms the turn away, NockCamFace() turns you back at range.",
+      disabled = off,
+      get = function() return body("up") end,
+      set = function(_, v) p().weaveKeyMacroUp = v or ""; changed() end,
+    },
+    weaveKeyResetUp = {
+      type = "execute", name = "Reset release", order = 25, width = 0.8,
+      desc = "Back to the stock release body.",
+      disabled = function() return off() or WK().IsStock(body("up"), WK().STOCK_UP) end,
+      func = function() p().weaveKeyMacroUp = nil; changed() end,
+    },
+    otherHeader = { type = "header", name = "Around it", desc = "The red error text the failing lines print, and the report.", order = 30 },
+    weaveKeyErrors = {
+      type = "toggle", name = "Hide red error text", order = 31, width = "full",
+      desc = "The release body fails a line on purpose wherever you stand (too close, out of range, not ready). This hides the red text; it is the same switch as on the Quality of life page.",
+      get = function() return p().qolHideErrors == true end,
+      set = function(_, v)
+        local m = Nock:GetModule("QoL", true)
+        if m and m.SetHideErrors then m.SetHideErrors(v and true or false) else p().qolHideErrors = v and true or false end
+      end,
+    },
+    weaveKeyReport = {
+      type = "execute", name = "Show report", order = 32, width = 1.0,
+      desc = "The key, both bodies as bound, the pad state and the last edges and casts, in a window you can copy from (/nock weavekey).",
+      func = function() local m = Nock:GetModule("WeaveKey", true); if m and m.Command then m:Command("") end end,
+    },
+  }
+  return { type = "group", name = "Weave key", order = 14, args = args }
+end
+
 -- Alerts -> Eating pill (UI/Frame_ConsumeBanner.lua): the pill's own rows,
 -- lifted out of the TBC Helpers page before that page is dropped (the
 -- consumables badge row has no feed on Forever). Same nodes, same profile keys.
@@ -334,6 +452,9 @@ function F.Apply(root)
   end
   if type(util) == "table" and type(util.args) == "table" and not util.args.cameraFlip then
     util.args.cameraFlip = F.CameraFlipPage()
+  end
+  if type(util) == "table" and type(util.args) == "table" and not util.args.weaveKey and Nock.WeaveKey then
+    util.args.weaveKey = F.WeaveKeyPage()
   end
   if type(util) == "table" and type(util.args) == "table" and not util.args.trackingWheel and Nock.TrackingWheelScale then
     util.args.trackingWheel = F.TrackingWheelPage()

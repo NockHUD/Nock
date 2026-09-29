@@ -1360,6 +1360,19 @@ if Nock.Flavor and Nock.Flavor.forever then
   p.cameraFlipEnabled    = false
   p.cameraFlipGate       = "raid"
   p.cameraFlipAutoFace   = true
+  -- The weave key (Forever/WeaveKey.lua): an optional mode beside the macro
+  -- way. Off until chosen; the bodies are nil = stock (WeaveKey.STOCK_*),
+  -- "" = emptied by the user.
+  p.weaveKeyEnabled      = false
+  p.weaveKey             = nil
+  p.weaveKeyMacroDown    = nil
+  p.weaveKeyMacroUp      = nil
+  -- Weave stage cues (Forever/RangeCues.lua OnWeaveStage; Alerts -> Sounds
+  -- -> Weaving): a clip when the melee bar says STRIKE and one for RELEASE.
+  p.weaveStrikeEnabled   = false
+  p.weaveStrikeSound     = "None"
+  p.weaveReleaseEnabled  = false
+  p.weaveReleaseSound    = "None"
   -- The wrong-tracking warning (Forever/Tracking.lua): on, everywhere; it
   -- only fires with points in Improved Tracking anyway. The tracking wheel
   -- (Forever/TrackingWheel.lua) has no key until the user picks one.

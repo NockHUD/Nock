@@ -230,5 +230,14 @@ ok(WM.InvertGates(MY_DOWN) == "/use [equipped:Shirt] Snowball\n/click MovePadBac
 ok(WM.WithGarment(UP, "tabard") == UP and WM.InvertGates(DOWN) == DOWN, "...and a body with no garment bracket is untouched")
 ok(WM.WithGarment(MY_DOWN, "hat") == MY_DOWN, "WithGarment: an unknown garment changes nothing")
 
+-- Forever: the same surgery with the FORWARD pad line (the weave key runs in
+-- on Forward; the TBC step-out stays Backward).
+local FWD = "/click MovePadForward"
+ok(WM.WithMovePad("", FWD) == FWD, "forward line into an empty body")
+ok(WM.WithMovePad("/cast Raptor Strike", FWD) == FWD .. "\n/cast Raptor Strike", "forward line goes on top")
+ok(WM.WithMovePad(FWD .. "\n/cast Raptor Strike", FWD) == FWD .. "\n/cast Raptor Strike", "not doubled")
+ok(WM.WithoutMovePad(FWD .. "\n/cast Raptor Strike\n/cast !Auto Shot") == "/cast Raptor Strike\n/cast !Auto Shot", "forward line comes out")
+ok(WM.WithMovePad("/cast Raptor Strike") == MOVEPAD .. "\n/cast Raptor Strike", "no line given: the TBC backward line as before")
+
 print(("%d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

@@ -116,5 +116,34 @@ P:Refresh(nil)
 ok(#turns == 1, "a tick without state is harmless")
 Nock.db = nil
 
+-- The armed turn fires on Raptor's own success or a MainHand hit, inside a
+-- window of one melee swing plus slack (a stale white swing landing on
+-- arrival used to strand the turn past the fixed 1.5 s).
+ok(near(P.ArmWindow(1.6), 2.1) and near(P.ArmWindow(0.5), 1.5) and near(P.ArmWindow(nil), 1.5) and near(P.ArmWindow(0), 1.5), "arm window = swing + 0.5, floor 1.5")
+ok(P.CastFires("player", "Raptor Strike", "Raptor Strike") and not P.CastFires("target", "Raptor Strike", "Raptor Strike")
+   and not P.CastFires("player", "Auto Shot", "Raptor Strike") and not P.CastFires("player", nil, "Raptor Strike"), "fires on the player's Raptor by name only")
+-- Through the handler: a rank other than rank 1 carries the same name.
+Nock.Spells = { RAPTOR_STRIKE = 2973 }
+Nock.API = { SpellName = function(id) return (id == 2973 or id == 14260) and "Raptor Strike" or "Other" end }
+Nock.state = { melee = { swingDuration = 1.6 } }
+_G.UnitCanAttack = function() return true end
+Nock.db = { profile = { cameraFlipEnabled = true, cameraFlipGate = "solo" } }
+turns = {}
+P._cameraFlipped, P._cameraNext = false, 0
+P:CamFlipRequest()
+ok(P._cameraArm and near(P._cameraArm - 500, 2.1), "armed for swing + slack")
+ok(module.events.UNIT_SPELLCAST_SUCCEEDED == "OnCameraCast" and module.events.PLAYER_SWING == "OnCameraSwing", "listens for the cast and the swing")
+P:OnCameraCast("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 14260)
+ok(#turns == 1 and turns[1] == false and P._cameraArm == nil, "Raptor rank 2 success fires the turn away")
+P._cameraFlipped = false
+P:CamFlipRequest()
+P:OnCameraCast("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 75)
+ok(#turns == 1 and P._cameraArm ~= nil, "another spell leaves the arm alone")
+_G.GetTime = function() return 503 end
+P:OnCameraCast("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 2973)
+ok(#turns == 1 and P._cameraArm == nil, "past the window: expired, no turn")
+_G.GetTime = function() return 500 end
+Nock.db = nil
+
 print(("forever_camera_flip: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

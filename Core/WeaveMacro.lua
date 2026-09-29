@@ -286,13 +286,16 @@ end
 -- At the TOP of the body (the author's battle-tested position): the backpedal
 -- starts/stops as early as possible on each edge. Only a leading poke (the
 -- press body opens with it -- off-GCD position re-check, has to stay first)
--- or a leading release re-arm stay ahead of the step-out.
-function WM.WithMovePad(text)
-  if text == nil or text == "" then return movePadLine() end
+-- or a leading release re-arm stay ahead of the step-out. `line` is the pad
+-- line to add: the TBC step-out (Backward) by default, the Forever weave
+-- key's run-in (Forward) when given.
+function WM.WithMovePad(text, line)
+  line = line or movePadLine()
+  if text == nil or text == "" then return line end
   if WM.HasMovePad(text) then return text end
   local t = split(text)
   local at = (t[1] and (isPoke(t[1]) or isRearm(t[1]))) and 2 or 1
-  table.insert(t, at, movePadLine())
+  table.insert(t, at, line)
   return join(t)
 end
 

@@ -23,7 +23,8 @@ local Nock = {
   },
 }
 local modules = {}
-function Nock:NewModule(name) local m = { name = name, RegisterEvent = function() end }; modules[name] = m; return m end
+local sent = {}
+function Nock:NewModule(name) local m = { name = name, RegisterEvent = function() end, SendMessage = function(_, msg, ...) sent[#sent + 1] = { msg, ... } end }; modules[name] = m; return m end
 function Nock:GetModule(name) return modules[name] end
 _G.LibStub = function() return { GetAddon = function() return Nock end } end
 dofile("Forever/WeaveEngine.lua")
@@ -201,6 +202,17 @@ now = 202.6; H:Refresh(st)
 ok(near(w.glide, 0), "and the glide is back at the ranged end")
 _G.GetPlayerFacing = nil
 H:ResetLegs(); H:PLAYER_STOPPED_MOVING()
+
+-- Every stage change is announced (the cue sounds ride on it), nothing else is.
+local n0 = #sent
+H:ResetLegs(); H:PLAYER_STOPPED_MOVING()
+st.target.rangeState = "SWEET"; st.ranged.swingStart = 0; st.melee.swingStart = 0; now = 300; H:Refresh(st)
+H:PLAYER_STARTED_MOVING(); st.target.rangeState = "CLOSE"; now = 301; H:Refresh(st)
+ok(#sent == n0 + 1 and sent[#sent][1] == "NOCK_WEAVE_STAGE" and sent[#sent][2] == "IN" and sent[#sent][3] == nil, "IN announced with the previous stage")
+now = 301.2; H:Refresh(st)
+ok(#sent == n0 + 1, "no change, no message")
+st.target.rangeState = "MELEE"; now = 302.2; H:Refresh(st)
+ok(sent[#sent][2] == "STRIKE" and sent[#sent][3] == "IN", "STRIKE announced")
 
 print(("forever_weave_helper: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

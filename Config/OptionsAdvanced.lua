@@ -21,6 +21,7 @@ A.KEEP = {
   -- The Forever range cues' previews: a sound row without its preview is
   -- half a row (Alerts -> Sounds -> Range).
   cueDeadZonePreview = true, cueMeleePreview = true, cueInRangePreview = true, cueOutOfRangePreview = true,
+  weaveStrikePreview = true, weaveReleasePreview = true,
 }
 -- Whole groups (a card or a tab): every row inside is advanced.
 A.GROUPS = {

@@ -136,6 +136,61 @@ Onboarding.Pages = {
     },
   },
   {
+    key     = "weaveKey",
+    kind    = "cards",
+    reveals = { "hud" },
+    eyebrow = "Optional",
+    title   = "Weave key",
+    blurb   = "One held key for the whole weave, or your own macros.",
+    -- Weavers only, like the TBC macro page: a turret never presses it.
+    visible = function(p) return p.weaveHelperEnabled ~= false end,
+    message = "NOCK_WEAVEKEY_CHANGED",
+    options = {
+      {
+        value = "macros", label = "Macros",
+        desc  = "Your own Raptor Strike and Auto Shot macros with the camera lines; W does the running.",
+        icon  = autoShotIcon,
+        isSelected = function(p) return p.weaveKeyEnabled ~= true end,
+        apply      = function(p) p.weaveKeyEnabled = false end,
+      },
+      {
+        value = "key", label = "Weave key", tag = "Advanced",
+        desc  = "Hold to run in, let go to strike, hold to run out, let go to shoot. Wants the camera flip.",
+        icon  = function() return Onboarding.SpellIcon(Nock.Spells and Nock.Spells.RAPTOR_STRIKE) end,
+        isSelected = function(p) return p.weaveKeyEnabled == true and not ((p.weaveKeyMacroDown or "x") == "" and (p.weaveKeyMacroUp or "x") == "") end,
+        -- Turns the mode on; a body the user wrote stays exactly as typed, an
+        -- unset one stays unset (= stock). Only two blank bodies from the
+        -- Empty card are put back to stock, or the key would run nothing.
+        apply      = function(p)
+          p.weaveKeyEnabled = true
+          if p.weaveKeyMacroDown == "" and p.weaveKeyMacroUp == "" then p.weaveKeyMacroDown, p.weaveKeyMacroUp = nil, nil end
+        end,
+      },
+      {
+        value = "empty", label = "Empty",
+        desc  = "The key with both bodies blank, for lines of your own (Utilities, Weave key).",
+        icon  = autoShotIcon,
+        isSelected = function(p) return p.weaveKeyEnabled == true and (p.weaveKeyMacroDown or "x") == "" and (p.weaveKeyMacroUp or "x") == "" end,
+        apply      = function(p) p.weaveKeyEnabled = true; p.weaveKeyMacroDown, p.weaveKeyMacroUp = "", "" end,
+      },
+    },
+  },
+  {
+    key     = "weaveKeyBind",
+    kind    = "intro",
+    eyebrow = "Optional",
+    title   = "Weave key",
+    blurb   = "The key to hold.",
+    body    = "Hold it on GO IN, let go on STRIKE, hold again on BACK OUT, let go on RELEASE. The camera flip turns you on the hit, so the same key runs you back out.\n\nBoth bodies the key runs are in the settings (Utilities, Weave key). A change made in combat lands when combat ends.",
+    visible = function(p) return p.weaveHelperEnabled ~= false and p.weaveKeyEnabled == true end,
+    message = "NOCK_WEAVEKEY_CHANGED",
+    keyCapture = {
+      label = "Weave key",
+      get = function(p) return p.weaveKey end,
+      set = function(p, s) p.weaveKey = (s ~= "") and s or nil end,
+    },
+  },
+  {
     key     = "corners",
     kind    = "toggles",
     reveals = { "react.corners", "react.buffs" },
@@ -263,6 +318,7 @@ function Onboarding:BuildRecap()
     { "Warnings", p.showWarnings == false and "off" or (on .. " of " .. total .. " on") },
     { "Range cues", joinOr(cues, "off") },
     { "Aspect ring key", (p.aspectRingKey or "") ~= "" and p.aspectRingKey or "not set" },
-    { "Weaving", p.weaveHelperEnabled == false and "turret" or "helper on" },
+    { "Weaving", p.weaveHelperEnabled == false and "turret"
+        or (p.weaveKeyEnabled == true and ("helper on, weave key " .. (((p.weaveKey or "") ~= "") and p.weaveKey or "not set")) or "helper on, macros") },
   }
 end

@@ -7,7 +7,7 @@
 -- on a range edge stays silent. Losing the target is silent too.
 
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
-local RangeCues = Nock:NewModule("RangeCues")
+local RangeCues = Nock:NewModule("RangeCues", "AceEvent-3.0")
 
 -- 80 ms: long enough to swallow a one-tick flicker on a range edge (the
 -- finder runs at 10 Hz), short enough that a spoken cue lands on the step.
@@ -71,9 +71,30 @@ local function play(p, cue)
   if path and _G.PlaySoundFile then PlaySoundFile(path, p.deadZoneSoundChannel or "Master") end
 end
 
+-- Pure: the profile sound key a weave stage earns, or nil. STRIKE and
+-- RELEASE only (the helper's words), each behind its own switch and clip,
+-- under the range cues' master switch.
+local STAGE_KEYS = { STRIKE = "weaveStrike", RELEASE = "weaveRelease" }
+function RangeCues.StageCue(stage, p)
+  local k = STAGE_KEYS[stage]
+  if not k or not p or p.soundCuesEnabled == false then return nil end
+  if p[k .. "Enabled"] ~= true then return nil end
+  local s = p[k .. "Sound"]
+  if not s or s == "" or s == "None" then return nil end
+  return k .. "Sound"
+end
+
+-- The weave helper's stage edge (Forever/WeaveHelper.lua sends it).
+function RangeCues:OnWeaveStage(msg, stage, prev)
+  local p = Nock.db and Nock.db.profile
+  local key = RangeCues.StageCue(stage, p)
+  if key then play(p, { sound = key }) end
+end
+
 function RangeCues:OnEnable()
   self._zone, self._cand, self._candSince = nil, NONE, 0
   self._lastAny, self._lastZone = -1e9, {}
+  self:RegisterMessage("NOCK_WEAVE_STAGE", "OnWeaveStage")
 end
 
 -- Pure: may zone `cur` speak at `now`, given the last cue time and the

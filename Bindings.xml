@@ -4,4 +4,5 @@
   <Binding name="NOCK_PRACTICE_EXPERT">Nock:PracticeBinding("expert")</Binding>
   <Binding name="CLICK NockAspectRingButton:LeftButton"/>
   <Binding name="CLICK NockTrackingWheelButton:LeftButton"/>
+  <Binding name="CLICK NockWeaveKey:LeftButton"/>
 </Bindings>

@@ -8682,6 +8682,16 @@ local function buildOptionsTable()
         rcue("cueMelee",      "Melee",        20, "Spoken when the target comes into melee reach.")
         rcue("cueInRange",    "In range",     30, "Spoken when the target comes into Auto Shot range.")
         rcue("cueOutOfRange", "Out of range", 40, "Spoken when the target moves beyond Auto Shot range.")
+        -- The weave helper's STRIKE and RELEASE words as sounds (the helper's
+        -- stage message, Forever/RangeCues.lua OnWeaveStage). The TBC Weaving
+        -- tab is dropped on Forever (no combat-log feed), so this one takes
+        -- its slot.
+        sounds.args.weaving = tab("Weaving", 3, "A clip when the melee bar says STRIKE (let go: strike) and one when it says RELEASE (let go: shoot). Under the range cues' master switch, on their channel.")
+        local wv = sounds.args.weaving.args
+        cue("weaveStrike",  "Strike cue",  10, "Play a clip when the melee bar says STRIKE.", wv)
+        cue("weaveRelease", "Release cue", 20, "Play a clip when the melee bar says RELEASE.", wv)
+        wv.weaveStrikeEnabled.disabled = function() return Nock.db.profile.soundCuesEnabled == false end
+        wv.weaveReleaseEnabled.disabled = function() return Nock.db.profile.soundCuesEnabled == false end
       end
     end
     local hs = options.args.helpers and options.args.helpers.args.tabSettings

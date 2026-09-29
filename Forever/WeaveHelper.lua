@@ -183,6 +183,9 @@ function WeaveHelper:Refresh(state)
   E.Step(st, now, zone, self._moving, meleeReadyIn, r.swingRemaining, r.queueWindow, raptorReadyIn, rangedElapsed, facing())
   if st.stage ~= before then
     self:LogTransition(now, before, st.stage, zone, rangedElapsed, meleeReadyIn, raptorReadyIn)
+    -- The cue sounds (Forever/RangeCues.lua) and anything else that wants a
+    -- stage edge listen here; no module calls another's internals.
+    self:SendMessage("NOCK_WEAVE_STAGE", st.stage, before)
   end
   -- Forever: a melee hit resets the ranged swing. When the client sends no
   -- Ranged event of its own, the swing is re-anchored on the hit here.

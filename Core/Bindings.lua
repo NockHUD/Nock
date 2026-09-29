@@ -20,3 +20,5 @@ _G["BINDING_NAME_NOCK_PRACTICE_EXPERT"] = "Practice: expert (combat log + weave 
 _G["BINDING_NAME_CLICK NockAspectRingButton:LeftButton"] = forever and "Aspect ring (hold)" or "Aspect ring (WoW Forever)"
 -- Tracking wheel (Forever/TrackingWheel.lua): the same ring for the Track spells.
 _G["BINDING_NAME_CLICK NockTrackingWheelButton:LeftButton"] = forever and "Tracking wheel (hold)" or "Tracking wheel (WoW Forever)"
+-- Weave key (Forever/WeaveKey.lua): hold runs you in and out, the release strikes or shoots.
+_G["BINDING_NAME_CLICK NockWeaveKey:LeftButton"] = forever and "Weave key (hold)" or "Weave key (WoW Forever)"
