@@ -47,8 +47,13 @@ function WS.Look(state, now, out)
   local zone, stage = t.rangeState, w and w.stage or nil
   out.shown = true
   out.fill = (w and w.glide) or 0
-  -- The rest band is the range finder's reading (state.target.ladderRest).
-  local rest = t.ladderRest == true
+  -- The rest band is the range finder's reading: the unsettled one lights
+  -- the bar the moment the shot reaches (running out), the settled one holds
+  -- it until the zone itself says dead zone (running in).
+  local rest = t.ladderRestRaw == true or t.ladderRest == true
+  -- Not on the way in: the band is where to stop, and a run-in is not
+  -- stopping (radial * face > 0 = key intent toward the target).
+  if rest and w and (w.radial or 0) * (w.face or 1) > 0 then rest = false end
   if rest then out.fillKey = "sweetSpot"
   elseif zone == "MELEE" then out.fillKey = "melee"
   elseif zone == "SWEET" then out.fillKey = "ranged"

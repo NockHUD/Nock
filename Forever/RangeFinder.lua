@@ -188,8 +188,15 @@ function RangeFinder:Refresh(state)
   t.ladderKey, t.ladderShoot = key, shoot
   local zone, prog = Nock.RangeLadder.Zone(key, shoot)
   t.rangeState, t.rangeProg = zone, prog
-  -- The weave rest band, from the raw 9606 reading and the settled shoot flag.
-  if live then t.ladderRest = Nock.RangeLadder.Rest(shoot, R.i9606) else t.ladderRest = nil end
+  -- The weave rest band, from the raw 9606 reading and the settled shoot flag;
+  -- ladderRestRaw takes the shoot reading unsettled (probe 2026-09-30: the
+  -- band is 0.31 s wide at run speed, the settle ate half of it on the strip).
+  if live then
+    t.ladderRest = Nock.RangeLadder.Rest(shoot, R.i9606)
+    t.ladderRestRaw = Nock.RangeLadder.Rest(R.shoot, R.i9606)
+  else
+    t.ladderRest, t.ladderRestRaw = nil, nil
+  end
   t.rangeBracket, t.rangeEstimateStale = nil, false
   t.inMelee = zone == "MELEE"
   if zone == "MELEE" then t.rangeZone = "TOO_CLOSE"

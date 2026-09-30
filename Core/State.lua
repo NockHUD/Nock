@@ -201,6 +201,7 @@ Nock.state = {
     ladderKey    = nil,   -- the segment the target is in | nil (no live hostile target)
     ladderShoot  = false, -- Auto Shot reaches the target (settled with ladderKey)
     ladderRest   = nil,   -- inside item 9606 and able to shoot (the weave rest band); nil = not known
+    ladderRestRaw = nil,  -- the same from the unsettled shoot reading (the strip's SWEET SPOT: a 0.3 s run across the band has no room for the settle)
     ladderLayout = nil,   -- the segment list the Range Finder draws
     ladderRev    = 0,     -- moves whenever ladderLayout is rebuilt (spell / talent change)
     huntersMark = nil,  -- { name, spellId, icon, remaining, duration, fromPlayer,

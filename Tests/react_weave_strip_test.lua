@@ -63,6 +63,33 @@ ok(L.fillKey == "sweetSpot" and L.label == "SWEET SPOT", "rest band: sweet spot 
 rs.target.ladderRest = false
 L = WS.Look(rs, 0, out)
 ok(L.fillKey == "ranged" and L.label == "RANGED", "out of the rest band: plain ranged")
+-- The unsettled reading lights it while the settled zone still says dead zone (running out).
+local raw = S("CLOSE", "OUT"); raw.target.ladderRest = false; raw.target.ladderRestRaw = true
+L = WS.Look(raw, 0, out)
+ok(L.fillKey == "sweetSpot" and L.label == "SWEET SPOT", "raw rest under a settled dead zone: sweet spot at once")
+-- Running in: the raw reading drops first, the settled one holds the look until the zone flips.
+raw = S("SWEET", "IN"); raw.target.ladderRest = true; raw.target.ladderRestRaw = false
+L = WS.Look(raw, 0, out)
+ok(L.fillKey == "sweetSpot" and L.label == "SWEET SPOT", "raw dropped, settled still in: no RANGED flash before the dead zone")
+raw.target.ladderRest = false
+L = WS.Look(raw, 0, out)
+ok(L.label == "RANGED", "both out: plain ranged")
+-- Moving toward the target hides it (the plain zone and the glide show); away or standing keeps it.
+local mv = S("SWEET", "IN", { glide = 0.3, radial = 1, face = 1 }); mv.target.ladderRest = true; mv.target.ladderRestRaw = true
+L = WS.Look(mv, 0, out)
+ok(L.fillKey == "ranged" and L.label == "RANGED" and near(L.fill, 0.3), "running in through the band: plain ranged with the glide")
+mv.weave.radial, mv.weave.face = 1, -1
+L = WS.Look(mv, 0, out)
+ok(L.fillKey == "sweetSpot" and L.label == "SWEET SPOT", "running out behind a turn: sweet spot")
+mv.weave.radial, mv.weave.face = -1, 1
+L = WS.Look(mv, 0, out)
+ok(L.label == "SWEET SPOT", "backpedalling out: sweet spot")
+mv.weave.radial, mv.weave.face = -1, -1
+L = WS.Look(mv, 0, out)
+ok(L.label == "RANGED", "backing toward the target while turned away: hidden")
+mv.weave.radial, mv.weave.face = 0, 1
+L = WS.Look(mv, 0, out)
+ok(L.label == "SWEET SPOT", "standing: sweet spot")
 L = WS.Look({ target = { exists = false }, weave = {} }, 0, out)
 ok(L.shown == false and L.label == "" and L.fillKey == "off", "no target: hidden look")
 L = WS.Look({ target = { exists = true, alive = true, friendly = true, rangeState = "SWEET" }, weave = {} }, 0, out)
