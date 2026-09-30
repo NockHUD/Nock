@@ -56,6 +56,13 @@ L = WS.Look(S("SWEET", nil, { overshot = true, legStale = true }), 0, out)
 ok(L.borderKey == "stale", "stale wins over overshot")
 L = WS.Look(S("LONG", nil), 0, out)
 ok(L.shown == true and L.fillKey == "dead" and L.label == "" and near(L.fill, 0), "too far: no label, empty")
+-- The rest band (state.target.ladderRest): green and named; nil / false is the plain zone.
+local rs = S("SWEET", nil); rs.target.ladderRest = true
+L = WS.Look(rs, 0, out)
+ok(L.fillKey == "sweetSpot" and L.label == "SWEET SPOT", "rest band: sweet spot fill and label")
+rs.target.ladderRest = false
+L = WS.Look(rs, 0, out)
+ok(L.fillKey == "ranged" and L.label == "RANGED", "out of the rest band: plain ranged")
 L = WS.Look({ target = { exists = false }, weave = {} }, 0, out)
 ok(L.shown == false and L.label == "" and L.fillKey == "off", "no target: hidden look")
 L = WS.Look({ target = { exists = true, alive = true, friendly = true, rangeState = "SWEET" }, weave = {} }, 0, out)
@@ -91,6 +98,17 @@ st.ranged.swingStart = 102
 st.cooldowns.Raptor.startTime, st.cooldowns.Raptor.duration, st.cooldowns.Raptor.ready = 102, 6, false
 WS.Paint(f, WS.Look(st, 0.2, out), st)
 ok(#fed == 4 and fed[3][1] == "as" and fed[3][2] == 102 and fed[4][1] == "rsobj" and fed[4][2] == 2973, "new swing and a Raptor cooldown: both fed, Raptor via the duration object")
+-- The rest band paints the bar's backdrop green, and puts it back on the way out.
+local bgs = {}
+f.bar.SetBackdropColor = function(self, r, g, b, a) bgs[#bgs + 1] = { r, g, b, a } end
+st.target.ladderRest = true
+WS.Paint(f, WS.Look(st, 0.3, out), st)
+ok(#bgs == 1 and near(bgs[1][2], WS.COLORS.sweetSpot[2]) and f.bar.label._text == "SWEET SPOT", "rest band: backdrop green, once")
+WS.Paint(f, WS.Look(st, 0.4, out), st)
+ok(#bgs == 1, "still in the rest band: not painted again")
+st.target.ladderRest = false
+WS.Paint(f, WS.Look(st, 0.5, out), st)
+ok(#bgs == 2 and near(bgs[2][1], 0) and near(bgs[2][2], 0), "left the rest band: the bar's own backdrop back")
 local hidden = WS.Look({ target = { exists = false }, weave = {} }, 0, out)
 WS.Paint(f, hidden, { ranged = {}, cooldowns = {} })
 ok(f.bar.label._text == "" and f.bar.fill._w < 0.02, "no target: label cleared, fill collapsed")

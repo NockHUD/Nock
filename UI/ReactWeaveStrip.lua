@@ -11,6 +11,7 @@ WS.COLORS = {
   dead    = { 0.48, 0.13, 0.15, 1 },   -- the fill while a leg crosses the dead zone
   melee   = { 0.68, 0.18, 0.20, 1 },   -- in melee (the ladder's melee red)
   ranged  = { 0.11, 0.70, 0.67, 1 },   -- in range (the ladder's teal)
+  sweetSpot = { 0.00, 1.00, 0.10, 1 }, -- in the rest band (able to shoot, inside item 9606): the whole bar
   off     = { 0.16, 0.16, 0.16, 1 },   -- no target
   stale   = { 1.00, 0.58, 0.10, 1 },   -- the leg ran past its estimate (the TBC RESYNC orange)
   overshot = { 1.00, 0.72, 0.20, 1 },  -- backed out past the rest band (item 9606)
@@ -22,7 +23,7 @@ WS.COLORS = {
   border  = { 0.00, 0.00, 0.00, 1 },
   glow    = { 0.20, 0.90, 0.30, 1 },   -- the icon that wants pressing
 }
-WS.LABELS = { MELEE = "MELEE", CLOSE = "DEAD ZONE", SWEET = "RANGED", LONG = "" }
+WS.LABELS = { MELEE = "MELEE", CLOSE = "DEAD ZONE", SWEET = "RANGED", LONG = "", REST = "SWEET SPOT" }
 WS.FLASH_SEC = 0.4
 local STAGE_BORDER = { GO = "go", IN = "go", WAIT = "wait", STRIKE = "strike", OUT = "out", RELEASE = "release" }
 
@@ -46,8 +47,13 @@ function WS.Look(state, now, out)
   local zone, stage = t.rangeState, w and w.stage or nil
   out.shown = true
   out.fill = (w and w.glide) or 0
-  if zone == "MELEE" then out.fillKey = "melee" elseif zone == "SWEET" then out.fillKey = "ranged" else out.fillKey = "dead" end
-  out.label = WS.LABELS[zone] or ""
+  -- The rest band is the range finder's reading (state.target.ladderRest).
+  local rest = t.ladderRest == true
+  if rest then out.fillKey = "sweetSpot"
+  elseif zone == "MELEE" then out.fillKey = "melee"
+  elseif zone == "SWEET" then out.fillKey = "ranged"
+  else out.fillKey = "dead" end
+  out.label = rest and WS.LABELS.REST or (WS.LABELS[zone] or "")
   if w and w.legStale then out.borderKey = "stale"
   elseif w and w.overshot then out.borderKey = "overshot"
   else out.borderKey = STAGE_BORDER[stage] or "border" end
@@ -85,6 +91,7 @@ function WS.Create(parent, opts)
   f.rs = makeSlot(f, opts)
   local bar = CreateFrame("Frame", nil, f, "BackdropTemplate")
   Nock.UI.ApplyBackdrop(bar, opts.bg, opts.border)
+  bar.normalBg = opts.bg
   bar.fill = bar:CreateTexture(nil, "ARTWORK")
   bar.fill:SetTexture(WHITE8X8)
   bar.fill:SetWidth(0.01)
@@ -132,6 +139,12 @@ end
 -- Every tick, diffed on the look; the swipes on their start edges.
 function WS.Paint(f, look, state)
   local L, bar = f._look, f.bar
+  local isSweetSpot = look.fillKey == "sweetSpot"
+  if isSweetSpot ~= L.sweetSpot then
+    local bg = isSweetSpot and WS.COLORS.sweetSpot or bar.normalBg
+    if bg and bar.SetBackdropColor then bar:SetBackdropColor(bg[1], bg[2], bg[3], bg[4]) end
+    L.sweetSpot = isSweetSpot
+  end
   if look.fillKey ~= L.fillKey or look.flash > 0 or L.flashing then
     local c = color(look.fillKey)
     local m = look.flash or 0
