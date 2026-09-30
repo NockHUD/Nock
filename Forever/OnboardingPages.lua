@@ -295,6 +295,7 @@ Onboarding.Pages = {
       qolRow("qolNoGlow", "SetNoGlow", "Full-screen glow off", "No bloom and no drunk blur."),
       { key = "qolAutoRepair", label = "Auto repair", desc = "Repair everything at a repair vendor, with your own money." },
       { key = "qolSellGreys", label = "Sell grey items", desc = "Sell every grey item at any vendor." },
+      { key = "qolRestockAmmo", label = "Restock ammo", desc = "Fill your quiver or ammo pouch with the ammo you have loaded, at any vendor that sells it." },
     },
   },
   {
