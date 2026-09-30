@@ -157,10 +157,9 @@ function Q.WeaveStatus(p, env)
     on[#on + 1] = "strike"
     if noClip(p.weaveStrikeSound) then clipless[#clipless + 1] = "Strike" end
   end
-  if p.weaveReleaseEnabled == true then
-    on[#on + 1] = "release"
-    if noClip(p.weaveReleaseSound) then clipless[#clipless + 1] = "Release" end
-  end
+  -- Release ships with no clip and may stay that way: silent is a choice
+  -- there, not a problem, and a silent cue is not listed as one.
+  if p.weaveReleaseEnabled == true and not noClip(p.weaveReleaseSound) then on[#on + 1] = "release" end
   if p.cueDeadZoneEnabled == true then voice[#voice + 1] = "dead zone" end
   if p.cueMeleeEnabled == true then voice[#voice + 1] = "melee" end
   if #on == 0 then

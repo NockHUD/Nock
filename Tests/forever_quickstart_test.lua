@@ -100,8 +100,15 @@ ok(s.sounds.state == "attention" and s.sounds.pill == "CUES MUTED", "sounds: a c
 -- Review focus 1: a cue switched on with the default clip plays nothing.
 s = st({ weaveStrikeEnabled = true, weaveStrikeSound = "None" })
 ok(s.sounds.state == "attention" and s.sounds.pill == "PICK A CLIP" and s.sounds.line:find("Strike"), "sounds: a cue without a clip is not ready")
+s = st({ weaveStrikeEnabled = true })
+ok(s.sounds.pill == "PICK A CLIP" and s.sounds.line:find("Strike"), "sounds: an unset clip counts as none")
+-- The release cue may stay without a clip: never a problem, never listed.
+s = st({ weaveStrikeEnabled = true, weaveStrikeSound = "Nock Pop", weaveReleaseEnabled = true, weaveReleaseSound = "None" })
+ok(s.sounds.state == "ready" and s.sounds.line == "Strike", "sounds: a clipless release is fine, got " .. tostring(s.sounds.line))
 s = st({ weaveReleaseEnabled = true })
-ok(s.sounds.pill == "PICK A CLIP" and s.sounds.line:find("Release"), "sounds: an unset clip counts as none")
+ok(s.sounds.state == "off" and s.sounds.pill == "OFF", "sounds: a clipless release alone reads OFF")
+s = st({ weaveReleaseEnabled = true, weaveReleaseSound = "Nock Click" })
+ok(s.sounds.state == "ready" and s.sounds.line == "Release", "sounds: a release with a clip is listed, got " .. tostring(s.sounds.line))
 ok(st({ soundCuesEnabled = false }).sounds.state == "off", "sounds: a muted master with nothing on is just off")
 -- Review: the range voice lines ship on for everyone; alone they are not a
 -- weave cue, so a turret's card reads OFF.
