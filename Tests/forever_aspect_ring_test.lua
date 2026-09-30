@@ -275,6 +275,45 @@ ok(binds.key == "F", "and lands when combat ends")
 Nock.db.profile.aspectRingKey = nil
 A:OnConfig()
 
+-- Mana: a learned aspect the character cannot afford is flagged per slot,
+-- asked at the learned rank's id (ranks are separate spells on Forever).
+do
+  ok(type(st.noMana) == "table" and next(st.noMana) == nil, "no usability API: nothing flagged")
+  local asked, poor = {}, { [14318] = true }
+  Nock.API.SpellUsable = function(id) asked[id] = true; if poor[id] then return false, true end return true, false end
+  Nock.ForeverSpellbookNames = function() return { ["Aspect of the Hawk"] = 14318, ["Aspect of the Cheetah"] = 5118 } end
+  A:OnConfig()
+  ok(st.noMana[1] == true and st.noMana[4] == nil, "Hawk lacks the mana: slot 1 flagged, Cheetah not")
+  ok(asked[14318] and not asked[13165], "asked at the learned rank's id, not rank 1's")
+  ok(not asked[13163] and st.noMana[2] == nil, "an unlearned slot (Monkey) is never asked")
+  ok(A.events.SPELL_UPDATE_USABLE == "ScanUsable", "rescanned on SPELL_UPDATE_USABLE")
+  poor = {}
+  A:ScanUsable()
+  ok(st.noMana[1] == nil, "mana back: the flag clears")
+  poor = { [5118] = true }
+  pre(b, "LeftButton", true)
+  ok(st.noMana[4] == true, "opening the ring reads it fresh")
+  pre(b, "LeftButton", false)
+  -- A secret read (in combat, if the client hides it) cannot say: no flag.
+  Nock.Flavor.Plain = function() return nil end
+  A:ScanUsable()
+  ok(st.noMana[4] == nil, "a secret read: no flag")
+  Nock.Flavor.Plain = function(v) return v end
+  Nock.API.SpellUsable = function() return nil, true end
+  A:ScanUsable()
+  ok(st.noMana[1] == nil and st.noMana[4] == nil, "usable unknown: no flag")
+  -- A spellbook that names the spell without an id: the base id is asked.
+  asked, poor = {}, { [13165] = true }
+  Nock.API.SpellUsable = function(id) asked[id] = true; if poor[id] then return false, true end return true, false end
+  Nock.ForeverSpellbookNames = function() return { ["Aspect of the Hawk"] = true } end
+  A:OnConfig()
+  ok(asked[13165] and st.noMana[1] == true, "no id in the spellbook: the base id is asked")
+  Nock.API.SpellUsable = nil
+  Nock.ForeverSpellbookNames = function() return nil end
+  A:OnConfig()
+  ok(next(st.noMana) == nil, "the usability API gone: every flag cleared")
+end
+
 -- /reload inside combat: nothing secure is built or written until it ends.
 frames.NockAspectRingButton = nil; _G.NockAspectRingButton = nil
 A._armed = nil

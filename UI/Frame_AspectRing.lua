@@ -15,6 +15,9 @@ local IDLE_BORDER = { 0, 0, 0, 1 }
 local MEDIA = "Interface\\AddOns\\Nock\\Media\\"
 local WEDGE_ALPHA = 0.22
 local NAME_GAP = 5   -- the name's top edge below the disc
+-- No-mana tint: the React grid's blue (UI/Frame_ReactCooldowns.lua TINT).
+local MANA_TINT = { 0.33, 0.54, 1, 1 }
+local NO_TINT   = { 1, 1, 1, 1 }
 
 -- `spec` (see Forever/AspectRing.lua, Nock.NewRingModule for the module's):
 --   name        the view module's name ("AspectRingView")
@@ -151,8 +154,16 @@ function View:Refresh(state)
     local it = self.items[i]
     local learned = st.known[i] ~= nil
     it.icon = learned and key and Nock.API.SpellIcon(self.idByKey[key]) or nil
-    it.desat = not learned
+    -- A learned aspect the mana does not cover: the cooldown grid's no-mana
+    -- look (blue, desaturated). Only the module with a mana read publishes it.
+    local noMana = (learned and st.noMana and st.noMana[i] == true) or false
+    it.desat = not learned or noMana
     Nock.UI.PaintReactSlot(b.tile, it, now)
+    if noMana ~= (b._noMana or false) then
+      local c = noMana and MANA_TINT or NO_TINT
+      b.tile.icon:SetVertexColor(c[1], c[2], c[3], c[4])
+      b._noMana = noMana
+    end
     Nock.UI.SetIconInsetGlow(b.tile, (learned and key == activeKey) and glow or nil, depth)
     local hovered = st.hover == i
     if hovered ~= b._hovered then

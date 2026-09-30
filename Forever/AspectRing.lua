@@ -204,6 +204,7 @@ function Nock.AspectRingScale(p) return Nock.RingScale(p, "aspectRingScale") end
 --   configMsg / closeMsg        the messages the settings page and the view send
 --   idByKey()     slot key -> spell id
 --   order(p)      the slot keys by direction from the profile
+--   manaTint      publish noMana per slot (the aspect ring; tracking is free)
 function Nock.NewRingModule(spec)
   local Ring = Nock:NewModule(spec.name, "AceEvent-3.0")
   -- No refreshInterval: while open the ring follows the cursor every frame.
@@ -235,6 +236,8 @@ function Nock.NewRingModule(spec)
     self.button = b
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
     self:RegisterEvent("SPELLS_CHANGED", "UpdateKnown")
+    -- AceEvent hard-errors on an event the client lacks
+    if spec.manaTint then pcall(self.RegisterEvent, self, "SPELL_UPDATE_USABLE", "ScanUsable") end
     pcall(self.RegisterEvent, self, "UI_SCALE_CHANGED", "PushSecure")
     pcall(self.RegisterEvent, self, "DISPLAY_SIZE_CHANGED", "PushSecure")
     self:RegisterMessage(spec.closeMsg, "Close")
@@ -327,6 +330,7 @@ function Nock.NewRingModule(spec)
     st.cx, st.cy = cursor()
     st.hover = nil
     st.open = true
+    self:ScanUsable()
   end
 
   function Ring:Close()
@@ -361,6 +365,10 @@ function Nock.NewRingModule(spec)
       local v = nil
       if nm and (names == nil or names[nm]) then v = nm end
       if st.known[i] ~= v then st.known[i] = v; changed = true end
+      if spec.manaTint then
+        local learnedId = names and nm and names[nm]
+        st.castId[i] = (type(learnedId) == "number" and learnedId) or ID_BY_KEY[key]
+      end
     end
     st.order = order
     if changed then st.knownRev = st.knownRev + 1 end
@@ -368,6 +376,27 @@ function Nock.NewRingModule(spec)
     -- is the same whatever the character knows.
     st.short = Nock.AspectRingShortNames(all, n)
     if changed then self:PushSecure() end
+    self:ScanUsable()
+  end
+
+  -- Mana per slot (spec.manaTint): st.noMana[i] is true while the learned
+  -- aspect there cannot be afforded, so the view paints it in the cooldown
+  -- grid's no-mana blue. Asked at the learned rank's id. A secret read (in
+  -- combat, if the client hides it) or an unknown one is nil: the normal look.
+  -- Event-driven (SPELL_UPDATE_USABLE, the spellbook, an open), never per tick.
+  function Ring:ScanUsable()
+    if not spec.manaTint then return end
+    local st = state()
+    local usableOf = Nock.API.SpellUsable
+    local plain = Nock.Flavor.Plain
+    for i = 1, n do
+      local flag = nil
+      if usableOf and st.known[i] and st.castId[i] then
+        local usable, noMana = usableOf(st.castId[i])
+        if type(plain(usable)) == "boolean" and plain(noMana) == true then flag = true end
+      end
+      st.noMana[i] = flag
+    end
   end
 
   function Ring:Refresh(_)
@@ -393,4 +422,5 @@ Nock.NewRingModule({
   configMsg = "NOCK_ASPECT_RING_CONFIG", closeMsg = "NOCK_ASPECT_RING_CLOSE",
   idByKey = Nock.AspectRingIdByKey,
   order = function(p) return Nock.AspectRingOrder(p.aspectRingOrder) end,
+  manaTint = true,
 })

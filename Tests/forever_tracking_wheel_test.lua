@@ -96,6 +96,15 @@ ok(st.short[3] == "Undead" and st.order[1] == "beasts" and st.order[8] == "hidde
 ok(#wraps == 1 and wraps[1].frame == b and frames.NockTrackingWheelScreen == wraps[1].header, "its own wrapped OnClick and screen header")
 ok(b.attrs.track1 == "Track Beasts" and b.attrs.track8 == "Track Hidden" and b.attrs.track3 == nil and b.attrs.aspect1 == nil, "slot names under the track prefix")
 ok(b.attrs["frameref-layer"] == nil or b.attrs["frameref-layer"] == _G.NockTrackingWheelLayer, "layer ref is the wheel's own layer")
+-- Tracking is free: the wheel never reads mana (the aspect ring does).
+do
+  local asked = 0
+  Nock.API.SpellUsable = function() asked = asked + 1; return false, true end
+  W:OnConfig()
+  b.scripts.PreClick(b, "LeftButton", true); b.scripts.PreClick(b, "LeftButton", false)
+  ok(asked == 0 and W.events.SPELL_UPDATE_USABLE == nil and st.noMana == nil, "the wheel asks no usability, flags nothing")
+  Nock.API.SpellUsable = nil
+end
 
 -- The real snippet against fake handles.
 local snippet = assert(loadstring("local self, button, down, control = ...\n" .. wraps[1].pre))

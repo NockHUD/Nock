@@ -301,6 +301,8 @@ Nock.state = {
     short = {},                    -- [slot] = label name ("Cheetah"), every slot
     order = {},                    -- [slot] = aspect key, the dial layout (profile aspectRingOrder, cleaned)
     knownRev = 0,                  -- bumps when `known` changes (the view re-applies attributes)
+    castId = {},                   -- [slot] = the learned rank's spell id (the base id when the spellbook names none)
+    noMana = {},                   -- [slot] = true while that aspect lacks the mana, nil = affordable / cannot say
   },
   trackingWheel = {
     -- Forever/TrackingWheel.lua; UI/Frame_TrackingWheel.lua paints it. The

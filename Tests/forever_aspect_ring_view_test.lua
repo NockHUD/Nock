@@ -61,7 +61,11 @@ local Nock = {
   API = { SpellIcon = function(id) return 1000 + id end, SpellName = function(id) return "n" .. id end },
   db = { profile = {} },
   UI = {
-    CreateReactSlot = function(parent, name, size) local s = newFrame("Frame", name, parent); s.icon = {}; return s end,
+    CreateReactSlot = function(parent, name, size)
+      local s = newFrame("Frame", name, parent)
+      s.icon = { SetVertexColor = function(self, r, g, b, a) self.vc = { r, g, b, a } end }
+      return s
+    end,
     PaintReactSlot = function(slot, item) painted[slot] = { icon = item.icon, desat = item.desat } end,
     SetIconInsetGlow = function(slot, color) slot.inset = color end,
     ApplyReactTextLook = function(fs) fs.reactLook = true end,
@@ -164,6 +168,28 @@ st.known[1], st.known[4] = "Aspect of the Cheetah", "Aspect of the Hawk"; st.kno
 V:Refresh(Nock.state)
 ok(painted[s1.tile].icon == 1000 + 5118 and s1.attrs.macrotext == "/cast !Aspect of the Cheetah", "slot 1 shows and casts Cheetah")
 ok(s4.tile.inset ~= nil and s1.tile.inset == nil, "the active glow follows Hawk to its new slot")
+
+-- No mana for a learned aspect: the cooldown grid's blue, desaturated.
+do
+  local s2 = frames.NockAspectRingSlot2
+  ok(type(st.noMana) == "table", "state slot carries noMana")
+  st.noMana = st.noMana or {}
+  ok(s1.tile.icon.vc == nil, "affordable from the start: the icon colour is never touched")
+  st.noMana[1] = true
+  V:Refresh(Nock.state)
+  ok(s1.tile.icon.vc and s1.tile.icon.vc[1] == 0.33 and s1.tile.icon.vc[2] == 0.54 and s1.tile.icon.vc[3] == 1
+     and painted[s1.tile].desat == true, "no mana: the grid's blue, desaturated")
+  ok(s4.tile.icon.vc == nil and painted[s4.tile].desat == false, "its neighbours keep their colour")
+  st.noMana[4] = true
+  V:Refresh(Nock.state)
+  ok(s4.tile.icon.vc and s4.tile.icon.vc[1] == 0.33 and s4.tile.inset ~= nil, "the active aspect out of mana: blue, glow kept")
+  st.noMana[2] = true
+  V:Refresh(Nock.state)
+  ok(s2.tile.icon.vc == nil and painted[s2.tile].desat == true, "an unlearned slot stays grey, never blue")
+  st.noMana[1], st.noMana[2], st.noMana[4] = nil, nil, nil
+  V:Refresh(Nock.state)
+  ok(s1.tile.icon.vc and s1.tile.icon.vc[1] == 1 and s1.tile.icon.vc[2] == 1 and painted[s1.tile].desat == false, "mana back: full colour")
+end
 
 -- The ring open in combat: the view still paints, but touches nothing secure.
 combat = true
