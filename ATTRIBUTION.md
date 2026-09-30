@@ -55,3 +55,11 @@ the people and projects whose ideas, techniques and components it builds on.
   Ignition" by freesound_community on Pixabay
   (https://pixabay.com/sound-effects/film-special-effects-lightsaber-ignition-6816/),
   Pixabay Content License.
+- **Sound** `Media/NockPop.mp3` (the weave Strike cue) — "UI Pop sound" by
+  47313572 on Pixabay
+  (https://pixabay.com/sound-effects/film-special-effects-ui-pop-sound-316482/),
+  Pixabay Content License.
+- **Sound** `Media/NockClick.mp3` (a sound-picker option) — "UI Click Retro" by
+  SoundShelfStudio on Pixabay
+  (https://pixabay.com/sound-effects/film-special-effects-ui-click-retro-514601/),
+  Pixabay Content License.

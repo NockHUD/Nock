@@ -46,6 +46,11 @@ if LSM then
   LSM:Register("sound", "Nock Melee",        [[Interface\AddOns\Nock\Media\NockMelee.mp3]])
   LSM:Register("sound", "Nock In Range",     [[Interface\AddOns\Nock\Media\NockInRange.mp3]])
   LSM:Register("sound", "Nock Out of Range", [[Interface\AddOns\Nock\Media\NockOutOfRange.mp3]])
+  -- Short UI clips for the weave cues (Alerts -> Sounds -> Weaving): the pop
+  -- is the Forever Strike cue's stock sound, the click is a picker option.
+  -- Pixabay Content License (see ATTRIBUTION.md).
+  LSM:Register("sound", "Nock Pop",   [[Interface\AddOns\Nock\Media\NockPop.mp3]])
+  LSM:Register("sound", "Nock Click", [[Interface\AddOns\Nock\Media\NockClick.mp3]])
 end
 
 -- Registries of media-consuming widgets for live-refresh via RefreshMedia.

@@ -1370,7 +1370,7 @@ if Nock.Flavor and Nock.Flavor.forever then
   -- Weave stage cues (Forever/RangeCues.lua OnWeaveStage; Alerts -> Sounds
   -- -> Weaving): a clip when the melee bar says STRIKE and one for RELEASE.
   p.weaveStrikeEnabled   = false
-  p.weaveStrikeSound     = "None"
+  p.weaveStrikeSound     = "Nock Pop"  -- the bundled pop; the switch above is what stays off
   p.weaveReleaseEnabled  = false
   p.weaveReleaseSound    = "None"
   -- The wrong-tracking warning (Forever/Tracking.lua): on, everywhere; it
