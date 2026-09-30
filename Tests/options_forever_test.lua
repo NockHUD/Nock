@@ -231,6 +231,33 @@ ok(drawn and not drawn.one, "drawn skin table: the surviving line is drawn WITH 
 
 ok(nodeAt(opts, "general.runWizard") and nodeAt(opts, "general.runWizardGuided"), "Forever keeps both wizard buttons")
 
+-- The HUD master switch (hudless): its TBC home, hud.classic.layout, is gone
+-- on Forever, so General > Visibility carries it, first in the card.
+do
+  local he = nodeAt(opts, "general.grpVisibility.hudEnabled")
+  ok(he and he.type == "toggle" and he.name == "HUD", "general: HUD switch on the Visibility tab")
+  local was = Nock.Flavor.forever
+  Nock.Flavor.forever = true
+  ok(he and he.hidden() == false, "HUD switch shown on Forever")
+  Nock.Flavor.forever = false
+  ok(he and he.hidden() == true, "HUD switch hidden on TBC (it lives on the Classic Layout page there)")
+  Nock.Flavor.forever = was
+  ok(he and not W.IsAdvanced(he), "HUD switch is Simple")
+  local card, op = nodeAt(opts, "general.grpVisibility.visibilityCard"), nodeAt(opts, "general.grpVisibility.opacity")
+  ok(he and card and op and he.order > card.order and he.order < op.order, "HUD switch leads the Visibility card")
+  local sent = {}
+  local send = Nock.SendMessage
+  Nock.SendMessage = function(_, m) sent[#sent + 1] = m end
+  Nock.db.profile.hudEnabled = nil
+  ok(he.get() == true, "HUD switch: unset reads on")
+  he.set(nil, false)
+  ok(Nock.db.profile.hudEnabled == false and he.get() == false and sent[#sent] == "NOCK_VISUALS_CHANGED", "HUD switch off: saved, the HUD told")
+  he.set(nil, true)
+  ok(Nock.db.profile.hudEnabled == true, "HUD switch back on")
+  Nock.db.profile.hudEnabled = nil
+  Nock.SendMessage = send
+end
+
 -- The Buff Row tab on Forever (user, 2026-09-26): the row's switch and size,
 -- the buffs up now with Pin / Hide (read out of combat), and the pin and
 -- hide lists as icon tables with an add form.

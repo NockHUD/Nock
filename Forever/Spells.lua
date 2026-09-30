@@ -12,6 +12,7 @@ local Spells = {
   RAPTOR_STRIKE = 2973, -- rank 1; the melee range probe (IsSpellInRange)
   HUNTERS_MARK = 1130,  -- rank 1 (ranks map to it through C_Spell.GetBaseSpell)
   HUNTERS_MARK_DURATION = 120,
+  FEIGN_DEATH = 5384,   -- icon only (the wizard's No HUD card); the cooldown is the FD row below
   -- Aspects by base id (vanilla ids; Forever/Auras.lua). A cast or aura of
   -- a higher rank resolves to the base id by name.
   ASPECT_HAWK = 13165,  -- the corner icon's "no aspect" face

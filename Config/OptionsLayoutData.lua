@@ -193,7 +193,7 @@ L.TABS = {
   {
     path = "general.grpVisibility",
     cards = {
-      { key = "visibilityCard", name = "Visibility", icon = { glyph = "eyeoff" }, desc = "Fade the HUD by combat state or hide it between fights; applies while frames are locked.", stack = true, rows = { "opacityNote", "opacity", "opacityOoc", "hideOoc" } },
+      { key = "visibilityCard", name = "Visibility", icon = { glyph = "eyeoff" }, desc = "Fade the HUD by combat state or hide it between fights; applies while frames are locked.", stack = true, rows = { "hudEnabled", "opacityNote", "opacity", "opacityOoc", "hideOoc" } },
     },
     rename = { showAutoShotBar = "Auto Shot bar", showMeleeBar = "Melee swing timer", showGcdBar = "GCD bar", showManaBar = "Mana bar", rotationHelperEnabled = "Rotation helper", showWindupMark = "Wind-up mark", editGridShow = "Grid while unlocked", showAutoShotCast = "Auto Shot in cast bar", castBarNonCombatCasts = "Non-combat casts", backgroundEnabled = "Background", consumeBannerEnabled = "Pill while eating or drinking", playerEnabled = "Player buffs panel", petEnabled = "Pet buffs panel", trackerEnabled = "Tracker section", clickerEnabled = "Tank buttons", showCompleted = "Stocked items too", repairEnabled = "Repair reminder", weaveBindEnabled = "Weave bind", tonkDialEnabled = "Countdown dial", practiceToast = "Toast", practiceTimelineOkMarks = "OK marks too", releaseBarEnabled = "Retry-Timer", fluffyShowAutoShotCast = "Auto Shot wind-up as a cast", shotBarsShowMulti = "Multi-Shot window", shotBarsShowArcane = "Arcane Shot window", shotBarsShowRaptor = "Melee weave lane", autoShotDelayEnabled = "Auto Shot delay (experimental)", settingsScale = "Settings window" },
   },

@@ -1293,6 +1293,18 @@ local function buildOptionsTable()
               if Nock.Settings and Nock.Settings.ApplyScale then Nock.Settings:ApplyScale() end
             end,
           },
+          -- WoW Forever's HUD master switch. On TBC the same key sits on the
+          -- Classic Layout page, which Forever drops (Config/OptionsForever.lua).
+          hudEnabled = {
+            type = "toggle",
+            name = "HUD",
+            desc = "The cluster and everything glued to it: bars, Range Finder, cooldown grid, cast bar, pet row, corner icons and buff row. Off, Nock runs for its alerts and tools alone: warnings, the aggro flash, range cues, the eating pill, the aspect ring, the tracking wheel, the weave key and the camera flip keep working. (The setup wizard's \"No HUD\" choice sets this.)",
+            order = 18,
+            width = "full",
+            hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end,
+            get = function() return Nock.db.profile.hudEnabled ~= false end,
+            set = function(_, v) visualsSet(_, "hudEnabled", v) end,
+          },
           opacityNote = {
             type = "description",
             name = function()
@@ -8279,7 +8291,7 @@ local function buildOptionsTable()
   regroup("general", "grpLook", "HUD look", 10,
     { "reactNote", "hudMode" }, true)
   regroup("general", "grpVisibility", "Visibility", 11,
-    { "opacityNote", "opacity", "opacityOoc", "hideOoc" }, true)
+    { "hudEnabled", "opacityNote", "opacity", "opacityOoc", "hideOoc" }, true)
   -- Background is gathered here but MOVED to the Classic branch below — the
   -- backdrop box is classic-only (HUD:ApplyBackground paints nothing in react
   -- mode; React's styling is its Skin subtab), so it lives with that look.

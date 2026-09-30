@@ -12,6 +12,11 @@ local function autoShotIcon()
   return Onboarding.SpellIcon(Nock.Spells and Nock.Spells.AUTO_SHOT)
 end
 
+-- The HUD master switch (profile.hudEnabled, read by UI/HUD.lua).
+local function hudOn(p)
+  return p.hudEnabled ~= false
+end
+
 -- Quality-of-life rows write through Modules/QoL.lua so the CVar / the error
 -- event flips the moment the box is ticked.
 local function qolRow(key, setter, label, desc)
@@ -63,12 +68,39 @@ Onboarding.Pages = {
     body    = "Each step puts one part of Nock on screen. The part that step is about is unlocked: drag it where you like, or use its nudge pad, before moving on. Everything locks again when you finish.\n\nYou can skip at any point and keep what you've chosen, and run this again from the settings window (General).",
   },
   {
+    key     = "showHud",
+    kind    = "cards",
+    reveals = { "hud" },
+    eyebrow = "You can change this anytime",
+    title   = "Do you want the HUD?",
+    blurb   = "This shows or hides your real HUD live - watch it behind this window.",
+    options = {
+      {
+        value = "hud", label = "Nock HUD", recommended = true,
+        desc  = "The cluster: swing bars, Range Finder, mana, cast bar and the cooldown grid.",
+        icon  = autoShotIcon,
+        isSelected = function(p) return p.hudEnabled ~= false end,
+        apply      = function(p) p.hudEnabled = true end,
+      },
+      {
+        value = "none", label = "No HUD",
+        desc  = "No bars on screen. Warnings, range cues, the aspect ring and the weave key still work.",
+        icon  = function() return Onboarding.SpellIcon(Nock.Spells and Nock.Spells.FEIGN_DEATH) end,
+        isSelected = function(p) return p.hudEnabled == false end,
+        apply      = function(p) p.hudEnabled = false end,
+      },
+    },
+  },
+  {
     key     = "hud",
     kind    = "toggles",
     reveals = { "hud" },
     eyebrow = "Drag the HUD where you want it",
     title   = "Your HUD",
     blurb   = "Pick the bars you want stacked in the cluster.",
+    -- The cluster's own pages (this one, the ladder, the corners): nothing to
+    -- dress with the HUD off.
+    visible = hudOn,
     options = {
       { key = "reactShowAutoBar",  label = "Auto Shot bar", desc = "Counts down to your next Auto Shot." },
       { key = "reactShowMeleeBar", label = "Melee swing bar", desc = "Your melee swing, for weaving." },
@@ -85,6 +117,7 @@ Onboarding.Pages = {
     eyebrow = "You can change this anytime",
     title   = "Range Finder",
     blurb   = "How much detail the range ladder shows.",
+    visible = hudOn,
     options = {
       {
         value = "compact", label = "Compact", recommended = true,
@@ -197,6 +230,7 @@ Onboarding.Pages = {
     eyebrow = "Drag them where you want them",
     title   = "Corners & buff row",
     blurb   = "Your aspect and Hunter's Mark beside the cluster, your buffs above it.",
+    visible = hudOn,
     options = {
       { key = "reactShowAspectIcon", label = "Aspect icon", desc = "The aspect you're in, top left of the cluster." },
       { key = "reactShowMarkIcon",   label = "Hunter's Mark icon", desc = "Your mark and its time left, top right." },
@@ -269,7 +303,7 @@ Onboarding.Pages = {
     reveals = { "*" },
     eyebrow = "Setup complete",
     title   = "You're set!",
-    blurb   = "Your HUD is live and configured like this:",
+    blurb   = "Nock is live and configured like this:",
   },
 }
 
@@ -312,9 +346,10 @@ function Onboarding:BuildRecap()
     if p.cueOutOfRangeEnabled then cues[#cues + 1] = "out of range" end
   end
   local ladder = (p.reactRangeStyle == "detailed") and "detailed" or "compact"
+  local hud = hudOn(p)
   return {
-    { "HUD", joinOr(bars, "nothing") .. " (" .. ladder .. " ladder)" },
-    { "Around it", joinOr(around, "nothing") },
+    { "HUD", hud and (joinOr(bars, "nothing") .. " (" .. ladder .. " ladder)") or "off" },
+    { "Around it", hud and joinOr(around, "nothing") or "off" },
     { "Warnings", p.showWarnings == false and "off" or (on .. " of " .. total .. " on") },
     { "Range cues", joinOr(cues, "off") },
     { "Aspect ring key", (p.aspectRingKey or "") ~= "" and p.aspectRingKey or "not set" },

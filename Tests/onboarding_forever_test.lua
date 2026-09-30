@@ -53,7 +53,31 @@ local O = Nock.Onboarding
 
 local keys = {}
 for i, pg in ipairs(O.Pages) do keys[i] = pg.key end
-ok(table.concat(keys, ",") == "start,welcome,hud,range,weave,weaveKey,weaveKeyBind,corners,warnings,cues,ring,qol,done", "page order, got " .. table.concat(keys, ","))
+ok(table.concat(keys, ",") == "start,welcome,showHud,hud,range,weave,weaveKey,weaveKeyBind,corners,warnings,cues,ring,qol,done", "page order, got " .. table.concat(keys, ","))
+
+-- The HUD on/off page: Nock HUD (recommended) or No HUD; with the HUD off the
+-- pages that only dress the cluster are skipped, the weave pages are not.
+do
+  local byKey = {}
+  for _, pg in ipairs(O.Pages) do byKey[pg.key] = pg end
+  local sp = byKey.showHud
+  ok(sp and sp.kind == "cards" and #sp.options == 2 and sp.options[1].value == "hud" and sp.options[1].recommended == true
+     and sp.options[2].value == "none", "showHud page: Nock HUD (recommended), then No HUD")
+  ok(sp.reveals and sp.reveals[1] == "hud", "showHud page reveals the HUD, so the choice is seen")
+  ok(D.hudEnabled == true, "Forever default: HUD on")
+  local p = { hudEnabled = true }
+  Nock.db.profile = p
+  ok(sp.options[1].isSelected(p) == true and sp.options[2].isSelected(p) == false, "HUD on reads as Nock HUD")
+  ok(sp.options[1].isSelected({}) == true, "an unset key reads as Nock HUD")
+  for _, k in ipairs({ "hud", "range", "corners" }) do ok(O:IsPageVisible(byKey[k]) == true, "HUD on: page shown: " .. k) end
+  sp.options[2].apply(p)
+  ok(p.hudEnabled == false and sp.options[2].isSelected(p) == true and sp.options[1].isSelected(p) == false, "No HUD clears hudEnabled")
+  for _, k in ipairs({ "hud", "range", "corners" }) do ok(O:IsPageVisible(byKey[k]) == false, "No HUD: page skipped: " .. k) end
+  for _, k in ipairs({ "weave", "warnings", "cues", "ring", "qol", "done" }) do ok(O:IsPageVisible(byKey[k]) == true, "No HUD: page kept: " .. k) end
+  sp.options[1].apply(p)
+  ok(p.hudEnabled == true, "Nock HUD switches it back on")
+  Nock.db.profile = {}
+end
 
 -- The weave page: weave (recommended) switches the helper and its strip on,
 -- turret switches the helper off; the choice reads back from the profile.
@@ -155,6 +179,18 @@ Nock.db.profile.weaveKey = nil
 ok(O:BuildRecap()[6][2] == "helper on, weave key not set", "recap: the mode without a key yet")
 Nock.db.profile.weaveKeyEnabled = false
 Nock.db.profile.weaveHelperEnabled = false
+-- HUD off: the two HUD rows say so, the other four keep their place.
+ok(O:BuildRecap()[1][1] == "HUD" and O:BuildRecap()[1][2] ~= "off", "recap: HUD row lists the bars while it is on")
+Nock.db.profile.hudEnabled = false
+do
+  local r = O:BuildRecap()
+  ok(#r == 6 and r[1][1] == "HUD" and r[1][2] == "off" and r[2][1] == "Around it" and r[2][2] == "off", "recap: HUD off on both HUD rows")
+  ok(r[5][2] == "SHIFT-R" and r[6][1] == "Weaving", "recap: the other rows keep their place")
+end
+Nock.db.profile.hudEnabled = true
+for _, pg in ipairs(O.Pages) do
+  if pg.key == "done" then ok(not (pg.blurb or ""):find("HUD"), "finish blurb does not promise a HUD") end
+end
 
 -- First run stamps seenVersion as the wizard opens.
 O:Close()
