@@ -8,7 +8,7 @@ local F = {}
 Nock.OptionsForever = F
 
 -- Top-level families that survive. Everything else at the root goes.
-F.FAMILIES = { general = true, hud = true, profiles = true, alerts = true, utilities = true }
+F.FAMILIES = { general = true, hud = true, profiles = true, alerts = true, quickstarts = true, utilities = true }
 -- Families that keep only the listed pages (every other group inside goes):
 -- Utilities is the TBC toolbox (practice, mailbox, weave binds, ...); only
 -- the Quality of life page has a feed on Forever (Modules/QoL.lua), plus the
@@ -437,6 +437,80 @@ function F.EatingPillPage(settings)
   return { type = "group", name = "Eating pill", order = 3, args = args }
 end
 
+-- Quickstarts -> Weaving (Forever/Quickstart.lua): the checklist page. Every
+-- row is a COPY of the option node on its home page: same get, set and
+-- profile key, so nothing is stored twice. The walker's metadata
+-- (Simple/Advanced, segmented, chips) is a side table keyed by node, so it is
+-- copied with the node.
+local function copyNode(src, order)
+  local W = Nock.OptionsWalk
+  local c = {}
+  for k, v in pairs(src) do c[k] = v end
+  c.order = order
+  local m = W and W.Meta and W.Meta(src)
+  if m then for k, v in pairs(m) do W.SetMeta(c, k, v) end end
+  return c
+end
+
+-- A get/set that reads its profile key off info[#info] would see the copy's
+-- key. The master sits under `enabled`, so its handlers are given the home key.
+local function withKey(fn, key)
+  if type(fn) ~= "function" then return fn end
+  return function(info, ...)
+    local i = {}
+    for k, v in pairs(info or {}) do i[k] = v end
+    i[math.max(#i, 1)] = key
+    return fn(i, ...)
+  end
+end
+
+function F.QuickstartPage(root)
+  local Q = Nock.Quickstart
+  if not Q then return nil end
+  local W = Nock.OptionsWalk
+  local function profile() return Nock.db.profile end
+  local page = { type = "group", name = "Weaving", order = 1, args = {} }
+  for i, card in ipairs(Q.WEAVE) do
+    local cardKey, cardName = card.key, card.name
+    local args = {
+      info = {
+        type = "description", order = 1, fontSize = "medium",
+        name = function()
+          local st = Q.StatusFor("quickstarts.weaving")
+          local s = st and st[cardKey]
+          return (s and s.line) or cardName
+        end,
+      },
+    }
+    local master = card.master and nodeAt(root, card.master)
+    if master then
+      local homeKey = card.master:match("([^%.]+)$")
+      local c = copyNode(master, 2)
+      c.get, c.set = withKey(master.get, homeKey), withKey(master.set, homeKey)
+      args.enabled = c
+    end
+    for j, spec in ipairs(card.rows) do
+      local src = nodeAt(root, spec[1])
+      if src then
+        local c = copyNode(src, 10 + j)
+        if spec.adv and W and W.SetMeta then W.SetMeta(c, "advanced", true) end
+        if spec.fix then
+          local rule = spec.fix
+          c.hidden = function() return not rule(profile()) end
+        end
+        args[spec[1]:match("([^%.]+)$")] = c
+      end
+    end
+    local g = { type = "group", inline = true, name = cardName, order = 10 * i, args = args }
+    if card.hidden then
+      local rule = card.hidden
+      g.hidden = function() return rule(profile()) end
+    end
+    page.args["quick_" .. cardKey] = g
+  end
+  return { type = "group", name = "Quickstarts", order = 3.5, args = { weaving = page } }
+end
+
 function F.Apply(root)
   if type(root) ~= "table" or type(root.args) ~= "table" then return end
   local alerts = root.args.alerts
@@ -459,6 +533,9 @@ function F.Apply(root)
   if type(util) == "table" and type(util.args) == "table" and not util.args.trackingWheel and Nock.TrackingWheelScale then
     util.args.trackingWheel = F.TrackingWheelPage()
   end
+  -- Rebuilt on every Apply (unlike the pages above): its rows are copies, and
+  -- a rebuild may have refilled the nodes they were copied from.
+  if Nock.Quickstart then root.args.quickstarts = F.QuickstartPage(root) end
   for k, v in pairs(root.args) do
     if type(v) == "table" and v.type == "group" and not F.FAMILIES[k] then root.args[k] = nil end
   end

@@ -16,6 +16,7 @@ local Spells = {
   -- Aspects by base id (vanilla ids; Forever/Auras.lua). A cast or aura of
   -- a higher rank resolves to the base id by name.
   ASPECT_HAWK = 13165,  -- the corner icon's "no aspect" face
+  ASPECT_CHEETAH = 5118, -- icon only (Quickstarts > Weaving, the One key recipe: the key runs you)
   -- Pet Growl (rank 1): its localized name finds the pet-bar slot.
   GROWL = 2649,
   -- The generic eating / drinking auras (vanilla ids, name source only: every

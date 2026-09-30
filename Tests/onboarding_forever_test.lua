@@ -86,6 +86,7 @@ for _, pg in ipairs(O.Pages) do if pg.key == "weave" then wpg = pg end end
 ok(wpg and wpg.kind == "cards" and #wpg.options == 2 and wpg.options[1].value == "turret" and wpg.options[1].recommended ~= true
    and wpg.options[2].value == "weave" and wpg.options[2].tag == "Advanced" and wpg.options[2].recommended ~= true,
    "weave page: turret first, weave second tagged Advanced, neither recommended (the default is turret)")
+ok(wpg and wpg.blurb:find("Quickstarts", 1, true) ~= nil and #wpg.blurb <= 110, "weave page points at the quickstart, in two lines")
 ok(D.weaveHelperEnabled == false, "Forever default: helper off (turret)")
 do
   local p = { weaveHelperEnabled = true, reactShowWeaveStrip = true, reactMeleeStageCue = true, reactShowMeleeBar = true }

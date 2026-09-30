@@ -80,6 +80,7 @@ Forever\Cooldowns.lua
 Forever\CameraSetupView.lua
 Forever\CameraFlip.lua
 Forever\WeaveKey.lua
+Forever\Quickstart.lua
 Forever\Probe.lua
 Forever\Traits.lua
 Forever\Pet.lua

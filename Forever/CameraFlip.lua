@@ -103,11 +103,30 @@ function CameraFlip.CastFires(unit, name, raptorName)
   return unit == "player" and name ~= nil and raptorName ~= nil and name == raptorName
 end
 
+-- Pure: the per-character "camera was set up" stamp (db.char.cameraSetupDone,
+-- read by Forever/Quickstart.lua). Done stays done. The setup leaves a trace,
+-- cameraViewBlendStyle 2 (the client's default is 1): `blendStyle` reading 2
+-- counts as done and lifts an earlier "not done". With no stamp yet, a
+-- character that already runs the flip has been through the setup; that
+-- guess is made once (the switch alone says nothing about a later login).
+function CameraFlip.SetupStamp(existing, flipEnabled, blendStyle)
+  if existing == true then return true end
+  if tostring(blendStyle) == "2" then return true end
+  if existing ~= nil then return false end
+  return flipEnabled == true
+end
+
 function CameraFlip:OnEnable()
   -- Every blocked or forbidden call, with the function name: the report
   -- reads protection status off this ring.
   self:RegisterEvent("ADDON_ACTION_BLOCKED", "OnBlocked")
   self:RegisterEvent("ADDON_ACTION_FORBIDDEN", "OnBlocked")
+  local db = Nock.db
+  if db and db.char and db.profile then
+    local get = (_G.C_CVar and _G.C_CVar.GetCVar) or _G.GetCVar
+    local okc, blend = pcall(function() return get and get("cameraViewBlendStyle") end)
+    db.char.cameraSetupDone = CameraFlip.SetupStamp(db.char.cameraSetupDone, db.profile.cameraFlipEnabled, okc and blend or nil)
+  end
 end
 
 -- Pure: signed degrees from facing a to facing b (radians), in (-180, 180].
@@ -460,6 +479,7 @@ function CameraFlip:OnCameraSetupEvent(event)
       cameraCall(errs, "SaveView", 1)
       if #errs == 0 then
         S.step, S.savedOff, S.savedZoom = 3, off, cameraZoom()
+        if Nock.db and Nock.db.char then Nock.db.char.cameraSetupDone = true end
         Nock:Print(("camera setup: view saved at %+.1f deg from 180, zoom %s"):format(off, tostring(S.savedZoom)))
       else
         Nock:Print("camera setup: " .. errs[1])

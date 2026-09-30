@@ -9,6 +9,8 @@ local W = Nock.OptionsWalk
 local APP = "Nock"
 local SC = Nock.UI.SettingsControls
 local SEV = { red = "bad", amber = "wait" }
+-- Quickstart checklist cards (Forever/Quickstart.lua): state -> skin colour.
+local QUICK_INK = { ready = "accent", attention = "wait", off = "ink3", none = "ink3" }
 
 Settings.W, Settings.H = 1160, 800
 Settings.SIDE_W, Settings.HERO_H, Settings.TABS_H, Settings.FOOT_H = 256, 148, 40, 56
@@ -16,7 +18,7 @@ Settings.CARD_PAD, Settings.ROW_H = 24, 54
 local NAV_ROW_H, NAV_HEAD_H, NAV_PAD_L = 25, 24, 32
 local NAV_ICON = { general = "sliders", classic = "rows", react = "bolt", fluffy = "equalizer", warnings = "warn", helpers = "pill", sounds = "bell", aggro = "focus",
   buffTracker = "shield", debuffTracker = "skull", totemTracker = "signal", misdirect = "turn", qol = "gear", shopping = "cart", mailbox = "envelope",
-  weaveBind = "keyboard", garment = "shirt", tonk = "wrench", practice = "target", experimental = "flask", profiles = "profiles" }
+  weaveBind = "keyboard", weaving = "target", garment = "shirt", tonk = "wrench", practice = "target", experimental = "flask", profiles = "profiles" }
 
 local function text(parent, role, size, color)
   local fs = parent:CreateFontString(nil, "OVERLAY")
@@ -81,7 +83,7 @@ function Settings:OnInitialize()
   f:SetScript("OnShow", function() Settings:Invalidate("show") end)
   self:BuildSidebar()
   self:BuildMain()
-  self.state = { page = nil, tab = {}, scroll = {} }
+  self.state = { page = nil, tab = {}, scroll = {}, quickOpen = {} }
   W.Subscribe(APP, self, function() Settings.index = nil; Settings:Invalidate("ConfigTableChange") end)
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "RefreshLater")
   self:RegisterMessage("NOCK_LOCK_CHANGED", "RefreshLater")
@@ -750,6 +752,8 @@ local function catalogHeader(c)
   cat.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
   cat.glyph = cat.tile:CreateTexture(nil, "ARTWORK"); cat.glyph:SetPoint("CENTER", cat.tile, "CENTER", 0, 0)
   cat.sev = text(h, "mono", 10, "ink3"); cat.sev:SetPoint("LEFT", c.title, "RIGHT", 12, 0)
+  cat.chev = h:CreateTexture(nil, "ARTWORK")   -- quick cards: the open/close chevron
+  cat.chev:Hide()
   cat.toggle = SC.Acquire("toggle", h)   -- reused for the card's life; bound per render
   cat.toggle.frame:SetPoint("RIGHT", h, "RIGHT", -16, 0)
   cat.pill = text(h, "mono", 10, "ink3"); cat.pill:SetPoint("RIGHT", h, "RIGHT", -16, 0)
@@ -802,21 +806,31 @@ local function presetTile(self, i)
   return t
 end
 
-function Settings:RenderPresets(page, tab, y, width, firstTab)
+-- `note`: a line for the right end of the head (the quickstart tally; a page
+-- with one tab has no tab bar, so the tab note cannot carry it).
+function Settings:RenderPresets(page, tab, y, width, firstTab, note)
   self.presetTiles = self.presetTiles or {}
   for _, t in ipairs(self.presetTiles) do t:Hide() end
   if self.presetHead then self.presetHead:Hide() end
   local P = Nock.Presets
-  local list = P and P.ForPage(table.concat(page.path, ".")) or nil
+  local pagePath = table.concat(page.path, ".")
+  local list = P and P.ForPage(pagePath) or nil
   if not list or #list == 0 or tab ~= firstTab then return y end
   if not self.presetHead then
     local h = CreateFrame("Frame", nil, self.col.content)
     h:SetHeight(20)
     h.label = text(h, "mono", 10, "ink3"); h.label:SetPoint("LEFT", h, "LEFT", 2, 0); h.label:SetText("PRESETS")
-    h.rule = Skin.Rule(h, "lineSoft"); h.rule:SetPoint("LEFT", h.label, "RIGHT", 10, 0); h.rule:SetPoint("RIGHT", h, "RIGHT", 0, 0); h.rule:SetHeight(1)
+    h.note = text(h, "mono", 10, "ink2"); h.note:SetPoint("RIGHT", h, "RIGHT", -2, 0); h.note:SetJustifyH("RIGHT")
+    h.rule = Skin.Rule(h, "lineSoft"); h.rule:SetHeight(1)
     self.presetHead = h
   end
   local h = self.presetHead
+  h.label:SetText(P.Label and P.Label(pagePath) or "PRESETS")
+  local hasNote = type(note) == "string" and note ~= ""
+  h.note:SetText(hasNote and note:upper() or "")
+  h.rule:ClearAllPoints()
+  h.rule:SetPoint("LEFT", h.label, "RIGHT", 10, 0)
+  if hasNote then h.rule:SetPoint("RIGHT", h.note, "LEFT", -10, 0) else h.rule:SetPoint("RIGHT", h, "RIGHT", 0, 0) end
   h:ClearAllPoints(); h:SetPoint("TOPLEFT", self.col.content, "TOPLEFT", Settings.CARD_PAD, -y); h:SetWidth(width); h:Show()
   y = y + 24
   local cols = math.min(#list, 3)
@@ -897,7 +911,12 @@ function Settings:RenderCards(cards, page, tab, dropped)
   if colW < 100 then colW = Settings.W - Settings.SIDE_W end
   local width = colW - Settings.CARD_PAD * 2 - 8
   local y, i, n, on = Settings.CARD_PAD - 4, 0, 0, 0
-  y = self:RenderPresets(page, tab, y, width, self._firstTab)
+  -- Quickstart checklist: one status reading for the whole render; its tally
+  -- rides on the recipe strip's head.
+  local Q = Nock.Quickstart
+  if Q and Q.Invalidate then Q.Invalidate() end
+  local quick = Q and Q.StatusFor and Q.StatusFor(table.concat(page.path or {}, ".")) or nil
+  y = self:RenderPresets(page, tab, y, width, self._firstTab, quick and Q.TallyText(Q.Tally(quick)) or nil)
   for _, card in ipairs(cards) do
     i = i + 1
     local c = self.cards[i]
@@ -912,8 +931,13 @@ function Settings:RenderCards(cards, page, tab, dropped)
       Skin.Surface(c.head, "raised")
       -- search results: the head is a link back to the card's page
       c.head:SetScript("OnMouseUp", function(h) if h.open then h.open() end end)
-      c.head:SetScript("OnEnter", function(h) if h.open then Skin.Text(c.crumb, "accent") end end)
-      c.head:SetScript("OnLeave", function() Skin.Text(c.crumb, "ink3") end)
+      c.head:SetScript("OnEnter", function(h)
+        if h.hover then h.hover(true) elseif h.open then Skin.Text(c.crumb, "accent") end
+      end)
+      c.head:SetScript("OnLeave", function(h)
+        if h.hover then h.hover(false) end
+        Skin.Text(c.crumb, "ink3")
+      end)
       local hr = Skin.Rule(c.head, "line"); hr:SetPoint("BOTTOMLEFT", c.head, "BOTTOMLEFT", 0, 0); hr:SetPoint("BOTTOMRIGHT", c.head, "BOTTOMRIGHT", 0, 0); hr:SetHeight(1)
       c.tick = c.head:CreateTexture(nil, "ARTWORK"); c.tick:SetSize(3, 16); c.tick:SetPoint("LEFT", c.head, "LEFT", 16, 0)
       c.title = text(c.head, "displayMedium", 17, "ink")
@@ -926,8 +950,68 @@ function Settings:RenderCards(cards, page, tab, dropped)
     local cat = card.catalog
     local headH = cat and 48 or 40
     c.head:SetHeight(headH)
-    if cat then
+    if cat and cat.kind == "quick" then
+      -- A checklist card: status pill, master switch where the part has one,
+      -- the status line, and the rows while it needs you or was opened.
       local ch = catalogHeader(c)
+      local st = quick and quick[cat.itemKey] or nil
+      local state = st and st.state or "none"
+      local ink = QUICK_INK[state] or "ink3"
+      c.tick:SetHeight(20)
+      Skin.Paint(c.tick, ink, 1)
+      c.title:SetPoint("LEFT", ch.tile, "RIGHT", 12, 0)
+      c.crumb:Hide()
+      local glyph = cat.entry and cat.entry.icon
+      ch.icon:Hide()
+      Skin.Icon(ch.glyph, (glyph and Skin.HasIcon(glyph)) and glyph or "sliders", "ink2"); Skin.IconSize(ch.glyph, 16); ch.glyph:Show()
+      ch.tile:Show()
+      ch.pill:ClearAllPoints()
+      if cat.enabled then
+        ch.toggle.frame:Show()
+        ch.toggle.headerOnly = true
+        ch.toggle:Bind(cat.enabled, self)
+        ch.pill:SetPoint("RIGHT", ch.toggle.frame, "LEFT", -12, 0)
+      else
+        ch.toggle.frame:Hide()
+        ch.pill:SetPoint("RIGHT", c.head, "RIGHT", -16, 0)
+      end
+      ch.pill:SetText(st and st.pill or ""); Skin.Text(ch.pill, ink); ch.pill:Show()
+      local openKey = table.concat(card.path, ".")
+      local open = Q.CardOpen(state, self.state.quickOpen[openKey])
+      -- The open/close cue after the title: a chevron and a word, and the
+      -- whole head lights on hover (it is the click target).
+      local cue = Q.OpenCue(open)
+      ch.chev:ClearAllPoints(); ch.chev:SetPoint("LEFT", c.title, "RIGHT", 12, 0)
+      Skin.Icon(ch.chev, cue.glyph, "ink2"); Skin.IconSize(ch.chev, 16); ch.chev:Show()
+      ch.sev:ClearAllPoints(); ch.sev:SetPoint("LEFT", ch.chev, "RIGHT", 4, 0)
+      ch.sev:SetText(cue.text); Skin.Text(ch.sev, "ink2"); ch.sev:Show()
+      c.head.open = function()
+        self.state.quickOpen[openKey] = not open
+        self:Invalidate("quick")
+      end
+      c.head.hover = function(on)
+        Skin.Surface(c.head, on and "line" or "raised")
+        Skin.Icon(ch.chev, cue.glyph, on and "accent" or "ink2"); Skin.IconSize(ch.chev, 16)
+        Skin.Text(ch.sev, on and "accent" or "ink2")
+      end
+      Skin.Surface(c.head, "raised")
+      c.head:EnableMouse(true)
+      local d = SC.Acquire("description", c); c.ctls[#c.ctls + 1] = d
+      d.frame:SetPoint("TOPLEFT", c.head, "BOTTOMLEFT", 0, 0); d.frame:SetPoint("TOPRIGHT", c.head, "BOTTOMRIGHT", 0, 0)
+      d.noImage = true
+      d:Bind(cat.info, self)
+      local h = headH + d.height
+      if open then h = h + self:LayoutLines(c, card.lines, h, width) end
+      c:SetHeight(h + 2)
+    elseif cat then
+      local ch = catalogHeader(c)
+      -- pooled cards: a quick card may have left its head clickable and its
+      -- pill beside the toggle
+      c.head.open = nil; c.head.hover = nil; c.head:EnableMouse(false)
+      Skin.Surface(c.head, "raised")
+      ch.chev:Hide()
+      ch.sev:ClearAllPoints(); ch.sev:SetPoint("LEFT", c.title, "RIGHT", 12, 0)
+      ch.pill:ClearAllPoints(); ch.pill:SetPoint("RIGHT", c.head, "RIGHT", -16, 0)
       c.tick:SetHeight(20)
       Skin.Paint(c.tick, SEV[cat.severity] or "accent", 1)
       c.title:SetPoint("LEFT", ch.tile, "RIGHT", 12, 0)
@@ -964,7 +1048,9 @@ function Settings:RenderCards(cards, page, tab, dropped)
     else
       -- every plain card wears an icon: the layout's, or the default glyph
       local ch = catalogHeader(c)
-      if c.cat then c.cat.sev:Hide(); c.cat.pill:Hide(); c.cat.toggle.frame:Hide() end
+      if c.cat then c.cat.sev:Hide(); c.cat.chev:Hide(); c.cat.pill:Hide(); c.cat.toggle.frame:Hide() end
+      c.head.hover = nil
+      Skin.Surface(c.head, "raised")
       c.tick:SetHeight(16); Skin.Paint(c.tick, "accent", 1)
       local kind, v = Settings.ResolveIcon and Settings.ResolveIcon(card.icon, nil)
       if kind == "tex" and v then

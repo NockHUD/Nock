@@ -145,5 +145,48 @@ ok(#turns == 1 and P._cameraArm == nil, "past the window: expired, no turn")
 _G.GetTime = function() return 500 end
 Nock.db = nil
 
+-- The setup stamp (Quickstarts > Weaving reads it): an existing stamp stands,
+-- a character already running the flip counts as set up, saving view 1 stamps.
+ok(P.SetupStamp(nil, true) == true and P.SetupStamp(nil, false) == false and P.SetupStamp(nil, nil) == false, "stamp: unset follows the flip switch")
+ok(P.SetupStamp(false, true) == false and P.SetupStamp(true, false) == true, "stamp: an existing value stands")
+-- The setup leaves a trace: it sets cameraViewBlendStyle to 2. That is the
+-- evidence for a character whose flip was off at the first login (bug
+-- 2026-09-30: "camera not set up" on a character that was), and it lifts a
+-- "not done" stamp written before.
+ok(P.SetupStamp(nil, false, "2") == true, "stamp: the setup's CVar counts with the flip off")
+ok(P.SetupStamp(false, false, "2") == true, "stamp: the setup's CVar lifts an earlier 'not done'")
+ok(P.SetupStamp(nil, false, "1") == false and P.SetupStamp(false, true, "1") == false, "stamp: no trace, no lift; the flip rule applies once only")
+ok(P.SetupStamp(nil, false, 2) == true and P.SetupStamp(true, false, "1") == true, "stamp: a numeric CVar reads the same; done stays done")
+do
+  function Nock:Print() end
+  Nock.db = { char = {}, profile = { cameraFlipEnabled = true } }
+  P:OnEnable()
+  ok(Nock.db.char.cameraSetupDone == true, "enable: a flip-on character is stamped done")
+  Nock.db = { char = {}, profile = {} }
+  P:OnEnable()
+  ok(Nock.db.char.cameraSetupDone == false, "enable: a fresh character is stamped not done")
+  local getCVar, cCVar = _G.GetCVar, _G.C_CVar
+  _G.C_CVar = nil
+  _G.GetCVar = function(n) return n == "cameraViewBlendStyle" and "2" or nil end
+  Nock.db = { char = { cameraSetupDone = false }, profile = {} }
+  P:OnEnable()
+  ok(Nock.db.char.cameraSetupDone == true, "enable: a 'not done' stamp is lifted by the setup's CVar")
+  _G.GetCVar = function() error("no cvars") end
+  Nock.db = { char = {}, profile = {} }
+  P:OnEnable()
+  ok(Nock.db.char.cameraSetupDone == false, "enable: an unreadable CVar is no evidence, and no error")
+  _G.GetCVar, _G.C_CVar = getCVar, cCVar
+  local facing, saveView, zoom = _G.GetPlayerFacing, _G.SaveView, _G.GetCameraZoom
+  _G.GetPlayerFacing = function() return math.pi end
+  _G.SaveView = function() end
+  _G.GetCameraZoom = function() return 10 end
+  P._cameraSetup = { active = true, step = 2, baseline = 0 }
+  P:OnCameraSetupEvent("PLAYER_STOPPED_LOOKING")
+  ok(P._cameraSetup.step == 3 and Nock.db.char.cameraSetupDone == true, "saving view 1 stamps the character")
+  _G.GetPlayerFacing, _G.SaveView, _G.GetCameraZoom = facing, saveView, zoom
+  P._cameraSetup = nil
+  Nock.db = nil
+end
+
 print(("forever_camera_flip: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

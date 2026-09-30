@@ -145,7 +145,51 @@ P.ByPage = {
   },
 }
 
-function P.ForPage(pagePath) return P.ByPage[pagePath] end
+-- WoW Forever pages, built by Config/OptionsForever.lua: they are not in the
+-- TBC tree, so Tests/presets_test.lua does not walk them
+-- (Tests/options_quickstart_test.lua does). Quickstarts > Weaving's recipes
+-- set the page's own rows, which are copies of the home switches.
+local QW = "quickstarts.weaving."
+local function foreverIcon(name)
+  return function()
+    local id = Nock.Spells and Nock.Spells[name]
+    return id and Nock.API and Nock.API.SpellIcon and Nock.API.SpellIcon(id) or nil
+  end
+end
+-- The helper and the three HUD rows its words need, then the recipe's own entries.
+local function weaveSet(extra)
+  local out = {
+    { QW .. "quick_hud.enabled", true }, { QW .. "quick_hud.reactShowMeleeBar", true },
+    { QW .. "quick_hud.reactMeleeStageCue", true }, { QW .. "quick_hud.reactShowWeaveStrip", true },
+  }
+  for _, e in ipairs(extra) do out[#out + 1] = e end
+  return out
+end
+
+P.Forever = {
+  ["quickstarts.weaving"] = {
+    { key = "turret", name = "Turret", icon = foreverIcon("AUTO_SHOT"),
+      summary = "Stand and shoot: weave helper, weave key and camera flip all off.",
+      set = { { QW .. "quick_hud.enabled", false }, { QW .. "quick_key.enabled", false }, { QW .. "quick_camera.enabled", false } } },
+    { key = "macros", name = "Macros", icon = foreverIcon("RAPTOR_STRIKE"),
+      summary = "Helper, melee bar words and strip on; your own macros do the pressing.",
+      set = weaveSet({ { QW .. "quick_key.enabled", false } }) },
+    { key = "key", name = "One key", icon = foreverIcon("ASPECT_CHEETAH"),
+      summary = "Everything Macros sets, plus the weave key, the camera flip and hidden error text.",
+      set = weaveSet({ { QW .. "quick_camera.enabled", true }, { QW .. "quick_key.enabled", true }, { QW .. "quick_key.weaveKeyErrors", true } }) },
+  },
+}
+-- The strip's head label where "PRESETS" says too little.
+P.LABELS = { ["quickstarts.weaving"] = "HOW YOU WEAVE" }
+
+function P.ForPage(pagePath)
+  local list = P.ByPage[pagePath]
+  if list then return list end
+  if Nock.Flavor and Nock.Flavor.forever then return P.Forever[pagePath] end
+  return nil
+end
+
+function P.Label(pagePath) return P.LABELS[pagePath] or "PRESETS" end
 
 local function rows(preset, root, appName)
   local W = Nock.OptionsWalk

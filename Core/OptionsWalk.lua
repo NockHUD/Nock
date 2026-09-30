@@ -14,7 +14,7 @@ W.ORDER_DEFAULT = 100
 W.UI_TYPE, W.UI_NAME = "dialog", "NockSettings-1.0"
 -- Root children that are families (sidebar headers) rather than pages. Their
 -- own leaves (hud.hudMode, the intros) are not rendered: General carries them.
-W.FAMILY_KEYS = { hud = true, alerts = true, trackers = true, utilities = true }
+W.FAMILY_KEYS = { hud = true, alerts = true, trackers = true, quickstarts = true, utilities = true }
 W.SYSTEM_KEYS = { experimental = true, profiles = true }
 
 -- Simple hides rows tagged advanced (own, inherited from a group, or positional
@@ -341,6 +341,12 @@ end
 local function catalogFor(key)
   local prefix, item = key:match("^(%a+)_(.+)$")
   if not prefix then return nil end
+  -- A quickstart checklist card (Forever/Quickstart.lua): its status comes
+  -- from the engine at render time, not from a module catalog.
+  if prefix == "quick" then
+    local Q = Nock.Quickstart
+    return { itemKey = item, kind = "quick", entry = Q and Q.Card and Q.Card(item) or nil }
+  end
   local modName = ({ warning = "Warnings", helper = "Helpers", setup = "SetupCheck" })[prefix]
   if not modName then return nil end
   local mod = Nock.GetModule and Nock:GetModule(modName, true)
@@ -699,7 +705,10 @@ function W.Cards(tab, appName, contentWidth)
             if r.key == "enabled" and r.type == "toggle" then enabled = r end
             if r.key == "info" and r.type == "description" then infoRow = r end
           end
-          local cat = (enabled and infoRow) and catalogFor(c.key) or nil
+          -- A catalog card needs its info row and its master switch; a quick
+          -- card (checklist) may have no master.
+          local cat = infoRow and catalogFor(c.key) or nil
+          if cat and cat.kind ~= "quick" and not enabled then cat = nil end
           if cat then
             cat.enabled, cat.info = enabled, infoRow
             card.catalog = cat

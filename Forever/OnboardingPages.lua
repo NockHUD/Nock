@@ -144,7 +144,7 @@ Onboarding.Pages = {
     reveals = { "hud" },
     eyebrow = "You can change this anytime",
     title   = "How do you play?",
-    blurb   = "Weaving runs in for a Raptor Strike between shots. Nock can call every step of it.",
+    blurb   = "Weaving runs in for a Raptor Strike between shots. The full checklist: Settings, Quickstarts, Weaving.",
     options = {
       {
         value = "turret", label = "I stand and shoot",
