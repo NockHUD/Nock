@@ -302,6 +302,52 @@ function Warnings:PetHpAlpha()
   return v
 end
 
+-- Inside an instance the target's creature type is a SECRET (probed
+-- 2026-09-30, out of combat too), so the plain wrong-tracking check above
+-- never resolves it there, and a curve cannot evaluate it either (Evaluate
+-- takes a secret only during untainted execution). What the client WILL do
+-- is render it: the squares frame keeps one FontString per Track spell,
+-- each in a font that draws the "switch to X" pill for that type's marker
+-- letter and nothing for anything else (Media/NockTrackMark-*.ttf). This
+-- answers what to feed them: the raw name (or nil, everything dark) and
+-- which FontStrings may show at all -- the plain half of the decision:
+-- warning on, Improved Tracking, the plain path empty, a live hostile
+-- target, the gate, the grace after a target change, an English client;
+-- per Track spell, learned and not the one on. Nothing here compares the
+-- name. The reads are injectable for the tests.
+Warnings.TrackReads = {
+  creatureTypeRaw = function()
+    local TM = Nock:GetModule("Tracking", true)
+    local R = TM and TM.Reads
+    return R and R.creatureTypeRaw and R.creatureTypeRaw() or nil
+  end,
+  locale = function() return _G.GetLocale and GetLocale() or "enUS" end,
+}
+local TRACK_MARK = { text = nil, show = {} }
+function Warnings:TrackMark()
+  local out = TRACK_MARK
+  out.text = nil
+  local S = Nock.Spells
+  for trackId in pairs(S.TRACK_MARK) do out.show[trackId] = nil end
+  if not isEnabled("warnTrackingEnabled") then return out end
+  if not S.TRACK_MARK_LOCALES[self.TrackReads.locale()] then return out end
+  local tr = Nock.state and Nock.state.tracking
+  if not tr or type(tr.rank) ~= "number" or tr.rank <= 0 then return out end
+  if tr.targetTrackId ~= nil then return out end
+  local t = Nock.state.target
+  if not (t and t.exists == true and t.alive == true and t.friendly == false) then return out end
+  if not Warnings.GateAllows(threshold("warnTrackingGate", "always"), self:InstanceKind()) then return out end
+  if tr.targetSince and GetTime() - tr.targetSince < WRONG_TRACKING_GRACE then return out end
+  local raw = self.TrackReads.creatureTypeRaw()
+  -- Nothing, or a plain name: the plain path's business (it found no Track spell).
+  if raw == nil or P(raw) ~= nil then return out end
+  out.text = raw
+  for trackId in pairs(S.TRACK_MARK) do
+    if tr.known[trackId] == true and tr.activeId ~= trackId then out.show[trackId] = true end
+  end
+  return out
+end
+
 Warnings.refreshInterval = 0.1
 
 local function bySeverity(a, b)
@@ -448,7 +494,7 @@ Warnings.Catalog = {
     enabledKey  = "warnTrackingEnabled",
     iconFn      = function() return spellIcon(1494) or 132328 end,  -- Track Beasts
     description = "Your target's creature type wants a tracking you know, and it is not the one that is on.",
-    logic       = "Fires when:\n• You have points in Improved Tracking (the talent is what makes tracking damage)\n• Your target is alive and attackable\n• Its creature type has a Track spell you have learned\n• That tracking is not on (another one, or none)\n• That has held for 1 s\n\nThe square shows the Track spell to switch to. Quiet for creature types no tracking covers (mechanicals, critters), and wherever the gate below says so. The tracking wheel (Utilities) switches without a mouse trip to the minimap.",
+    logic       = "Fires when:\n• You have points in Improved Tracking (the talent is what makes tracking damage)\n• Your target is alive and attackable\n• Its creature type has a Track spell you have learned\n• That tracking is not on (another one, or none)\n• That has held for 1 s\n\nThe square shows the Track spell to switch to. Quiet for creature types no tracking covers (mechanicals, critters), and wherever the gate below says so. The tracking wheel (Utilities) switches without a mouse trip to the minimap.\n\nInside dungeons and raids the game hides your target's creature type from addons, so there the flare is a word pill (BEASTS, UNDEAD, ...) the game itself draws; it needs an English client.",
     selects     = {
       { key = "warnTrackingGate", label = "Where", default = "always",
         values = { always = "Always", dungeon = "Dungeons and raids", raid = "Raids only" },

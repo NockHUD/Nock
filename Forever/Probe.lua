@@ -1140,6 +1140,12 @@ function Probe.TrackingReport(d)
     end
   end
   L[#L + 1] = ("creature type: %s"):format(tostring(d.creatureType))
+  -- The raw target reads (name = value), so a secret or an error shows as such.
+  if type(d.raw) == "table" then
+    local parts = {}
+    for _, r in ipairs(d.raw) do parts[#parts + 1] = r[1] .. "=" .. tostring(r[2]) end
+    L[#L + 1] = "raw target: " .. table.concat(parts, "  ")
+  end
   if type(d.typeNames) == "table" then
     local ids = {}
     for id in pairs(d.typeNames) do ids[#ids + 1] = id end
@@ -1541,6 +1547,73 @@ function Probe:Show(which, rest)
     if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
     return
   end
+  -- `/nock probe trackmark [Name|off]`: the track-mark fonts on a PLAIN name
+  -- (default Dragonkin), every kind's string stacked down the screen centre
+  -- with its clip window outlined -- proves the pictures render and the D
+  -- shift clips without any secret involved. `off` hides it.
+  if which == "trackmark" then
+    local S = Nock.Spells
+    local f = self._trackMarkTest
+    if rest == "off" then
+      if f then f:Hide() end
+      return
+    end
+    -- The client capitalises its names and the markers are the capitals.
+    local name = (rest ~= "" and rest) or "Dragonkin"
+    name = name:sub(1, 1):upper() .. name:sub(2):lower()
+    local size = 44
+    local em = S.TRACK_MARK_FONT * size
+    local rowH = em
+    if not f then
+      f = CreateFrame("Frame", "NockProbeTrackMark", UIParent)
+      f:SetSize(S.TRACK_MARK_WIDTH * em + 160, 8 * (rowH + 6))
+      f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+      f:SetFrameStrata("DIALOG")
+      f.rows = {}
+      local i = 0
+      for trackId, kind in pairs(S.TRACK_MARK) do
+        local win = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        win:SetClipsChildren(true)
+        win:SetSize(S.TRACK_MARK_WIDTH * em, rowH)
+        win:SetPoint("TOPLEFT", f, "TOPLEFT", 160, -i * (rowH + 6))
+        Nock.UI.ApplyBackdrop(win)
+        win:SetBackdropColor(0, 0, 0, 0.5)
+        win:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+        local tag = f:CreateFontString(nil, "OVERLAY")
+        tag:SetFont(Nock.UI.GetFont(), 12, "OUTLINE")
+        tag:SetPoint("RIGHT", win, "LEFT", -8, 0)
+        tag:SetText(kind)
+        -- Two layers, the row's geometry. SafeSetFont: a face renders BLANK
+        -- on first use until its size is bounced (ruling 2026-09-23).
+        local x = S.TRACK_MARK_SHIFTED[trackId] and -S.TRACK_MARK_SHIFT * em or 0
+        local function layer(drawLayer, file, r, g, b)
+          local fs = win:CreateFontString(nil, drawLayer)
+          fs:SetJustifyH("LEFT"); fs:SetJustifyV("MIDDLE"); fs:SetWordWrap(false)
+          fs:SetTextColor(r, g, b, 1)
+          fs:SetSize((S.TRACK_MARK_SHIFT + S.TRACK_MARK_WIDTH + 1) * em, rowH)
+          fs:SetPoint("LEFT", win, "LEFT", x, 0)
+          local path = "Interface\\AddOns\\Nock\\Media\\" .. file
+          Nock.UI.SafeSetFont(fs, path, em, "")
+          fs.loaded = fs:GetFont() == path
+          return fs
+        end
+        local back = layer("ARTWORK", "NockTrackMark-" .. kind .. "-back.ttf", 0.08, 0.08, 0.08)
+        local fs = layer("OVERLAY", "NockTrackMark-" .. kind .. ".ttf", 1, 0.65, 0.1)
+        f.rows[#f.rows + 1] = { fs = fs, back = back, tag = tag, kind = kind }
+        i = i + 1
+      end
+      self._trackMarkTest = f
+    end
+    local loaded = {}
+    for _, r in ipairs(f.rows) do
+      r.fs:SetText(name)
+      r.back:SetText(name)
+      loaded[#loaded + 1] = r.kind .. "=" .. tostring(r.fs.loaded and r.back.loaded)
+    end
+    f:Show()
+    Nock:Print(("Track mark test: '%s' in every kind (font loaded: %s). `/nock probe trackmark off` hides it."):format(name, table.concat(loaded, " ")))
+    return
+  end
   if which == "tracking" then
     local TM = Nock:GetModule("Tracking", true)
     -- `/nock probe tracking any`: toggle the warning free of the talent
@@ -1554,8 +1627,85 @@ function Probe:Show(which, rest)
     local R = TM and TM.Reads
     local S, Tr = Nock.Spells, Nock.Traits
     local nameOf = function(id) return Nock.Flavor.Plain(Nock.API.SpellName(id)) end
+    -- Every target read raw: SECRET, ERR:<msg>, or the value (a creature type
+    -- that is secret in an instance reads nil through Flavor.Plain).
+    local isSecret = _G.issecretvalue
+    local function raw(fn, ...)
+      if type(fn) ~= "function" then return "missing" end
+      local ok, v = pcall(fn, ...)
+      if not ok then return "ERR:" .. tostring(v) end
+      if isSecret and v ~= nil and isSecret(v) then return "SECRET" end
+      return v
+    end
+    local rawReads = {
+      { "InCombat", raw(_G.InCombatLockdown) }, { "IsInInstance", raw(_G.IsInInstance) },
+      { "UnitExists", raw(_G.UnitExists, "target") }, { "UnitName", raw(_G.UnitName, "target") },
+      { "UnitGUID", raw(_G.UnitGUID, "target") },
+      { "UnitCreatureType", raw(_G.UnitCreatureType, "target") },
+      { "UnitCreatureType.id", raw(function() return select(2, UnitCreatureType("target")) end) },
+      { "UnitCreatureFamily", raw(_G.UnitCreatureFamily, "target") },
+      { "UnitClassification", raw(_G.UnitClassification, "target") },
+      { "UnitCanAttack", raw(_G.UnitCanAttack, "player", "target") },
+      { "UnitIsDead", raw(_G.UnitIsDead, "target") },
+      { "UnitIsPlayer", raw(_G.UnitIsPlayer, "target") },
+      { "UnitCreatureType(mouseover)", raw(_G.UnitCreatureType, "mouseover") },
+      { "UnitCreatureType(pet)", raw(_G.UnitCreatureType, "pet") },
+    }
+    -- The tooltip's own lines: the creature type sits on one of them.
+    local TI = _G.C_TooltipInfo
+    if TI and TI.GetUnit then
+      local okt, tip = pcall(TI.GetUnit, "target")
+      if okt and type(tip) == "table" and type(tip.lines) == "table" then
+        for i, line in ipairs(tip.lines) do
+          if i > 6 then break end
+          rawReads[#rawReads + 1] = { "tip" .. i, raw(function() return line.leftText end) }
+        end
+      else
+        rawReads[#rawReads + 1] = { "tooltip", okt and tostring(tip) or ("ERR:" .. tostring(tip)) }
+      end
+    else
+      rawReads[#rawReads + 1] = { "tooltip", "C_TooltipInfo.GetUnit missing" }
+    end
+    -- The in-instance flare's plain half (Forever/Warnings.lua TrackMark).
+    local WM = Nock:GetModule("Warnings", true)
+    if WM and WM.TrackMark then
+      local okm, m = pcall(WM.TrackMark, WM)
+      if okm and type(m) == "table" then
+        rawReads[#rawReads + 1] = { "mark.text", (m.text ~= nil and isSecret and isSecret(m.text)) and "SECRET" or m.text }
+        local ids = {}
+        for id in pairs(m.show) do ids[#ids + 1] = tostring(id) end
+        table.sort(ids)
+        rawReads[#rawReads + 1] = { "mark.show", #ids > 0 and table.concat(ids, ",") or "none" }
+      else
+        rawReads[#rawReads + 1] = { "mark", "ERR:" .. tostring(m) }
+      end
+      local WV = Nock:GetModule("WarningsView", true)
+      local tm = WV and WV.trackMark
+      if tm then
+        local shown = {}
+        for id, s in pairs(tm.strings) do if s.fs:IsShown() then shown[#shown + 1] = tostring(id) end end
+        table.sort(shown)
+        rawReads[#rawReads + 1] = { "mark.strings", ("%d built, shown %s, font %s, window %.0fx%.0f"):format(
+          (function() local c = 0; for _ in pairs(tm.strings) do c = c + 1 end; return c end)(),
+          #shown > 0 and table.concat(shown, ",") or "none",
+          tostring(tm.strings[19883] and (tm.strings[19883].fs:GetFont())), tm.window:GetWidth(), tm.window:GetHeight()) }
+      end
+    end
+    -- Can a curve turn the secret creature type id into a displayable alpha
+    -- (the pet HP square's trick)? No (2026-09-30, in a dungeon): a curve's
+    -- Evaluate takes a secret only during untainted execution, and the only
+    -- APIs that evaluate a curve for an addon are UnitHealthPercent and
+    -- UnitPowerPercent. Kept so a client change shows up here first.
+    rawReads[#rawReads + 1] = { "curveEval", raw(function()
+      local c = C_CurveUtil.CreateCurve()
+      c:SetType(Enum.LuaCurveType.Step)
+      c:AddPoint(0, 0); c:AddPoint(7, 1); c:AddPoint(8, 0)
+      local _, id = UnitCreatureType("target")
+      return c:Evaluate(id)
+    end) }
     local text = Probe.TrackingReport({
       list = R and R.trackingList(), creatureType = R and R.creatureType(), typeNames = R and R.creatureTypeNames(),
+      raw = rawReads,
       rank = Tr and Tr.LiveRank(S.IMPROVED_TRACKING, S.IMPROVED_TRACKING_NAME), improvedId = S.IMPROVED_TRACKING,
       talents = Tr and Tr.Find("Track", _G.C_ClassTalents, _G.C_Traits, nameOf) or {},
       state = Nock.state and Nock.state.tracking,

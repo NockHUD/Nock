@@ -66,6 +66,30 @@ local Spells = {
   -- The name is the fallback lookup should the id ever miss.
   IMPROVED_TRACKING = 24293,
   IMPROVED_TRACKING_NAME = "Improved Tracking",
+  -- The wrong-tracking warning INSIDE instances, where the target's creature
+  -- type is a secret Lua may not compare but a FontString may render: two
+  -- fonts per Track spell (Media/NockTrackMark-<kind>.ttf and -back.ttf,
+  -- from Tests/tools/track_mark_font.py) draw a whole warning square -- the
+  -- amber ring, initial and word label in the front font, the dark fill in
+  -- the back font -- for that type's marker letter and nothing for any
+  -- other character. "Demon" and "Dragonkin" share their initial: every
+  -- font advances 'D' by TRACK_MARK_SHIFT em, and those two pairs sit that
+  -- far left of the clip window so their second letter's picture is in view
+  -- only after a D. The marker letters are English; other locales get no
+  -- warning inside. The numbers are the generator's: the whole picture
+  -- (square and label) sits inside ONE em -- the line box the client lays
+  -- out as declared -- so the font is used at TRACK_MARK_FONT times the
+  -- square's pixel size, and the rest is in em of that font.
+  TRACK_MARK = {
+    [1494] = "beasts", [19883] = "humanoids", [19884] = "undead", [19878] = "demons",
+    [19879] = "dragonkin", [19880] = "elementals", [19882] = "giants",
+  },
+  TRACK_MARK_SHIFTED = { [19878] = true, [19879] = true },
+  TRACK_MARK_FONT = 1000 / 650, -- font px per square px (the square is 650 units)
+  TRACK_MARK_SHIFT = 3.2,       -- the 'D' advance
+  TRACK_MARK_WIDTH = 1.85,      -- the clip window's width (the "TRACK <type>" label is wider than the square)
+  TRACK_MARK_MARGIN = 0.6,      -- the square starts this far into the window
+  TRACK_MARK_LOCALES = { enUS = true, enGB = true },
 }
 Nock.Spells = Spells
 

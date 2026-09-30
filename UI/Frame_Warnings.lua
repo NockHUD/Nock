@@ -10,6 +10,7 @@ local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 local WarningsView = Nock:NewModule("WarningsView", "AceEvent-3.0")
 local C = Nock.Constants
 local LSM = LibStub("LibSharedMedia-3.0", true)
+local MEDIA = "Interface\\AddOns\\Nock\\Media\\"
 
 local SEVERITY_GLOW = {
   red   = { 1.00, 0.10, 0.10, 1 },
@@ -69,6 +70,36 @@ function WarningsView:OnInitialize()
     sq.label = label
     sq:SetAlpha(0)
     self.petHp = sq
+
+    -- The in-instance wrong-tracking square: the target's creature type is
+    -- a secret there, so its NAME is handed to two FontStrings per Track
+    -- spell -- a dark back layer and an amber front layer, each in a font
+    -- that draws its half of a warning square for that type's marker letter
+    -- and nothing otherwise (Forever/Spells.lua TRACK_MARK). The window
+    -- clips: the demons/dragonkin pairs sit a 'D' advance to the left, so
+    -- their picture is in view only after a D. Parked on the same slot as
+    -- the pet HP square, which sits above it.
+    local S = Nock.Spells
+    local win = CreateFrame("Frame", "NockWarnTrackMark", container)
+    win:SetClipsChildren(true)
+    win:SetFrameLevel(sq:GetFrameLevel() - 1)
+    self.trackMark = { window = win, strings = {} }
+    local function layer(drawLayer, r, g, b, a)
+      local fs = win:CreateFontString(nil, drawLayer)
+      fs:SetJustifyH("LEFT")
+      fs:SetJustifyV("MIDDLE")
+      fs:SetWordWrap(false)
+      fs:SetTextColor(r, g, b, a)
+      fs:Hide()
+      return fs
+    end
+    for trackId, kind in pairs(S.TRACK_MARK) do
+      self.trackMark.strings[trackId] = {
+        back = layer("ARTWORK", 0.08, 0.08, 0.08, 1),
+        fs = layer("OVERLAY", SEVERITY_GLOW.amber[1], SEVERITY_GLOW.amber[2], SEVERITY_GLOW.amber[3], 1),
+        kind = kind, shifted = S.TRACK_MARK_SHIFTED[trackId] == true,
+      }
+    end
   end
 
   -- Edit overlay: the row is empty most of the time, so while unlocked a
@@ -301,5 +332,49 @@ function WarningsView:Refresh(state)
     -- the one write that carries the secret; a plain 0 is the off state
     ph:SetAlpha(alpha)
     if not ph:IsShown() then ph:Show() end
+  end
+
+  -- The in-instance tracking flare, on the same slot: the window and each
+  -- string sized off the square, the secret name written to the strings the
+  -- plain half lets show (Forever/Warnings.lua TrackMark), nothing read back.
+  local tm = self.trackMark
+  if tm then
+    local S = Nock.Spells
+    local mod = Nock:GetModule("Warnings", true)
+    local mark = (mod and mod.TrackMark) and mod:TrackMark() or nil
+    local win = tm.window
+    if n ~= tm._lastN or size ~= tm._lastSize then
+      -- The picture is one em of a font used at TRACK_MARK_FONT x the
+      -- square's size; the square hangs from the line's top, so the window
+      -- (one line tall) sits on the row's top edge, its left a margin before
+      -- the slot's left (the label may be wider than the square).
+      local em = S.TRACK_MARK_FONT * size
+      win:SetSize(S.TRACK_MARK_WIDTH * em, em)
+      win:ClearAllPoints()
+      win:SetPoint("TOPLEFT", self.frame, "TOP", startX + n * (size + gap) - size / 2 - S.TRACK_MARK_MARGIN * em, 0)
+      local function place(fs, x, file)
+        fs:SetSize((S.TRACK_MARK_SHIFT + S.TRACK_MARK_WIDTH + 1) * em, em)
+        fs:ClearAllPoints()
+        fs:SetPoint("LEFT", win, "LEFT", x, 0)
+        Nock.UI.SafeSetFont(fs, MEDIA .. file, em, "")
+      end
+      for _, s in pairs(tm.strings) do
+        local x = s.shifted and -S.TRACK_MARK_SHIFT * em or 0
+        place(s.back, x, "NockTrackMark-" .. s.kind .. "-back.ttf")
+        place(s.fs, x, "NockTrackMark-" .. s.kind .. ".ttf")
+      end
+      tm._lastN, tm._lastSize = n, size
+    end
+    for trackId, s in pairs(tm.strings) do
+      if mark and mark.text ~= nil and mark.show[trackId] then
+        s.back:SetText(mark.text)
+        s.fs:SetText(mark.text)
+        if not s.fs:IsShown() then s.fs:Show(); s.back:Show() end
+      elseif s.fs:IsShown() then
+        s.back:SetText("")
+        s.fs:SetText("")
+        s.fs:Hide(); s.back:Hide()
+      end
+    end
   end
 end

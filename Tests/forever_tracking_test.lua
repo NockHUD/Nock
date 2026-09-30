@@ -14,7 +14,9 @@ local NAMES = {
   [19879] = "Track Dragonkin", [19880] = "Track Elementals", [19882] = "Track Giants", [19885] = "Track Hidden",
 }
 local Nock = {
-  Flavor = { forever = true, Plain = function(v) if v == "SECRET" then return nil end return v end },
+  -- A secret is the string "SECRET" or a { secret = <value> } table (the
+  -- in-instance flare hands such a value to a FontString).
+  Flavor = { forever = true, Plain = function(v) if v == "SECRET" or (type(v) == "table" and v.secret ~= nil) then return nil end return v end },
   API = { SpellIcon = function(id) return 1000 + id end, SpellName = function(id) return NAMES[id] end },
   db = { profile = {} },
   Constants = {},
@@ -108,7 +110,11 @@ M.Reads = {
   inCombat = function() return false end,
 }
 M:OnEnable()
-ok(M.events.MINIMAP_UPDATE_TRACKING and M.events.SPELLS_CHANGED and M.events.PLAYER_ENTERING_WORLD, "listens for tracking, spellbook and world changes")
+ok(M.events.MINIMAP_UPDATE_TRACKING and M.events.SPELLS_CHANGED and M.events.PLAYER_ENTERING_WORLD and M.events.PLAYER_TARGET_CHANGED, "listens for tracking, spellbook, world and target changes")
+now = 50
+M:PLAYER_TARGET_CHANGED()
+ok(st.targetSince == 50, "a target change is stamped for the in-instance flare's grace")
+now = 100
 M:Refresh(Nock.state)
 ok(st.activeId == 1494, "Track Beasts on: activeId")
 ok(st.targetTrackId == 1494 and st.targetTypeName == "Beast", "a beast target wants Track Beasts")
@@ -230,6 +236,71 @@ _G.IsInInstance = function() return false, "none" end
 ok(W:Reads(Nock.state).instanceKind == "none", "open world: none")
 _G.IsInInstance = nil
 ok(W:Reads(Nock.state).instanceKind == "none", "no API: none")
+
+-- The in-instance flare (Forever/Warnings.lua TrackMark): the target's
+-- creature type is a secret there, so its raw name goes to one FontString
+-- per Track spell in a font that draws that type's pill or nothing. The
+-- plain half decides here: the text (nil = everything dark) and which
+-- strings may show (learned, not the one on). Nothing compares the name.
+do
+  ok(S.TRACK_MARK[1494] == "beasts" and S.TRACK_MARK[19878] == "demons" and S.TRACK_MARK[19885] == nil, "a font kind per Track spell that has a creature type; Hidden has none")
+  ok(S.TRACK_MARK_SHIFTED[19878] and S.TRACK_MARK_SHIFTED[19879] and not S.TRACK_MARK_SHIFTED[1494], "demons and dragonkin sit a D advance to the left")
+  ok(S.TRACK_MARK_SHIFT == 3.2 and S.TRACK_MARK_WIDTH == 1.85 and math.abs(S.TRACK_MARK_FONT - 1000 / 650) < 1e-9 and S.TRACK_MARK_MARGIN == 0.6
+     and S.TRACK_MARK_LOCALES.enUS and S.TRACK_MARK_LOCALES.enGB, "the generator's shift, window, font scale and margin; English clients")
+  ok(S.TRACK_MARK_SHIFT > S.TRACK_MARK_WIDTH, "the D advance carries a picture clear of the window")
+  local T = Nock.state.tracking
+  local rawName = { secret = "Humanoid" }
+  local locale = "enUS"
+  W.TrackReads = { creatureTypeRaw = function() return rawName end, locale = function() return locale end }
+  local function reset()
+    T.rank, T.targetTrackId, T.activeId, T.targetSince = 2, nil, 1494, nil
+    T.known[1494], T.known[19883], T.known[19884] = true, true, true
+    Nock.state.target.exists, Nock.state.target.alive, Nock.state.target.friendly = true, true, false
+    Nock.db.profile.warnTrackingEnabled, Nock.db.profile.warnTrackingGate = nil, nil
+    _G.IsInInstance = function() return true, "party" end
+    rawName, locale = { secret = "Humanoid" }, "enUS"
+  end
+  reset()
+  local m = W:TrackMark()
+  ok(m.text == rawName, "the raw (secret) name is handed on untouched")
+  ok(m.show[19883] == true and m.show[19884] == true, "learned Track spells that are off may show")
+  ok(m.show[1494] == nil, "the tracking that is on: dark")
+  ok(m.show[19878] == nil and m.show[19880] == nil, "unlearned Track spells: dark")
+  ok(W:TrackMark() == m, "one scratch record, no allocation per tick")
+  reset(); T.targetTrackId = 19883
+  ok(W:TrackMark().text == nil, "the plain path resolved the type: the plain warning owns it")
+  reset(); T.rank = 0
+  ok(W:TrackMark().text == nil, "no Improved Tracking: dark")
+  reset(); T.targetSince = now - 0.5
+  ok(W:TrackMark().text == nil, "inside the grace after a target change: dark")
+  T.targetSince = now - 1.1
+  ok(W:TrackMark().text == rawName, "past the grace: the client draws again")
+  reset(); Nock.state.target.friendly = true
+  ok(W:TrackMark().text == nil, "a friendly target: dark")
+  reset(); Nock.db.profile.warnTrackingGate = "raid"
+  ok(W:TrackMark().text == nil, "gate raid in a dungeon: dark")
+  reset(); Nock.db.profile.warnTrackingEnabled = false
+  ok(W:TrackMark().text == nil, "warning off: dark")
+  reset(); rawName = nil
+  ok(W:TrackMark().text == nil, "no creature type at all: dark")
+  reset(); rawName = "Humanoid"
+  ok(W:TrackMark().text == nil, "a PLAIN name is the plain path's business: dark")
+  reset(); locale = "deDE"
+  local d = W:TrackMark()
+  ok(d.text == nil and d.show[19883] == nil, "a non-English client: dark (the marker letters are English)")
+  reset()
+  ok(W:TrackMark().show[19883] == true, "and English again")
+  -- The fonts ship: a front and a back file per kind (Tests/tools/track_mark_font.py).
+  for _, kind in pairs(S.TRACK_MARK) do
+    for _, suffix in ipairs({ ".ttf", "-back.ttf" }) do
+      local f = io.open("Media/NockTrackMark-" .. kind .. suffix, "rb")
+      ok(f ~= nil, "Media/NockTrackMark-" .. kind .. suffix .. " ships")
+      if f then f:close() end
+    end
+  end
+  Nock.db.profile.warnTrackingEnabled, Nock.db.profile.warnTrackingGate = nil, nil
+  _G.IsInInstance = nil
+end
 
 print(("forever_tracking: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

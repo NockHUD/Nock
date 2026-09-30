@@ -324,6 +324,7 @@ Nock.state = {
     knownRev       = 0,
     rank           = nil,   -- Improved Tracking's rank (read out of combat, held through a fight) | nil unknown
     wrong          = false, -- a learned Track spell fits the target and is not the one on
+    targetSince    = nil,   -- GetTime() of the last PLAYER_TARGET_CHANGED (the in-instance flare's grace)
   },
   warnings = {
     -- ordered array, highest severity first

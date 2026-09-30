@@ -95,6 +95,13 @@ Tracking.Reads = {
     if not (_G.UnitExists and UnitExists("target")) then return nil end
     return P(_G.UnitCreatureType and UnitCreatureType("target"))
   end,
+  -- The creature type name RAW: inside an instance it is a secret (probed
+  -- 2026-09-30, out of combat too), which the track-mark FontStrings render
+  -- and nothing compares.
+  creatureTypeRaw = function()
+    if not (_G.UnitExists and UnitExists("target") and _G.UnitCreatureType) then return nil end
+    return (UnitCreatureType("target"))
+  end,
   -- [creature type id] = localized name, or nil without the API.
   creatureTypeNames = function()
     local CI = _G.C_CreatureInfo
@@ -118,7 +125,14 @@ function Tracking:OnEnable()
   self:RegisterEvent("MINIMAP_UPDATE_TRACKING")
   self:RegisterEvent("SPELLS_CHANGED")
   self:RegisterEvent("PLAYER_ENTERING_WORLD")
+  self:RegisterEvent("PLAYER_TARGET_CHANGED")
   self:PLAYER_ENTERING_WORLD()
+end
+
+-- Plain even where the target itself is secret: the track-mark flare holds
+-- its grace from this stamp.
+function Tracking:PLAYER_TARGET_CHANGED()
+  Nock.state.tracking.targetSince = GetTime()
 end
 
 function Tracking:PLAYER_ENTERING_WORLD()
