@@ -6,11 +6,14 @@ Media/AspectRingDisc.tga   150x150: the dark disc (denser inside the tile
 Media/AspectRingWedge.tga  150x150: a white 60-degree annular slice pointing
                            straight up; the view rotates it toward the pick
                            and tints it with the active colour.
-Media/TrackingWheelWedge.tga  the same slice at 45 degrees for the eight-slot
-                           tracking wheel (UI/Frame_TrackingWheel.lua).
+Media/TrackingWheelDisc.tga   178x178: the same disc for the eight-slot
+                           tracking wheel (UI/Frame_TrackingWheel.lua), whose
+                           tiles sit on radius 59.
+Media/TrackingWheelWedge.tga  178x178: the same slice at 45 degrees.
 
 Non-power-of-two on purpose: the client mip-blurs power-of-two textures even
-at 1:1 (project rule on pixel art). Drawn 1:1 at 150 UI units. Edges are
+at 1:1 (project rule on pixel art). Drawn 1:1 in UI units; the sizes are
+Nock.AspectRingGeometry's (disc = 2 * (ring radius + 30)). Edges are
 anti-aliased by 4x supersampling.
 
 Run from the repo root:  python Tests/tools/aspect_ring_media.py
@@ -23,12 +26,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ADDON = os.path.abspath(os.path.join(HERE, "..", ".."))
 MEDIA = os.path.join(ADDON, "Media")
 
-SIZE = 150
 SS = 4                      # supersampling factor
-C = SIZE / 2                # centre, in output pixels
-R_DISC = 75                 # disc radius
-R_INNER = 39                # denser core (52% of the disc, the mockup's step)
-R_TRACK = 45                # tile centres (Nock.AspectRingGeometry ring radius)
+DISC_MARGIN = 30            # the disc's rim beyond the tile centres
 R_CAP = 17                  # centre cap
 R_WEDGE_IN = 18             # wedge starts just outside the cap
 HALF_WEDGE = math.radians(30)
@@ -51,35 +50,42 @@ def over(dst, src):
     return (rgb[0], rgb[1], rgb[2], oa * 255)
 
 
-def disc_sample(x, y):
-    d = math.hypot(x - C, y - C)
-    px = (0, 0, 0, 0)
-    if d <= R_DISC:
-        px = DISC_CORE if d <= R_INNER else DISC_OUTER
-        if abs(d - R_TRACK) <= 0.5:
-            px = over(px, TRACK)
-        if d >= R_DISC - 1:
-            px = over(px, RIM)
-        if d <= R_CAP:
-            px = CAP
-    return px
+def disc_sampler(r_track):
+    """The disc for tiles centred on r_track (the ring radius)."""
+    r_disc = r_track + DISC_MARGIN
+    r_inner = r_disc * 0.52          # denser core (the mockup's step)
+
+    def disc_sample(x, y):
+        d = math.hypot(x - r_disc, y - r_disc)
+        px = (0, 0, 0, 0)
+        if d <= r_disc:
+            px = DISC_CORE if d <= r_inner else DISC_OUTER
+            if abs(d - r_track) <= 0.5:
+                px = over(px, TRACK)
+            if d >= r_disc - 1:
+                px = over(px, RIM)
+            if d <= R_CAP:
+                px = CAP
+        return px
+    return disc_sample
 
 
-def wedge_sampler(half):
+def wedge_sampler(r_track, half):
+    """A slice of half-angle `half` on the disc for r_track."""
+    r_disc = r_track + DISC_MARGIN
+
     def wedge_sample(x, y):
-        dx, dy = x - C, C - y            # image y runs down; up is +dy
+        dx, dy = x - r_disc, r_disc - y  # image y runs down; up is +dy
         d = math.hypot(dx, dy)
-        if d < R_WEDGE_IN or d > R_DISC - 1:
+        if d < R_WEDGE_IN or d > r_disc - 1:
             return (255, 255, 255, 0)
         a = math.atan2(dx, dy)           # 0 = up
         return (255, 255, 255, 255) if abs(a) <= half else (255, 255, 255, 0)
     return wedge_sample
 
 
-wedge_sample = wedge_sampler(HALF_WEDGE)
-
-
-def render(sample, name):
+def render(sample, name, r_track):
+    SIZE = 2 * (r_track + DISC_MARGIN)
     img = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
     px = img.load()
     n = SS * SS
@@ -104,7 +110,11 @@ def render(sample, name):
 
 import sys
 only = sys.argv[1:]
-for name, sampler in (("AspectRingDisc.tga", disc_sample), ("AspectRingWedge.tga", wedge_sample),
-                      ("TrackingWheelWedge.tga", wedge_sampler(math.radians(22.5)))):
+R_SIX, R_EIGHT = 45, 59      # Nock.AspectRingGeometry(6) / (8)
+for name, sampler, r_track in (
+        ("AspectRingDisc.tga", disc_sampler(R_SIX), R_SIX),
+        ("AspectRingWedge.tga", wedge_sampler(R_SIX, HALF_WEDGE), R_SIX),
+        ("TrackingWheelDisc.tga", disc_sampler(R_EIGHT), R_EIGHT),
+        ("TrackingWheelWedge.tga", wedge_sampler(R_EIGHT, math.radians(22.5)), R_EIGHT)):
     if not only or name in only:
-        render(sampler, name)
+        render(sampler, name, r_track)

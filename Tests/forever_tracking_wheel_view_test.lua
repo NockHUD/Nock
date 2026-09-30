@@ -89,8 +89,23 @@ local layer = frames.NockTrackingWheelLayer
 ok(layer and layer.shown == false and layer.strata == "DIALOG", "layer NockTrackingWheelLayer: hidden, high strata")
 local s1, s5, s8 = frames.NockTrackingWheelSlot1, frames.NockTrackingWheelSlot5, frames.NockTrackingWheelSlot8
 ok(s1 and s5 and s8 and frames.NockTrackingWheelSlot9 == nil and s1.template == "SecureActionButtonTemplate", "eight secure slots")
-ok(V.disc.path == "Interface\\AddOns\\Nock\\Media\\AspectRingDisc.tga", "the same disc")
-ok(V.wedge.path == "Interface\\AddOns\\Nock\\Media\\TrackingWheelWedge.tga" and V.wedge.shown == false, "a 45-degree wedge of its own, hidden until a pick")
+-- Eight 36 tiles do not fit the six-slot ring's radius (they overlapped by
+-- 4), so the wheel is wider: radius 59 on a 178 disc of its own.
+ok(V.disc.path == "Interface\\AddOns\\Nock\\Media\\TrackingWheelDisc.tga" and V.disc.w == 178 and V.disc.h == 178, "a 178 disc of its own")
+ok(V.wedge.path == "Interface\\AddOns\\Nock\\Media\\TrackingWheelWedge.tga" and V.wedge.w == 178 and V.wedge.shown == false, "a 45-degree wedge of its own at the disc's size, hidden until a pick")
+ok(V.name.point[1] == "TOP" and V.name.point[5] == -94, "name under the wider disc")
+-- Both textures are drawn 1:1: the files are the size the view gives them.
+local function tgaSize(file)
+  local f = io.open("Media/" .. file, "rb")
+  if not f then return nil end
+  local h = f:read(18)
+  f:close()
+  return h:byte(13) + h:byte(14) * 256, h:byte(15) + h:byte(16) * 256
+end
+local dw, dh = tgaSize("TrackingWheelDisc.tga")
+ok(dw == 178 and dh == 178, "Media/TrackingWheelDisc.tga is 178x178: " .. tostring(dw) .. "x" .. tostring(dh))
+local ww, wh = tgaSize("TrackingWheelWedge.tga")
+ok(ww == 178 and wh == 178, "Media/TrackingWheelWedge.tga is 178x178: " .. tostring(ww) .. "x" .. tostring(wh))
 
 local st = Nock.state.trackingWheel
 st.known[1], st.known[2], st.known[5] = "Track Beasts", "Track Humanoids", "Track Dragonkin"
@@ -101,8 +116,19 @@ Nock.state.tracking.activeId = 19883
 st.open, st.cx, st.cy = true, 500, 400
 V:Refresh(Nock.state)
 ok(s1.clicks and s1.clicks[1] == "AnyUp", "the first out-of-combat refresh sets the slots up")
-ok(s1.point[4] == 0 and s1.point[5] == 45 and s5.point[5] == -45 and math.abs(s5.point[4]) < 1e-9, "slot 1 up, slot 5 down at radius 45")
-ok(math.abs(frames.NockTrackingWheelSlot3.point[4] - 45) < 1e-9 and math.abs(frames.NockTrackingWheelSlot3.point[5]) < 1e-9, "slot 3 right")
+ok(s1.point[4] == 0 and s1.point[5] == 59 and s5.point[5] == -59 and math.abs(s5.point[4]) < 1e-9, "slot 1 up, slot 5 down at radius 59")
+ok(math.abs(frames.NockTrackingWheelSlot3.point[4] - 59) < 1e-9 and math.abs(frames.NockTrackingWheelSlot3.point[5]) < 1e-9, "slot 3 right")
+-- The space between two neighbouring tiles (axis-aligned squares): the wider
+-- of the two centre distances less the half sizes. `grow` is the first
+-- tile's hover scale.
+local function tileGap(i, j, grow)
+  local a, b = frames["NockTrackingWheelSlot" .. i], frames["NockTrackingWheelSlot" .. j]
+  local dx, dy = math.abs(a.point[4] - b.point[4]), math.abs(a.point[5] - b.point[5])
+  return math.max(dx, dy) - (a.w * (grow or 1) + b.w) / 2
+end
+local tightest = math.huge
+for i = 1, 8 do tightest = math.min(tightest, tileGap(i, i % 8 + 1)) end
+ok(tightest >= 5, "no two neighbouring tiles touch: the tightest gap is " .. tostring(tightest))
 ok(s1.attrs.macrotext == "/cast !Track Beasts" and s1.mouse == true, "learned slot casts its tracking")
 ok(frames.NockTrackingWheelSlot3.attrs.type == nil and frames.NockTrackingWheelSlot3.mouse == false, "unlearned slot: no cast")
 ok(painted[s1.tile].icon == 1000 + 1494 and painted[s5.tile].icon == 1000 + 19879, "slot icons: Track Beasts, Track Dragonkin")
@@ -113,6 +139,8 @@ ok(V.wedge.shown and math.abs(V.wedge.rot - (-math.pi)) < 1e-9 and V.name.text =
 st.hover = 2
 V:Refresh(Nock.state)
 ok(math.abs(V.wedge.rot - (-math.pi / 4)) < 1e-9 and V.name.text == "Humanoids", "slot 2: -45 deg")
+local grown = frames.NockTrackingWheelSlot2.tile.scale
+ok(grown and grown > 1 and tileGap(2, 1, grown) > 0 and tileGap(2, 3, grown) > 0, "the hovered tile grows without covering its neighbours")
 s5.scripts.PostClick(s5, "LeftButton", false)
 ok(V.sent[#V.sent] == "NOCK_TRACKING_WHEEL_CLOSE", "slot click closes the wheel by its own message")
 Nock.db.profile.trackingWheelScale = 1.5

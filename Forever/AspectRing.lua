@@ -166,10 +166,19 @@ function Nock.AspectRingIdByKey()
   return out
 end
 
--- Geometry shared with the view (UI/Frame_AspectRing.lua): the cancel circle
--- and the ring's radius, in UIParent units (~90 across).
-local DEAD_RADIUS, RING_RADIUS = 14, 45
-function Nock.AspectRingGeometry() return DEAD_RADIUS, RING_RADIUS end
+-- Geometry shared with the view (UI/Frame_AspectRing.lua), in UIParent
+-- units: the cancel circle, the ring's radius (the tile centres) and the
+-- disc's size, for `n` slots (6 unless given). The radius keeps neighbouring
+-- tile centres SLOT_PITCH apart, so six slots sit at 45 on a 150 disc and
+-- eight at 59 on a 178 one (at 45 eight 36 tiles overlapped by 4). The pick
+-- is by angle, so a wider ring is no longer a flick.
+local DEAD_RADIUS = 14
+local SLOT_PITCH = 45    -- a 36 tile and the 9 between two of the six
+local DISC_MARGIN = 30   -- the disc's rim beyond the tile centres
+function Nock.AspectRingGeometry(n)
+  local radius = math.floor(SLOT_PITCH / (2 * math.sin(math.pi / (n or 6))) + 0.5)
+  return DEAD_RADIUS, radius, 2 * (radius + DISC_MARGIN)
+end
 
 -- Ring size (Utilities -> Aspect ring / Tracking wheel): 75..200 %, 100 %
 -- when unset. The view scales the whole layer; the cancel circle scales

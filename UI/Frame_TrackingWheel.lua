@@ -6,7 +6,8 @@ local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 -- The tracking that is on comes from Forever/Tracking.lua (state.tracking).
 Nock.NewRingView({
   name = "TrackingWheelView", layer = "NockTrackingWheelLayer", slotPrefix = "NockTrackingWheelSlot",
-  stateKey = "trackingWheel", n = #Nock.Spells.TRACKING_RING, wedge = "TrackingWheelWedge.tga",
+  stateKey = "trackingWheel", n = #Nock.Spells.TRACKING_RING,
+  disc = "TrackingWheelDisc.tga", wedge = "TrackingWheelWedge.tga",
   closeMsg = "NOCK_TRACKING_WHEEL_CLOSE", scaleProfile = "trackingWheelScale",
   idByKey = Nock.TrackingWheelIdByKey,
   activeKey = function(state)
