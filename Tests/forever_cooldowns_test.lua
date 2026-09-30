@@ -476,6 +476,20 @@ do
   ok(st.cooldowns.Arc.clientRunning == true, "the shared group also marks Arc, which never armed a watch of its own")
 end
 
+-- Sting tiles (2026-09-30): a sting with no cooldown of its own arms no
+-- client watch (it would only count the GCD down on the tile the sting's own
+-- timer is about to cover); a sting that was discovered with a cooldown does.
+do
+  ok(CD:GetEntry("Serpent") and CD:GetEntry("Serpent").debuff == true, "Serpent Sting is a tracked sting tile")
+  now = 2100
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 1978)
+  ok(st.cooldowns.Serpent.clientRunning == nil, "a sting without a cooldown arms no watch")
+  CD:GetEntry("Viper").discovered = true
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 3034)
+  ok(st.cooldowns.Viper.clientRunning == true, "a sting with a discovered cooldown is watched like any spell")
+  CD:GetEntry("Viper").discovered = nil
+end
+
 -- Rescan out-of-combat wipe (2026-09-28): Arcane Shot on
 -- cooldown per the API, Summon Hawk unlearned and reading 0/0 (apiCd has no
 -- entry for it) -- a Rescan must not let Hawk's meaningless zero clear the

@@ -82,6 +82,7 @@ function Probe:OnCast(event, unit, castGUID, spellID, castBarID)
   local C = self._casts
   C[#C + 1] = { t = GetTime(), ev = event, spellID = spellID, castBarID = castBarID }
   if #C > CAST_MAX then table.remove(C, 1) end
+  if event == "UNIT_SPELLCAST_SUCCEEDED" and self._sting then self:OnStingCast(spellID) end
 end
 
 function Probe:OnCastSent(event, unit, target, castGUID, spellID)
@@ -467,6 +468,316 @@ function Probe:ContainerSpike()
     L[#L + 1] = "  AnchorUtil: missing"
   end
   L[#L + 1] = "  look under the screen centre: a dark strip; green squares where the client places a button; icons if it fills them."
+  return table.concat(L, "\n")
+end
+
+-- The sting spike (feature request 2026-09-30: sting timers in the cooldown
+-- grid, for the current target). Target auras are secret in combat, so the
+-- question is whether the client will draw them for us: a one-button aura
+-- container on `target`, own harmful auras only, filtered to the sting
+-- ranks, sitting on top of a Nock-owned tile the way it would sit on a grid
+-- slot. An unfiltered row under it is the control (does the client show ANY
+-- own debuff of the target). The report also says what the aura API itself
+-- answers for the target. Throwaway until proven.
+-- Vanilla rank ids per sting (no Wyvern Sting on Forever); each is kept only
+-- while the client gives it the family's name.
+local STING_FAMILIES = {
+  { key = "Serpent", ids = { 1978, 13549, 13550, 13551, 13552, 13553, 13554, 13555, 25295 } },
+  { key = "Scorpid", ids = { 3043, 14275, 14276, 14277 } },
+  { key = "Viper",   ids = { 3034, 14279, 14280 } },
+}
+local STING_W, STING_H, STING_CONTROL = 44, 32, 28
+
+-- Pure: per family, the ids the client names like the family's first rank,
+-- plus the spellbook's own id for that name (`book`: name -> id).
+function Probe.StingIds(nameOf, book)
+  local out = {}
+  for _, fam in ipairs(STING_FAMILIES) do
+    local name = nameOf(fam.ids[1])
+    local row = { key = fam.key, name = name, ids = {}, dropped = 0 }
+    local seen = {}
+    for _, id in ipairs(fam.ids) do
+      if name and nameOf(id) == name then
+        row.ids[#row.ids + 1] = id
+        seen[id] = true
+      else
+        row.dropped = row.dropped + 1
+      end
+    end
+    local bookId = name and book and book[name]
+    if type(bookId) == "number" then
+      row.book = bookId
+      if not seen[bookId] then row.ids[#row.ids + 1] = bookId end
+    end
+    out[#out + 1] = row
+  end
+  return out
+end
+
+-- One button in a grid tile's shape: black edge, dark ground, cropped icon,
+-- the client's swipe and its countdown on a layer above the swipe. Each
+-- hand-over is logged: the hook runs when the client first needs the button.
+local function styleStingButton(b, w, h, log)
+  if b._nockStyled then return end
+  b._nockStyled = true
+  local function step(name, fn)
+    local okc, err = pcall(fn)
+    log[#log + 1] = ("  button %s: %s"):format(name, okc and "ok" or ("err " .. tostring(err)))
+    return okc
+  end
+  b:SetSize(w, h)
+  local edge = b:CreateTexture(nil, "BACKGROUND", nil, -1)
+  edge:SetAllPoints(b)
+  edge:SetColorTexture(0, 0, 0, 1)
+  local ground = b:CreateTexture(nil, "BACKGROUND")
+  ground:SetPoint("TOPLEFT", b, "TOPLEFT", 1, -1)
+  ground:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -1, 1)
+  ground:SetColorTexture(0.08, 0.08, 0.08, 1)
+  local icon = b:CreateTexture(nil, "ARTWORK")
+  icon:SetPoint("TOPLEFT", b, "TOPLEFT", 1, -1)
+  icon:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -1, 1)
+  if not (Nock.UI and Nock.UI.IconCoords and pcall(function() icon:SetTexCoord(Nock.UI.IconCoords(w, h)) end)) then
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  end
+  step("SetIcon", function() b:SetIcon(icon) end)
+  local cd = CreateFrame("Cooldown", nil, b, "CooldownFrameTemplate")
+  cd:SetAllPoints(b)
+  cd.noCooldownCount = true
+  if cd.SetHideCountdownNumbers then cd:SetHideCountdownNumbers(true) end
+  step("SetDurationCooldown", function() b:SetDurationCooldown(cd) end)
+  local layer = CreateFrame("Frame", nil, b)
+  layer:SetAllPoints(b)
+  layer:SetFrameLevel(cd:GetFrameLevel() + 1)
+  local time = layer:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+  time:SetAllPoints(layer)
+  time:SetJustifyH("CENTER")
+  time:SetJustifyV("MIDDLE")
+  local AR = Nock.ForeverAuraRow
+  local fmt = AR and AR.DurationFormat and AR.DurationFormat()
+  if not (fmt and step("SetDurationText (bare seconds)", function() b:SetDurationText(time, fmt) end)) then
+    step("SetDurationText", function() b:SetDurationText(time) end)
+  end
+end
+
+-- One field of a possibly-secret aura record, never compared.
+local function auraField(a, k)
+  local okc, v = pcall(function() return a[k] end)
+  return okc and describe(v) or "err"
+end
+
+-- What the API itself says about the target, appended to L (every read
+-- guarded).
+local function stingReadings(L, fams)
+  local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
+  local rr = {}
+  for _, r in ipairs(Probe.RestrictionRows()) do rr[#rr + 1] = r[1] .. "=" .. r[2] end
+  L[#L + 1] = ("  in combat: %s  restrictions: %s"):format(tostring(inCombat), #rr > 0 and table.concat(rr, " ") or "n/a")
+  local function read(fn, ...)
+    if type(fn) ~= "function" then return "missing" end
+    local okc, v = pcall(fn, ...)
+    return okc and describe(v) or "err"
+  end
+  L[#L + 1] = ("  target: exists %s  guid %s  dead %s"):format(
+    read(_G.UnitExists, "target"), read(_G.UnitGUID, "target"), read(_G.UnitIsDead, "target"))
+  local UA = _G.C_UnitAuras
+  if UA and UA.GetUnitAuraInstanceIDs then
+    local okc, ids = pcall(UA.GetUnitAuraInstanceIDs, "target", "HARMFUL|PLAYER")
+    local okn, n = pcall(function() return #ids end)
+    if not okc then
+      L[#L + 1] = "  GetUnitAuraInstanceIDs: err " .. tostring(ids)
+    elseif not okn then
+      L[#L + 1] = "  GetUnitAuraInstanceIDs: " .. describe(ids) .. " (no length)"
+    else
+      L[#L + 1] = ("  GetUnitAuraInstanceIDs(target, HARMFUL|PLAYER): %d"):format(n)
+      for i = 1, math.min(n, 6) do
+        local id = ids[i]
+        local oka, a = pcall(UA.GetAuraDataByAuraInstanceID, "target", id)
+        local okd, d = pcall(UA.GetAuraDuration, "target", id)
+        L[#L + 1] = ("    #%d instance %s | data %s: spellId %s name %s duration %s expires %s source %s | GetAuraDuration %s"):format(
+          i, describe(id), oka and type(a) or "err",
+          auraField(a, "spellId"), auraField(a, "name"), auraField(a, "duration"),
+          auraField(a, "expirationTime"), auraField(a, "sourceUnit"),
+          okd and type(d) or ("err " .. tostring(d)))
+      end
+    end
+  else
+    L[#L + 1] = "  GetUnitAuraInstanceIDs: missing"
+  end
+  if UA and UA.GetAuraDataBySpellName then
+    for _, f in ipairs(fams) do
+      if f.name then
+        local okc, a = pcall(UA.GetAuraDataBySpellName, "target", f.name, "HARMFUL|PLAYER")
+        if not okc then
+          L[#L + 1] = ("  GetAuraDataBySpellName(%s): err %s"):format(f.name, tostring(a))
+        elseif a == nil then
+          L[#L + 1] = ("  GetAuraDataBySpellName(%s): nil"):format(f.name)
+        else
+          L[#L + 1] = ("  GetAuraDataBySpellName(%s): %s spellId %s duration %s expires %s"):format(f.name,
+            describe(a), auraField(a, "spellId"), auraField(a, "duration"), auraField(a, "expirationTime"))
+        end
+      end
+    end
+  end
+end
+
+-- Blizzard's own target frame re-reads its container on every target change
+-- (TargetFrameMixin:OnEvent -> UpdateAllAuras): the container follows the
+-- unit's aura events, not the token moving to another unit. Without this the
+-- tiles kept a dead mob's countdown and lost a second target's sting
+-- (user, 2026-09-30). `/nock probe sting refresh` flips it, to compare.
+function Probe:OnStingTarget()
+  local st = self._sting
+  if not st or st.refreshOff then return end
+  local r = st.refresh
+  local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
+  r.n = r.n + 1
+  if inCombat then r.inCombat = r.inCombat + 1 end
+  for _, c in ipairs({ st.sting, st.control }) do
+    local okc, err = pcall(c.UpdateAllAuras, c)
+    if not okc then
+      r.err = r.err + 1
+      r.lastErr = tostring(err) .. (inCombat and " (in combat)" or "")
+    end
+  end
+end
+
+-- Half a second after an own sting lands, the API readings are taken for the
+-- next report: nobody opens a copybox mid-fight.
+local STING_SNAPS = 4
+function Probe:OnStingCast(spellID)
+  local st = self._sting
+  local n = Nock.Flavor.Plain(Nock.API.SpellName(spellID))
+  if not (st and type(n) == "string" and st.names[n]) then return end
+  local T = _G.C_Timer
+  if not (T and T.After) then return end
+  T.After(0.5, function()
+    local L = {}
+    L.at = GetTime()
+    L.label = ("0.5 s after %s (%s)"):format(n, tostring(spellID))
+    stingReadings(L, st.fams)
+    st.snaps[#st.snaps + 1] = L
+    if #st.snaps > STING_SNAPS then table.remove(st.snaps, 1) end
+  end)
+end
+
+function Probe:StingSpike(rest)
+  local st = self._sting
+  if rest == "off" then
+    if st then
+      pcall(function() st.slot:Hide(); st.control:Hide() end)
+    end
+    return "sting probe: hidden (`/nock probe sting` shows it again)"
+  end
+  if rest == "refresh" and st then
+    st.refreshOff = not st.refreshOff or nil
+  end
+  local L = {}
+  local function step(name, fn)
+    local okc, err = pcall(fn)
+    L[#L + 1] = ("  %s: %s"):format(name, okc and "ok" or ("err " .. tostring(err)))
+    return okc
+  end
+  local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
+  local nameOf = function(id)
+    local n = Nock.Flavor.Plain(Nock.API.SpellName(id))
+    return type(n) == "string" and n or nil
+  end
+  local fams = Probe.StingIds(nameOf, Nock.ForeverSpellbookNames and Nock.ForeverSpellbookNames() or nil)
+  local all = {}
+  L[#L + 1] = "sting ids (kept = the client names them like rank 1):"
+  for _, f in ipairs(fams) do
+    for _, id in ipairs(f.ids) do all[#all + 1] = id end
+    L[#L + 1] = ("  %s (%s): %s | spellbook %s | dropped %d"):format(f.key, tostring(f.name),
+      #f.ids > 0 and table.concat(f.ids, " ") or "none", tostring(f.book), f.dropped)
+  end
+
+  if not st then
+    L[#L + 1] = ("containers (new, built %s):"):format(inCombat and "IN COMBAT" or "out of combat")
+    st = { log = {}, snaps = {}, names = {}, refresh = { n = 0, inCombat = 0, err = 0 } }
+    local AU = _G.AnchorUtil or {}
+    local axis, dir = AU.FlowLayoutAxis or {}, AU.FlowDirection or {}
+    local AR = Nock.ForeverAuraRow
+    local set = AR and AR.IdTable and AR.IdTable(all) or {}
+    -- the stand-in for a grid slot: Nock's own frame, the idle sting icon on it
+    if not step("slot", function()
+      local slot = CreateFrame("Frame", "NockProbeStingSlot", UIParent)
+      slot:SetSize(STING_W, STING_H)
+      slot:SetPoint("CENTER", UIParent, "CENTER", 0, -220)
+      slot:SetFrameStrata("HIGH")
+      local bg = slot:CreateTexture(nil, "BACKGROUND")
+      bg:SetAllPoints(slot)
+      bg:SetColorTexture(0, 0, 0, 1)
+      local idle = slot:CreateTexture(nil, "ARTWORK")
+      idle:SetPoint("TOPLEFT", slot, "TOPLEFT", 1, -1)
+      idle:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -1, 1)
+      idle:SetTexture(Nock.API.SpellIcon(STING_FAMILIES[1].ids[1]))
+      idle:SetTexCoord(0.08, 0.92, 0.2, 0.8)
+      st.slot = slot
+    end) then return table.concat(L, "\n") end
+    local function build(label, name, parent, anchor, group, w, h, maxFrames, filters)
+      local c
+      if not step(label .. " CreateFrame", function()
+        c = CreateFrame("AuraContainer", name, parent, "CustomAuraContainerTemplate")
+      end) then return nil end
+      step(label .. " anchor", function() anchor(c) end)
+      step(label .. " SetUnit(target)", function() c:SetUnit("target") end)
+      step(label .. " flow layout", function()
+        c:SetFlowLayoutAxis(axis.Horizontal or 0)
+        c:SetFlowLayoutGrowthDirection(dir.Right or 1, dir.Down or -1)
+        c:SetFlowLayoutAnchorPoint("TOPLEFT")
+      end)
+      step(label .. " AddAuraGroup(HARMFUL|PLAYER)", function()
+        c:AddAuraGroup(group, "HARMFUL|PLAYER", {
+          maxFrameCount = maxFrames,
+          candidateFilters = filters,
+          initializeFrame = function(b) styleStingButton(b, w, h, st.log) end,
+          layout = { elementWidth = w, elementHeight = h, elementSpacing = 2 },
+        })
+      end)
+      step(label .. " enable + show", function() c:SetEnabled(true); c:Show() end)
+      return c
+    end
+    -- on the slot: the filtered, one-tile container (what the feature would be)
+    st.sting = build("sting", "NockProbeStingContainer", st.slot, function(c)
+      c:SetPoint("TOPLEFT", st.slot, "TOPLEFT", 0, 0)
+      c:SetFrameLevel(st.slot:GetFrameLevel() + 5)
+    end, "sting", STING_W, STING_H, 1, { includeSpellIDs = set })
+    -- under it: every own debuff of the target, unfiltered (the control)
+    st.control = build("control", "NockProbeStingControl", UIParent, function(c)
+      c:SetPoint("TOPLEFT", st.slot, "BOTTOMLEFT", 0, -10)
+      c:SetFrameStrata("HIGH")
+    end, "own", STING_CONTROL, STING_CONTROL, 6, nil)
+    self._sting = st
+    step("PLAYER_TARGET_CHANGED", function() self:RegisterEvent("PLAYER_TARGET_CHANGED", "OnStingTarget") end)
+  else
+    L[#L + 1] = "containers (existing):"
+    pcall(function() st.slot:Show(); if st.control then st.control:Show() end end)
+  end
+  st.fams = fams
+  for _, f in ipairs(fams) do if f.name then st.names[f.name] = true end end
+  if st.sting then step("sting UpdateAllAuras", function() st.sting:UpdateAllAuras() end) end
+  if st.control then step("control UpdateAllAuras", function() st.control:UpdateAllAuras() end) end
+  -- three hand-overs per button; only a refused one is worth a line
+  local handed, refused = 0, 0
+  for i = 1, #st.log do
+    if st.log[i]:find(": ok", 1, true) then handed = handed + 1 else refused = refused + 1; L[#L + 1] = st.log[i] end
+  end
+  L[#L + 1] = ("buttons built: %d (hand-overs ok %d, refused %d)"):format(math.floor(#st.log / 3 + 0.5), handed, refused)
+  local r = st.refresh
+  L[#L + 1] = ("re-read on target change: %s | changes %d (in combat %d) | refused %d%s"):format(
+    st.refreshOff and "OFF" or "on", r.n, r.inCombat, r.err, r.lastErr and (" | last: " .. r.lastErr) or "")
+
+  L[#L + 1] = "readings now:"
+  stingReadings(L, fams)
+  local now = GetTime()
+  for i = 1, #st.snaps do
+    local s = st.snaps[i]
+    L[#L + 1] = ("readings %.0f s ago, %s:"):format(now - s.at, s.label)
+    for j = 1, #s do L[#L + 1] = s[j] end
+  end
+  if #st.snaps == 0 then L[#L + 1] = "no sting cast seen yet (the readings after a cast are kept for this report)" end
+  L[#L + 1] = "look below the screen centre: a wide sting tile (the idle icon), and a row under it for every own debuff of the target."
+  L[#L + 1] = "`/nock probe sting refresh` flips the re-read on target change; `/nock probe sting off` hides both."
   return table.concat(L, "\n")
 end
 
@@ -1299,6 +1610,8 @@ function Probe:Show(which, rest)
   elseif which == "frames" then text = self:FramesReport()
   elseif which == "container" then
     text = self:ContainerSpike()
+  elseif which == "sting" then
+    text = self:StingSpike(rest)
   elseif which == "aura" then
     local name, id = (rest or ""):match("^(.-)%s*(%d*)$")
     if name == "" then name = "Quick Shots" end

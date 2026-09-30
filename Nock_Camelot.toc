@@ -74,6 +74,7 @@ Forever\CastBar.lua
 Forever\Auras.lua
 Forever\Buffs.lua
 Forever\AuraRow.lua
+Forever\StingTiles.lua
 Modules\ManaTickEngine.lua
 Forever\ManaTick.lua
 Forever\Cooldowns.lua

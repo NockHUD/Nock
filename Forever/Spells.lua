@@ -117,7 +117,21 @@ Spells.TRACKED = {
   { key = "ImmoTrap",  id = 13795,   name = "Immolation Trap", label = "Immo",    cat = "Class", row = 2 },
   { key = "FrostTrap", id = 13809,   name = "Frost Trap",      label = "Frost",   lv = 28, cat = "Class", row = 2 },
   { key = "ExploTrap", id = 13813,   name = "Explosive Trap",  label = "Explo",   lv = 34, cat = "Class", row = 2 },
-  { key = "Viper",     id = 3034,    name = "Viper Sting",     label = "Viper",   lv = 36, cat = "Class", row = 2 },
+  -- Stings. `debuff` marks a tile whose timer is the sting on the current
+  -- target, drawn over the tile by the client (Forever/StingTiles.lua);
+  -- Serpent and Scorpid have no cooldown of their own, Viper keeps its under
+  -- the timer. `under` names the unified tile that covers a single one.
+  { key = "Viper",     id = 3034,    name = "Viper Sting",     label = "Viper",   lv = 36, cat = "Class", row = 2, debuff = true, under = "Sting" },
+  { key = "Serpent",   id = 1978,    name = "Serpent Sting",   label = "Serpent", cat = "Class", row = 1, debuff = true, under = "Sting" },
+  { key = "Scorpid",   id = 3043,    name = "Scorpid Sting",   label = "Scorpid", lv = 22, cat = "Class", row = 2, debuff = true, under = "Sting" },
+  -- The unified sting tile (user, 2026-09-30): one tile for whichever of
+  -- your stings is on the target (`stings`: the catalog keys it covers; a
+  -- hunter keeps one sting on a target). Idle it is Serpent Sting's tile
+  -- (icon, range, mana, no cooldown); `title` is its name on the board.
+  -- Listed after the singles so their casts and typed names keep resolving
+  -- to them.
+  { key = "Sting",     id = 1978,    name = "Serpent Sting",   label = "Sting",   title = "Sting (any)", cat = "Class", row = 1, debuff = true,
+    stings = { "Serpent", "Scorpid", "Viper" } },
   -- Racials of the races that can be hunters on Forever (human, dwarf,
   -- night elf, orc, tauren, troll; the Skyborne actives are glides and
   -- regen buffs, not combat cooldowns). Forever reworked the racial kits
@@ -162,9 +176,20 @@ Spells.BUFFS = {
   { id = 6991, key = "Feed", dur = nil, units = { "pet", "player" }, aura = 1539 }, -- Feed Pet -> Feed Pet Effect
 }
 
+-- The vanilla rank ids behind each sting tile, by catalog key: the ids its
+-- aura on the target may carry. Forever renumbered some ranks (only Scorpid's
+-- rank 1 kept its name, probe 2026-09-30), so Forever/StingTiles.lua keeps a
+-- rank only while the client names it like the sting and adds the
+-- spellbook's own id.
+Spells.STING_RANKS = {
+  Serpent = { 1978, 13549, 13550, 13551, 13552, 13553, 13554, 13555, 25295 },
+  Scorpid = { 3043, 14275, 14276, 14277 },
+  Viper   = { 3034, 14279, 14280 },
+}
+
 -- Cooldown-row layout (same shape as Constants.REACT_CD_ROWS).
 Spells.ROWS = {
-  { h = 32, stretch = true, keys = { "Arc", "AimMulti", "Raptor", "RF", "Elune", "Meld", "Stone", "Percep", "WillSurv", "Fury", "Shatter", "Stomp", "Zerk", "FastRegen" } },
+  { h = 32, stretch = true, keys = { "Arc", "AimMulti", "Sting", "Raptor", "RF", "Elune", "Meld", "Stone", "Percep", "WillSurv", "Fury", "Shatter", "Stomp", "Zerk", "FastRegen" } },
   { h = 24, w = 32,          keys = { "Conc", "FD" } },
 }
 

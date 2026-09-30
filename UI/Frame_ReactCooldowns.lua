@@ -71,6 +71,68 @@ function ReactCooldownsView:OnInitialize()
   self:RegisterEvent("SPELL_UPDATE_COOLDOWN", "OnSpellCooldown")
   self:RegisterEvent("PLAYER_LOGIN",          "ApplyExternalCdAddon")
   self:RegisterEvent("PLAYER_ENTERING_WORLD", "ApplyExternalCdAddon")
+  -- Forever only (Nock.ForeverStingTiles is nil on TBC): the sting tiles'
+  -- client-drawn timers (Forever/StingTiles.lua).
+  if Nock.Flavor and Nock.Flavor.forever and Nock.ForeverStingTiles then
+    self._stingTiles = {}
+    self._stingDirty = true   -- the first Rebuild ran above, before the tiles existed
+    self:RegisterEvent("PLAYER_TARGET_CHANGED", "OnStingTarget")
+    self:RegisterEvent("SPELLS_CHANGED",        "OnStingSpells")
+  end
+end
+
+-- Sting tiles (Forever): a `debuff` entry's slot is covered by the client's
+-- own tile while the sting is on the target. Rebuild only marks them dirty;
+-- the tick syncs them, and again after combat for whatever had to wait
+-- (building, resizing and re-filtering a container are out-of-combat work).
+local STING_ENV = { inCombat = false, zoom = nil, idsFor = nil }
+local stingBook   -- the spellbook's name -> id map, read once per sync
+
+local function stingName(id)
+  local n = Nock.Flavor.Plain(Nock.API.SpellName(id))
+  return type(n) == "string" and n or nil
+end
+
+-- The ids a sting entry's aura can carry: its known ranks plus the
+-- spellbook's id, under the client's (localized) name for rank 1. The
+-- unified tile (entry.stings) takes every covered sting's ids.
+function STING_ENV.idsFor(entry)
+  local ST = Nock.ForeverStingTiles
+  if stingBook == nil then stingBook = (Nock.ForeverSpellbookNames and Nock.ForeverSpellbookNames()) or false end
+  local book = stingBook or nil
+  local R = (Nock.Spells and Nock.Spells.STING_RANKS) or {}
+  if entry.stings then
+    local out = {}
+    for _, key in ipairs(entry.stings) do
+      local ranks = R[key]
+      if ranks then
+        local ids = ST.Ids(ranks, stingName(ranks[1]), stingName, book)
+        for i = 1, #ids do out[#out + 1] = ids[i] end
+      end
+    end
+    return out
+  end
+  return ST.Ids(R[entry.key] or { entry.id }, stingName(entry.id) or entry.name, stingName, book)
+end
+
+function ReactCooldownsView:SyncStingTiles()
+  self._stingDirty = false
+  local ST = Nock.ForeverStingTiles
+  STING_ENV.inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
+  STING_ENV.zoom = profile().gridIconZoom
+  stingBook = nil
+  self._stingAfterCombat = ST.Sync(self._stingTiles, self._pool, self.frame, STING_ENV)
+end
+
+function ReactCooldownsView:OnStingTarget()
+  Nock.ForeverStingTiles.RereadAll(self._stingTiles)
+end
+
+-- A new rank brings a new aura id: the filters are checked at the next sync.
+function ReactCooldownsView:OnStingSpells()
+  if next(self._stingTiles) == nil then return end
+  Nock.ForeverStingTiles.MarkIdsStale(self._stingTiles)
+  self._stingDirty = true
 end
 
 -- Row geometry from C.REACT_CD_ROWS: per row, resolve the enabled entries via
@@ -141,6 +203,7 @@ end
 -- across rows; surplus slots are hidden, never freed.
 function ReactCooldownsView:Rebuild()
   self._gcdDirty = true   -- re-seat the GCD swipes on the fresh layout
+  self._stingDirty = self._stingTiles ~= nil   -- and the sting tiles on their slots
   local rows, w, totalH = self:RowsGeometry()
   local p = profile()
   local gap = GAP
@@ -284,6 +347,9 @@ local TINT = { red = { 0.77, 0.12, 0.23, 1 }, blue = { 0.33, 0.54, 1, 1 } }
 
 function ReactCooldownsView:Refresh(state)
   if not self.frame:IsShown() then return end
+  if self._stingDirty or (self._stingAfterCombat and not (InCombatLockdown and InCombatLockdown())) then
+    self:SyncStingTiles()
+  end
 
   -- whenActive rows appear/disappear with consumable state. When the visible
   -- set flips (rare — a potion press, a buff fading, a CD expiring), rebuild

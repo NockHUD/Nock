@@ -691,7 +691,10 @@ function Cooldowns:UNIT_SPELLCAST_SUCCEEDED(event, unit, castGUID, spellID)
   -- a held buff's cooldown starts at its break (breakBuff), not here
   if e.untilBroken then return end
   Engine.OnCast(self.ledger, id, GetTime())
-  self:ArmWatch(e, id, spellID, GetTime())
+  -- A sting with no cooldown of its own (Serpent, Scorpid: `debuff`, never
+  -- discovered as a cooldown) has nothing to watch: the watch would only
+  -- count the GCD down on its tile until the sting's timer covers it.
+  if not (e.debuff and not e.discovered) then self:ArmWatch(e, id, spellID, GetTime()) end
   -- the learn read uses the cast's own rank (that is the spell on cooldown);
   -- the ledger is keyed by the catalog id
   if not Nock.Restricted("cooldowns") then self._learnPending, self._learnRead = id, spellID end

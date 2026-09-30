@@ -8,7 +8,7 @@ Nock.CooldownCatalog = Cat
 -- "@racials" stands for every racial key: each character only ever sees its own
 -- (Forever/Cooldowns.lua IsEntryAvailable), so a pack serves every race.
 Cat.PACKS = {
-  { id = "leveling", name = "Leveling", rows = { { "Arc", "AimMulti", "Raptor", "RF", "@racials" }, { "Conc", "FD", "Disengage", "ImmoTrap" } } },
+  { id = "leveling", name = "Leveling", rows = { { "Arc", "AimMulti", "Sting", "Raptor", "RF", "@racials" }, { "Conc", "FD", "Disengage", "ImmoTrap" } } },
   { id = "bm",       name = "BM raid",  rows = { { "RF", "BW", "AimMulti", "Arc", "@racials" }, { "Intim", "FD", "Tranq", "Disengage" } } },
   { id = "mm",       name = "MM raid",  rows = { { "RF", "AimMulti", "Arc", "@racials" }, { "Scatter", "FD", "Tranq", "Sniper" } } },
   { id = "sv",       name = "Survival", rows = { { "RF", "AimMulti", "Arc", "Raptor", "Mongoose", "@racials" }, { "Counter", "Deter", "Strider", "FD", "Disengage" } } },
@@ -33,7 +33,12 @@ local function index()
   local single = {}
   for _, e in ipairs(Cat.Entries()) do
     byKey[e.key] = e
-    if e.id then byId[e.id] = e.key; single[e.id] = true end
+    -- the first single entry on an id keeps it (the unified sting tile is
+    -- listed after Serpent Sting and shares its id)
+    if e.id then
+      if not single[e.id] then byId[e.id] = e.key end
+      single[e.id] = true
+    end
     if e.ids then
       for _, id in ipairs(e.ids) do
         if not single[id] and not byId[id] then byId[id] = e.key end
@@ -75,6 +80,9 @@ function Cat.PackRows(id, isKnown)
         if e.shared then
           if seenShared[e.shared] then include = false else seenShared[e.shared] = true end
         end
+        -- A single tile a known unified tile covers (the three stings under
+        -- "Sting") is left out the same way.
+        if e.under and isKnown(e.under) then include = false end
         if include then table.insert(rows[e.row or 2], e.key) end
       end
     end

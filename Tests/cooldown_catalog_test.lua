@@ -76,6 +76,40 @@ for _, pk in ipairs(Cat.PACKS) do
     end
   end
 end
+-- Sting tiles (2026-09-30): the three stings carry `debuff` (their timer is
+-- the sting on the target) and each has its rank list; Serpent is on the
+-- default grid and in the Leveling pack.
+for _, k in ipairs({ "Serpent", "Scorpid", "Viper" }) do
+  local e = Cat.Entry(k)
+  ok(e and e.debuff == true and e.name ~= nil, k .. " is a sting tile")
+  local ranks = Nock.Spells.STING_RANKS[k]
+  ok(ranks and ranks[1] == e.id, k .. " has its rank list, rank 1 first")
+end
+do
+  local n = 0
+  for k in pairs(Nock.Spells.STING_RANKS) do n = n + 1; ok(Cat.Entry(k) ~= nil, "rank list belongs to a catalog key: " .. k) end
+  ok(n == 3, "three stings (no Wyvern Sting on Forever)")
+  for _, e in ipairs(Cat.Entries()) do
+    ok((e.debuff == true) == (Nock.Spells.STING_RANKS[e.key] ~= nil or e.stings ~= nil), e.key .. ": debuff flag matches the rank lists")
+  end
+  -- The unified tile: one tile for whichever sting is up, Serpent Sting's
+  -- tile while idle, the default in place of three single tiles.
+  local u = Cat.Entry("Sting")
+  ok(u and u.debuff == true and u.id == Cat.Entry("Serpent").id and u.title == "Sting (any)", "the unified tile: Serpent Sting's id, its own title")
+  ok(u.stings and #u.stings == 3, "it covers the three stings")
+  for _, k in ipairs(u.stings) do
+    ok(Nock.Spells.STING_RANKS[k] ~= nil and Cat.Entry(k).under == "Sting", k .. " is covered by the unified tile")
+  end
+  ok(Cat.ById(1978) == "Serpent", "Serpent Sting's id still resolves to its own tile (the first single entry keeps an id)")
+  ok(Cat.ById(19434) == "Aimed" and Cat.ById(3044) == "Arc", "and a single still beats a pair listed before it")
+  local function has(list, key) for _, k in ipairs(list) do if k == key then return true end end return false end
+  ok(has(Nock.Spells.ROWS[1].keys, "Sting") and not has(Nock.Spells.ROWS[1].keys, "Serpent"), "the unified tile is on the default grid's first row")
+  ok(has(Cat.PackRows("leveling")[1], "Sting"), "and in the Leveling pack")
+  local all = Cat.PackRows("all", function(k) return k == "Sting" or k == "Serpent" or k == "Viper" or k == "FD" end)
+  ok(has(all[1], "Sting") and not has(all[1], "Serpent") and not has(all[2], "Viper"), "all: the unified tile stands for the single stings")
+  all = Cat.PackRows("all", function(k) return k == "Serpent" end)
+  ok(has(all[1], "Serpent"), "all: a single sting stays when the unified tile is not known")
+end
 local rows = Cat.PackRows("leveling")
 ok(rows and #rows == 2, "PackRows returns two rows")
 local hasZerk, hasToken = false, false

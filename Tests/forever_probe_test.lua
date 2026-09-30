@@ -221,6 +221,98 @@ _G.CreateFrame = function() error("bad template") end
 local rep3 = module:ContainerSpike()
 ok(rep3:find("CreateFrame: err", 1, true), "a refused CreateFrame is reported")
 
+-- `/nock probe sting`: the sting-timer spike. A one-tile aura container on
+-- the target, own harmful auras, filtered to the sting ranks, over a Nock tile.
+do
+  local NAMES = { [1978] = "Serpent Sting", [13549] = "Serpent Sting", [13550] = "Serpent Sting", [3043] = "Scorpid Sting",
+                  [3034] = "Viper Sting", [14279] = "Something Else", [1300001] = "Serpent Sting" }
+  local nameOf = function(id) return NAMES[id] end
+  local fams = Probe.StingIds(nameOf, { ["Serpent Sting"] = 1300001, ["Scorpid Sting"] = 3043, ["Viper Sting"] = true })
+  local by = {}
+  for _, f in ipairs(fams) do by[f.key] = f end
+  ok(by.Serpent.name == "Serpent Sting" and table.concat(by.Serpent.ids, " ") == "1978 13549 13550 1300001",
+     "ranks the client names like rank 1 are kept, the spellbook's own id is added")
+  ok(by.Serpent.dropped == 6 and by.Serpent.book == 1300001, "unnamed ranks are dropped and counted")
+  ok(table.concat(by.Scorpid.ids, " ") == "3043", "a spellbook id already kept is not added twice")
+  ok(table.concat(by.Viper.ids, " ") == "3034" and by.Viper.book == nil, "a differently named id is dropped; a non-numeric book entry is ignored")
+  NAMES[3034] = nil
+  local gone = Probe.StingIds(nameOf, {})[3]
+  ok(gone.key == "Viper" and gone.name == nil and #gone.ids == 0 and gone.dropped == 3, "a family the client does not know keeps nothing")
+  NAMES[3034] = "Viper Sting"
+
+  -- the spike itself: steps reported, never thrown
+  local made2, groups = {}, {}
+  local F = setmetatable({}, { __index = Fake })
+  F.__index = F
+  function F:SetFrameLevel(l) self.level = l end
+  function F:Hide() self.shown = false end
+  function F:AddAuraGroup(k, f, o) groups[#groups + 1] = { k, f, o, self } end
+  function F:CreateTexture() return { SetAllPoints = function() end, SetColorTexture = function() end, SetTexCoord = function() end,
+                                      SetPoint = function() end, SetTexture = function() end } end
+  function F:CreateFontString() return { SetAllPoints = function() end, SetJustifyH = function() end, SetJustifyV = function() end } end
+  function F:SetIcon(t) self.icon = t end
+  function F:SetDurationCooldown(c) self.cd = c end
+  function F:SetDurationText(fs, fmt) self.text = fs end
+  _G.CreateFrame = function(kind, name, parent, template)
+    local f = setmetatable({ kind = kind, name = name, template = template }, F); made2[#made2 + 1] = f; return f
+  end
+  Nock.API.SpellName = function(id) return NAMES[id] end
+  Nock.API.SpellIcon = function() return "icon" end
+  Nock.ForeverAuraRow = { IdTable = function(list) local t = {}; for _, id in ipairs(list) do t[id] = true end; return t end }
+  _G.C_UnitAuras = {
+    GetUnitAuraInstanceIDs = function() return { 41 } end,
+    GetAuraDataByAuraInstanceID = function() return { spellId = 13549, name = "Serpent Sting", duration = 15 } end,
+    GetAuraDuration = function() return {} end,
+    GetAuraDataBySpellName = function(unit, name) if name == "Serpent Sting" then return { spellId = 13549, duration = 15 } end end,
+  }
+  _G.UnitExists = function() return true end
+  local rep = module:StingSpike("")
+  ok(#groups == 2 and groups[1][2] == "HARMFUL|PLAYER" and groups[1][4].unit == "target", "both groups: own harmful auras of the target")
+  ok(groups[1][3].maxFrameCount == 1 and groups[1][3].candidateFilters.includeSpellIDs[13549] == true
+     and groups[1][3].layout.elementWidth == 44, "the sting group: one wide tile, filtered to the kept ids")
+  ok(groups[2][3].candidateFilters == nil and groups[2][3].maxFrameCount == 6, "the control group is unfiltered")
+  ok(groups[1][4].level == 10, "the sting container sits above its slot")
+  local b = setmetatable({}, F)
+  groups[1][3].initializeFrame(b)
+  ok(b.icon and b.cd and b.text, "a button is handed an icon, a swipe and a countdown")
+  local rep2 = module:StingSpike("")
+  ok(rep2:find("containers (existing)", 1, true) and rep2:find("buttons built: 1 (hand-overs ok 3, refused 0)", 1, true), "a second run reuses the containers and counts the hand-overs")
+  -- a target change re-reads both containers (Blizzard's target frame does the same)
+  ok(module.events["PLAYER_TARGET_CHANGED"] == "OnStingTarget", "the probe listens for target changes")
+  local c1, c2 = groups[1][4], groups[2][4]
+  c1.updated, c2.updated = nil, nil
+  module:OnStingTarget()
+  ok(c1.updated and c2.updated, "a target change re-reads both containers")
+  ok(module:StingSpike("refresh"):find("re-read on target change: OFF | changes 1 (in combat 0) | refused 0", 1, true), "refresh flips the re-read off and the report counts the changes")
+  c1.updated = nil
+  module:OnStingTarget()
+  ok(c1.updated == nil, "off: a target change is left to the container")
+  module:StingSpike("refresh")
+  function F:UpdateAllAuras() error("blocked") end
+  module:OnStingTarget()
+  ok(module:StingSpike(""):find("refused 2 | last: ", 1, true), "a refused re-read is counted and quoted")
+  F.UpdateAllAuras = nil
+  -- an own sting cast keeps the API readings taken half a second later
+  local later
+  local oldTimer = _G.C_Timer
+  _G.C_Timer = { After = function(d, fn) later = { d, fn } end }
+  module:OnCast("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 3044)
+  ok(later == nil, "a cast that is not a sting takes no readings")
+  module:OnCast("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 13549)
+  ok(later and later[1] == 0.5, "a sting cast schedules the readings")
+  later[2]()
+  local rep3 = module:StingSpike("")
+  ok(rep3:find("readings 0 s ago, 0.5 s after Serpent Sting (13549):", 1, true) and not rep3:find("no sting cast seen yet", 1, true), "the report carries the readings taken after the cast")
+  _G.C_Timer = oldTimer
+  ok(rep:find("Serpent (Serpent Sting): 1978 13549 13550", 1, true), "the report lists the kept ids")
+  ok(rep:find("GetUnitAuraInstanceIDs(target, HARMFUL|PLAYER): 1", 1, true) and rep:find("spellId 13549", 1, true)
+     and rep:find("GetAuraDuration table", 1, true), "the report reads the target's own debuffs through the API")
+  ok(rep:find("GetAuraDataBySpellName(Serpent Sting): ", 1, true) and rep:find("GetAuraDataBySpellName(Scorpid Sting): nil", 1, true), "by-name reads, hit and miss")
+  ok(rep:find("target: exists true  guid missing", 1, true), "a missing global reads as missing")
+  ok(module:StingSpike("off"):find("hidden", 1, true) and made2[1].shown == false, "off hides the probe")
+  Nock.ForeverAuraRow = nil
+end
+
 -- CdCatalogReport: spellbook + talent rows merged by id, passive flag,
 -- cooldown signals, and the summary counts.
 local cat = Probe.CdCatalogReport({

@@ -45,6 +45,8 @@ function Board.PickerCtx()
     recent = Nock.state.cdRecent,
     nameOf = function(x)
       if type(x) == "table" then
+        -- A tile with a name of its own (the unified sting tile).
+        if x.title then return x.title end
         -- A combined tile (Multi + Aimed, Arcane + Hawk) is named after all
         -- its spells, so it never reads like a second copy of its first one.
         if x.ids and #x.ids > 1 then
