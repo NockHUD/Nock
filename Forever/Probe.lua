@@ -1666,6 +1666,15 @@ function Probe:Show(which, rest)
     else
       rawReads[#rawReads + 1] = { "tooltip", "C_TooltipInfo.GetUnit missing" }
     end
+    -- The auto-switch: the toggle, whether one is armed, the last one sent.
+    if TM then
+      local p = Nock.db and Nock.db.profile or {}
+      rawReads[#rawReads + 1] = { "auto", ("%s  armed %s  last spell %s row %s ok %s %s"):format(
+        p.trackingAutoSwitch == true and "ON" or "off", tostring(TM._autoArmed == true),
+        tostring(TM._autoLastId), tostring(TM._autoLastIndex), tostring(TM._autoLastOk),
+        TM._autoLastAt and ("%.1fs ago"):format(GetTime() - TM._autoLastAt) or "") }
+      rawReads[#rawReads + 1] = { "SetTracking", tostring(_G.C_Minimap and _G.C_Minimap.SetTracking ~= nil) }
+    end
     -- The in-instance flare's plain half (Forever/Warnings.lua TrackMark).
     local WM = Nock:GetModule("Warnings", true)
     if WM and WM.TrackMark then

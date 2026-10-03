@@ -56,7 +56,7 @@ ok(#upages == 4 and upages[1] == "aspectRing" and upages[2] == "cameraFlip" and 
 do
   local key = nodeAt(opts, "utilities.trackingWheel.trackingWheelKey")
   ok(key and key.type == "keybinding" and key.name == "Tracking wheel key", "tracking wheel: key row")
-  ok(nodeAt(opts, "utilities.trackingWheel.keyHeader") and nodeAt(opts, "utilities.trackingWheel.sizeHeader"), "tracking wheel: two cards (Key, Size)")
+  ok(nodeAt(opts, "utilities.trackingWheel.keyHeader") and nodeAt(opts, "utilities.trackingWheel.sizeHeader"), "tracking wheel: the Key and Size cards")
   local sent = {}
   Nock.SendMessage = function(_, m) sent[#sent + 1] = m end
   key.set(nil, "SHIFT-T")
@@ -68,6 +68,11 @@ do
   ok(Nock.db.profile.trackingWheelScale == 1.25 and sent[#sent] == "NOCK_TRACKING_WHEEL_CONFIG", "size: saved and the wheel told")
   Nock.db.profile.trackingWheelScale = nil
   ok(nodeAt(opts, "utilities.trackingWheel.trackingWheelDir1") == nil, "no dial: the order is fixed")
+  local auto = nodeAt(opts, "utilities.trackingWheel.trackingAutoSwitch")
+  ok(nodeAt(opts, "utilities.trackingWheel.autoHeader") and auto and auto.type == "toggle" and auto.get() == false, "tracking wheel: Automatic card, the auto-switch off")
+  auto.set(nil, true)
+  ok(Nock.db.profile.trackingAutoSwitch == true and auto.get() == true, "auto-switch: saved")
+  Nock.db.profile.trackingAutoSwitch = nil
 end
 -- The aspect ring page (Forever/AspectRing.lua): the key and the dial.
 do

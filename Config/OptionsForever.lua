@@ -226,6 +226,13 @@ function F.TrackingWheelPage()
       get = function() return Nock.TrackingWheelScale(ringProfile()) end,
       set = function(_, v) ringProfile().trackingWheelScale = v; wheelChanged() end,
     },
+    autoHeader = { type = "header", name = "Automatic", desc = "Let Nock switch the tracking for you.", order = 30 },
+    trackingAutoSwitch = {
+      type = "toggle", name = "Switch tracking to my target", order = 31, width = "full",
+      desc = "When you target something hostile out of combat, switch to the Track spell its creature type wants.\n\n• Needs points in Improved Tracking, and the Track spell learned\n• One switch per target: a tracking you pick by hand afterwards stays\n• Never in combat (each switch is a cast); a target picked mid-fight gets its tracking when combat ends\n• Not while casting, stealthed or Shadowmelded\n• Not in dungeons and raids: the game hides creature types from addons there, so the Wrong tracking warning shows what to pick and the wheel does the rest",
+      get = function() return ringProfile().trackingAutoSwitch == true end,
+      set = function(_, v) ringProfile().trackingAutoSwitch = v and true or false end,
+    },
   }
   return { type = "group", name = "Tracking wheel", order = 13, args = args }
 end

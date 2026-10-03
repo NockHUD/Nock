@@ -81,10 +81,11 @@ Tracking.Reads = {
       local okc, a, _, c, _, _, f = pcall(MM.GetTrackingInfo, i)
       if okc then
         local e
+        -- `index` is the client's own row: what C_Minimap.SetTracking takes.
         if type(a) == "table" then
-          e = { name = P(a.name), active = P(a.active) == true, spellID = P(a.spellID) }
+          e = { name = P(a.name), active = P(a.active) == true, spellID = P(a.spellID), index = i }
         elseif a ~= nil then
-          e = { name = P(a), active = P(c) == true, spellID = P(f) }
+          e = { name = P(a), active = P(c) == true, spellID = P(f), index = i }
         end
         if e then LIST[#LIST + 1] = e end
       end
@@ -119,20 +120,85 @@ Tracking.Reads = {
   traitRank = function(id, name) return Nock.Traits and Nock.Traits.LiveRank(id, name) or nil end,
   spellbook = function() return Nock.ForeverSpellbookNames and Nock.ForeverSpellbookNames() or nil end,
   inCombat = function() return _G.InCombatLockdown and InCombatLockdown() or false end,
+  -- A moment the auto-switch must not cast in: mid-cast, stealthed or
+  -- Shadowmelded (the cast would break it), dead, on a flight path.
+  busy = function(state)
+    if state.player and state.player.casting then return true end
+    if _G.IsStealthed and P(IsStealthed()) == true then return true end
+    if _G.UnitIsDeadOrGhost and P(UnitIsDeadOrGhost("player")) == true then return true end
+    if _G.UnitOnTaxi and P(UnitOnTaxi("player")) == true then return true end
+    return false
+  end,
+  -- The minimap menu's own call: not protected, so plain Lua may switch the
+  -- tracking (the client casts the Track spell). `index` is the list row.
+  setTracking = function(index)
+    local MM = _G.C_Minimap
+    if not (MM and MM.SetTracking) then return false end
+    return (pcall(MM.SetTracking, index, true))
+  end,
 }
+
+-- Seconds a new target must hold before the auto-switch casts: tabbing
+-- through a pack never fires a cast per mob.
+Tracking.AUTO_SETTLE = 0.3
+
+-- Pure. The Track spell an armed auto-switch should cast: the one the target
+-- wants, with points in Improved Tracking (the only reason tracking is
+-- damage), on a live hostile target, when it is learned and not on (`wrong`).
+function Nock.TrackingAutoPick(rank, hostile, wrong, need)
+  if type(rank) ~= "number" or rank <= 0 then return nil end
+  if hostile ~= true or wrong ~= true then return nil end
+  return need
+end
 
 function Tracking:OnEnable()
   self:RegisterEvent("MINIMAP_UPDATE_TRACKING")
   self:RegisterEvent("SPELLS_CHANGED")
   self:RegisterEvent("PLAYER_ENTERING_WORLD")
   self:RegisterEvent("PLAYER_TARGET_CHANGED")
+  self:RegisterEvent("PLAYER_REGEN_ENABLED")
   self:PLAYER_ENTERING_WORLD()
 end
 
 -- Plain even where the target itself is secret: the track-mark flare holds
--- its grace from this stamp.
+-- its grace from this stamp. A new target also arms ONE auto-switch.
 function Tracking:PLAYER_TARGET_CHANGED()
-  Nock.state.tracking.targetSince = GetTime()
+  local now = GetTime()
+  Nock.state.tracking.targetSince = now
+  self._autoArmed, self._autoSince = true, now
+end
+
+-- Combat held the switch back (every switch is a cast): its end arms one for
+-- the target you are left with.
+function Tracking:PLAYER_REGEN_ENABLED()
+  self._autoArmed, self._autoSince = true, GetTime()
+end
+
+-- The auto-switch (profile.trackingAutoSwitch): one switch per arming, so a
+-- tracking picked by hand afterwards stays until the next target. Combat and
+-- a busy moment keep it armed; everything else spends it, switch or not.
+-- Inside an instance the target's type is a secret: `wrong` is never true
+-- there and nothing is sent.
+function Tracking:AutoSwitch(state, now)
+  local p = Nock.db and Nock.db.profile
+  if not (p and p.trackingAutoSwitch == true) then self._autoArmed = nil; return end
+  if now - (self._autoSince or 0) < Tracking.AUTO_SETTLE then return end
+  if self.Reads.inCombat() or self.Reads.busy(state) then return end
+  self._autoArmed = nil
+  local st, t = state.tracking, state.target
+  local hostile = t and t.exists == true and t.alive == true and t.friendly == false
+  local id = Nock.TrackingAutoPick(st.rank, hostile, st.wrong, st.targetTrackId)
+  if not id then return end
+  local list = self.Reads.trackingList()
+  if type(list) ~= "table" then return end
+  for _, e in ipairs(list) do
+    if e.spellID == id and e.index then
+      -- kept for `/nock probe tracking`: what was sent and whether the call ran
+      self._autoLastId, self._autoLastIndex, self._autoLastAt = id, e.index, now
+      self._autoLastOk = self.Reads.setTracking(e.index)
+      return
+    end
+  end
 end
 
 function Tracking:PLAYER_ENTERING_WORLD()
@@ -185,4 +251,5 @@ function Tracking:Refresh(state)
     st.targetTrackId = Nock.TrackingForCreatureType(typeName, self._typeNames or nil)
   end
   st.wrong = st.targetTrackId ~= nil and st.known[st.targetTrackId] == true and st.activeId ~= st.targetTrackId
+  if self._autoArmed then self:AutoSwitch(state, now) end
 end

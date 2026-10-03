@@ -1390,6 +1390,9 @@ if Nock.Flavor and Nock.Flavor.forever then
   -- (Forever/TrackingWheel.lua) has no key until the user picks one.
   p.warnTrackingEnabled  = true
   p.warnTrackingGate     = "always"
+  -- The auto-switch (Forever/Tracking.lua AutoSwitch): off until asked for,
+  -- it casts on the user's behalf.
+  p.trackingAutoSwitch   = false
 end
 
 function Nock:GetDefaultPosition()

@@ -168,6 +168,91 @@ learned = { ["Track Beasts"] = 1 }
 M:SPELLS_CHANGED()
 ok(st.known[19883] == nil and st.knownRev >= 1, "a spellbook change re-reads the known list and bumps the rev")
 
+-- The auto-switch (profile.trackingAutoSwitch, off by default): a target
+-- change or the end of combat arms ONE switch to the Track spell the target
+-- wants, out of combat, after a short settle, through C_Minimap.SetTracking
+-- with the spell's row in the tracking list. One per arming, so a tracking
+-- picked by hand afterwards stays.
+do
+  local P = Nock.TrackingAutoPick
+  ok(P(3, true, true, 19883) == 19883, "pick: talent, hostile target, wrong tracking -> the needed spell")
+  ok(P(0, true, true, 19883) == nil and P(nil, true, true, 19883) == nil, "pick: no Improved Tracking -> nothing")
+  ok(P(3, false, true, 19883) == nil, "pick: no live hostile target -> nothing")
+  ok(P(3, true, false, 19883) == nil and P(3, true, true, nil) == nil, "pick: tracking already right, or no Track spell for the type -> nothing")
+
+  local calls, busy, combat = {}, false, false
+  learned = { ["Track Beasts"] = 1, ["Track Humanoids"] = 1 }
+  M:SPELLS_CHANGED()
+  list = { { name = "Track Beasts", active = true, spellID = 1494, index = 1 }, { name = "Find Fish", active = false, index = 2 },
+           { name = "Track Humanoids", active = false, spellID = 19883, index = 3 } }
+  M:MINIMAP_UPDATE_TRACKING()
+  creature, rank = "Humanoid", 3
+  M._rankAt = -100
+  M.Reads.inCombat = function() return combat end
+  M.Reads.busy = function() return busy end
+  M.Reads.setTracking = function(index) calls[#calls + 1] = index; return true end
+  Nock.state.target.exists, Nock.state.target.alive, Nock.state.target.friendly = true, true, false
+  ok(M.events.PLAYER_REGEN_ENABLED ~= nil, "listens for the end of combat")
+
+  -- off: a target change does nothing
+  now = 200; M:PLAYER_TARGET_CHANGED(); now = 201; M:Refresh(Nock.state)
+  ok(#calls == 0 and st.wrong == true, "toggle off: wrong, and left alone")
+  Nock.db.profile.trackingAutoSwitch = true
+  now = 202; M:Refresh(Nock.state)
+  ok(#calls == 0, "turning it on does not switch by itself: it takes a target change")
+
+  now = 210; M:PLAYER_TARGET_CHANGED(); now = 210.1; M:Refresh(Nock.state)
+  ok(#calls == 0, "inside the settle: nothing yet (tabbing through targets)")
+  now = 210.4; M:Refresh(Nock.state)
+  ok(#calls == 1 and calls[1] == 3, "past the settle: SetTracking with the spell's ROW in the tracking list")
+  now = 211; M:Refresh(Nock.state); now = 215; M:Refresh(Nock.state)
+  ok(#calls == 1, "one switch per arming, even while the cast has not landed")
+
+  -- a hand-picked tracking after the switch stays
+  list[1].active, list[3].active = false, true
+  M:MINIMAP_UPDATE_TRACKING(); M:Refresh(Nock.state)
+  ok(st.wrong == false, "the switch landed")
+  list[1].active, list[3].active = true, false
+  M:MINIMAP_UPDATE_TRACKING(); now = 220; M:Refresh(Nock.state)
+  ok(st.wrong == true and #calls == 1, "tracking changed by hand on the same target: left alone")
+
+  -- in combat it waits; the end of combat arms it
+  combat = true
+  now = 230; M:PLAYER_TARGET_CHANGED(); now = 231; M:Refresh(Nock.state)
+  ok(#calls == 1, "in combat: no switch")
+  combat = false
+  now = 240; M:PLAYER_REGEN_ENABLED(); now = 240.1; M:Refresh(Nock.state)
+  ok(#calls == 1, "combat over: the settle runs again")
+  now = 240.4; M:Refresh(Nock.state)
+  ok(#calls == 2 and calls[2] == 3, "combat over: the pending target gets its tracking")
+
+  -- busy (casting, stealthed, on a taxi): it waits, still armed
+  busy = true
+  now = 250; M:PLAYER_TARGET_CHANGED(); now = 251; M:Refresh(Nock.state)
+  ok(#calls == 2, "busy: no switch")
+  busy = false
+  now = 252; M:Refresh(Nock.state)
+  ok(#calls == 3, "free again: the armed switch goes out")
+
+  -- a target the tracking already fits disarms without a call
+  creature = "Beast"
+  now = 260; M:PLAYER_TARGET_CHANGED(); now = 261; M:Refresh(Nock.state)
+  ok(#calls == 3 and st.wrong == false, "tracking already right: nothing sent")
+  -- the spell is not in the tracking list (not learned): nothing sent
+  creature = "Humanoid"
+  list[3] = nil
+  now = 270; M:PLAYER_TARGET_CHANGED(); now = 271; M:Refresh(Nock.state)
+  ok(#calls == 3, "no row for the spell: nothing sent")
+  -- no Improved Tracking: nothing sent
+  list[3] = { name = "Track Humanoids", active = false, spellID = 19883, index = 3 }
+  rank = 0; M._rankAt = -100
+  now = 280; M:PLAYER_TARGET_CHANGED(); now = 281; M:Refresh(Nock.state)
+  ok(#calls == 3, "no points in Improved Tracking: nothing sent")
+  rank = 3; M._rankAt = -100
+  Nock.db.profile.trackingAutoSwitch = nil
+  now = 100
+end
+
 -- The warning (Forever/Warnings.lua): reads.trackingRank > 0, a live hostile
 -- target whose type has a learned Track spell that is not on, the gate.
 local module
