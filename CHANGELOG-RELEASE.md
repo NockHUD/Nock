@@ -1,9 +1,10 @@
-## 2.0.10
+## 2.0.11
+
+### Both clients
+
+- **Mana bar text without the % sign**: the mana bar text dropdown (Classic, React and Fluffy HUD) has a new choice, "Percent, no % sign", which shows 73 instead of 73%. The default is unchanged. By request.
+- **Smaller count on the tiles**: the number in a tile's bottom-right corner (stack counts, item counts, the new hawk count) is drawn a little smaller than the tile's timer, so the two no longer crowd each other.
 
 ### WoW Forever (beta)
 
-- **Auto Shot delay readout**: the +0.00 late-shot readout now works on Forever. After every Auto Shot it shows how much later than the bar's due moment the shot fired, green on time, yellow from 0.10 s, orange from 0.25 s, red from 0.50 s; it rests at 0 out of combat and the first shot of a fight only sets the baseline. A melee hit that restarts your reload is measured from the restart, not counted as a clip. Off by default: Bars → Delay readout, which also holds its own font, size, thick outline, anchor (left, centre or right of the Auto Shot bar) with pixel offsets, and the four colours. After AppelSwingsForever's clip timer (thanks Appel!).
-- **Wrong-tracking warning inside instances**: the amber TRACK square now fires in dungeons and raids too. The game hides creature types from addons there, so the client itself draws the square from the hidden name through a set of picture fonts; Nock only decides when the warning is allowed to show (Improved Tracking, a live hostile target, the gate, the Track spell learned and not on). English clients only.
-- **Tracking auto-switch**: Utilities → Tracking wheel → Automatic. With the switch on, targeting something hostile out of combat casts the Track spell its creature type wants. One switch per target, so a tracking you pick by hand afterwards stays; a new target must hold a moment first, so tabbing through a pack never fires a cast per mob. Never in combat (every switch is a cast); the end of combat arms one switch for the target you are left with. Not while casting, stealthed or Shadowmelded, and not inside instances, where the warning above shows what to pick and the wheel does the rest. Off by default.
-
-- **Inverse Auto Shot bar**: a fourth fill direction for the Auto Shot bar on the React and Fluffy HUDs (Bars → Fill direction → Inverse). The two halves are full at the shot, drain to the centre over the reload, then grow back out in a wind-up colour and are full again at the release. The wind-up colour is a swatch under Skin (red by default). The wind-up mark is not drawn in this mode since it would sit on the centre; the Steady and Multi-Shot ticks keep their places on the drain.
+- **Summon Hawk count on the cooldown grid**: the Hawk tile and the combined Arcane + Hawk tile show how many hawks you have out, 1 or 2, in the tile's corner. The game reports no count for them, so Nock keeps its own from your casts: each hawk counts for its 18 seconds, two at most. A hawk that dies early stays counted until its time is up.
