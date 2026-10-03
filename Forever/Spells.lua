@@ -109,6 +109,12 @@ Nock.Spells = Spells
 -- Cooldowns are discovered from the client (Forever/CooldownDiscovery.lua) and
 -- remembered per character (Forever/Cooldowns.lua); `lv` marks spells not
 -- trained by level 20, used only for hint text.
+-- Guardians a cast summons for a fixed time. The client reports no count, so
+-- Forever/Cooldowns.lua tallies own casts and shows the number out on `tiles`.
+Spells.SUMMONS = {
+  { id = 1293241, life = 18, max = 2, tiles = { "Hawk", "ArcHawk" } },  -- Summon Hawk: each hawk lasts 18 s, two at most (user, 2026-10-03)
+}
+
 Spells.TRACKED = {
   { key = "Raptor",   id = 2973,  name = "Raptor Strike", label = "Raptor", melee = true, cat = "Class", row = 1 },                    -- Raptor Strike (range = the melee probe)
   { key = "Arc",      id = 3044,  name = "Arcane Shot", label = "Arc", cat = "Class", row = 1, shared = "arcaneHawk" },  -- Arcane Shot; shares the arcaneHawk cooldown group with Summon Hawk and Hydra Shot

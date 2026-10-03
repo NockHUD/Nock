@@ -122,8 +122,11 @@ do
   p.reactCdFontSize = nil
   ok(b.font[2] == 10 and b.font[3] == "OUTLINE" and b.shadow == nil, "global text: untouched by the React skin")
   local c = fs()
-  Nock.UI.ApplyReactTextLook(c, "SIZE_OVERLAY")
+  Nock.UI.ApplyReactTextLook(c)
   ok(c.font[1] == "ref.ttf" and c.font[2] == 10 and c.font[3] == "" and c.shadow[1] == 1, "ApplyReactTextLook: the same look at creation")
+  local d = fs()
+  Nock.UI.ApplyReactTextLook(d, 0.8)
+  ok(d.font[2] == 8, "a scaled look (the tile's count corner) is a fraction of the grid's size")
   p.reactFontSize, p.reactFontStyle, p.reactFontShadow = nil, nil, nil
   Nock.UI.RefreshMedia()
   ok(a.font[2] == 10 and a.font[3] == "OUTLINE" and a.shadow[1] == 0, "reference skin: outline, no shadow")

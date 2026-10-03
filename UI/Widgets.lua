@@ -455,10 +455,14 @@ end
 -- (reactFont) when one is set, falling back to the global fontFace when it
 -- isn't — the React CD grid's behavior. Everything else always follows the
 -- global font.
-function Nock.UI.RegisterFontString(fs, sizeKey, style, reactScoped)
+-- The tile's bottom-right count is drawn a little smaller than its timer.
+local COUNT_SCALE = 0.8
+
+function Nock.UI.RegisterFontString(fs, sizeKey, style, reactScoped, scale)
   fontStrings[#fontStrings + 1] = {
     fs = fs, sizeKey = sizeKey or "SIZE_OVERLAY", style = style or "OUTLINE",
     react = reactScoped and true or nil,
+    scale = scale,   -- a fraction of the size (the tile's count corner)
   }
 end
 
@@ -568,9 +572,9 @@ Nock.UI.SafeSetFont = safeSetFont
 -- the React style and shadow. Used by the media refresh and by the slot
 -- builder, so a slot created after the login refresh (the grid pools lazily)
 -- does not sit in the global font until the next settings change.
-function Nock.UI.ApplyReactTextLook(fs)
+function Nock.UI.ApplyReactTextLook(fs, scale)
   safeSetFont(fs, Nock.UI.GetReactFont() or Nock.UI.GetFont(),
-              math.max(6, Nock.UI.GetReactCdFontSize()), Nock.UI.GetReactFontStyle())
+              math.max(6, math.floor(Nock.UI.GetReactCdFontSize() * (scale or 1) + 0.5)), Nock.UI.GetReactFontStyle())
   Nock.UI.ApplyReactTextShadow(fs)
 end
 
@@ -583,9 +587,9 @@ function Nock.UI.RefreshMedia()
   local fontPath = Nock.UI.GetFont()
   for _, e in ipairs(fontStrings) do
     if e.react then
-      Nock.UI.ApplyReactTextLook(e.fs)
+      Nock.UI.ApplyReactTextLook(e.fs, e.scale)
     else
-      safeSetFont(e.fs, fontPath, C.FONT[e.sizeKey] or C.FONT.SIZE_OVERLAY, e.style)
+      safeSetFont(e.fs, fontPath, math.floor((C.FONT[e.sizeKey] or C.FONT.SIZE_OVERLAY) * (e.scale or 1) + 0.5), e.style)
     end
   end
   refreshHeaderFontStrings()
@@ -980,11 +984,11 @@ function Nock.UI.CreateIconSlot(parent, name, size, reactScoped)
 
   -- Bottom-right stack count (item charge counts etc.). Empty by default.
   local countText = textLayer:CreateFontString(nil, "OVERLAY")
-  countText:SetFont(Nock.UI.GetFont(), C.FONT.SIZE_OVERLAY, "OUTLINE")
+  countText:SetFont(Nock.UI.GetFont(), math.floor(C.FONT.SIZE_OVERLAY * COUNT_SCALE + 0.5), "OUTLINE")
   countText:SetPoint("BOTTOMRIGHT", -2, 2)
   countText:SetTextColor(unpack(C.COLORS.TEXT))
   f.countText = countText
-  Nock.UI.RegisterFontString(countText, "SIZE_OVERLAY", "OUTLINE", reactScoped)
+  Nock.UI.RegisterFontString(countText, "SIZE_OVERLAY", "OUTLINE", reactScoped, COUNT_SCALE)
 
   -- Top-left badge (e.g. Drums "players in range"). Empty by default; only
   -- the Drums cooldown slot populates it.
@@ -996,7 +1000,7 @@ function Nock.UI.CreateIconSlot(parent, name, size, reactScoped)
   Nock.UI.RegisterFontString(topText, "SIZE_OVERLAY", "OUTLINE", reactScoped)
   if reactScoped then
     Nock.UI.ApplyReactTextLook(cdText)
-    Nock.UI.ApplyReactTextLook(countText)
+    Nock.UI.ApplyReactTextLook(countText, COUNT_SCALE)
     Nock.UI.ApplyReactTextLook(topText)
   end
 

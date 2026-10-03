@@ -515,5 +515,41 @@ do
      "the combined Arcane + Hawk tile draws its own art, one icon, no second half")
 end
 
+-- Summon Hawk's guardians: the client reports no count, so own casts are
+-- tallied (18 s each, two at most) and published as the tile's count on the
+-- Hawk tile and the combined Arcane + Hawk tile.
+do
+  local list = {}
+  ok(CD.SummonCount(list, 10) == 0, "no hawk out before a cast")
+  CD.SummonPush(list, 10, 18, 2)
+  ok(CD.SummonCount(list, 10) == 1, "one cast, one hawk")
+  CD.SummonPush(list, 16, 18, 2)
+  ok(CD.SummonCount(list, 16) == 2, "a second cast, two hawks")
+  CD.SummonPush(list, 22, 18, 2)
+  ok(CD.SummonCount(list, 22) == 2, "a third cast replaces the oldest: still two")
+  ok(CD.SummonCount(list, 33.9) == 2 and CD.SummonCount(list, 34) == 1, "the 16 s hawk leaves at 34")
+  ok(CD.SummonCount(list, 40) == 0 and #list == 0, "the last one leaves at 40; the list is pruned")
+
+  now = 6000
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 3044)
+  CD:Refresh()
+  ok(st.cooldowns.Hawk.count == nil and st.cooldowns.ArcHawk.count == nil, "Arcane Shot summons nothing")
+  now = 6006
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 1293241)
+  CD:Refresh()
+  ok(st.cooldowns.Hawk.count == 1 and st.cooldowns.ArcHawk.count == 1, "a Summon Hawk cast counts on both tiles")
+  ok(st.cooldowns.Arc.count == nil, "the Arcane Shot tile carries no count")
+  now = 6012
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 1293241)
+  CD:Refresh()
+  ok(st.cooldowns.Hawk.count == 2 and st.cooldowns.ArcHawk.count == 2, "two hawks out")
+  now = 6024
+  CD:Refresh()
+  ok(st.cooldowns.Hawk.count == 1, "the first hawk's 18 s ran out")
+  fire("PLAYER_DEAD")
+  CD:Refresh()
+  ok(st.cooldowns.Hawk.count == nil and st.cooldowns.ArcHawk.count == nil, "dying clears the tally")
+end
+
 print(("forever_cooldowns: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

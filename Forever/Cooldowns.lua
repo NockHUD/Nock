@@ -602,6 +602,56 @@ function Cooldowns:OnWatchDone(w)
   if clear then Engine.Reconcile(self.ledger, w.id, 0, 0) end
 end
 
+-- Summoned guardians (Summon Hawk; Nock.Spells.SUMMONS): the client reports no
+-- count, so each own cast stamps one guardian's end and the tile's count is
+-- the stamps still running. Timer-based: a guardian that dies early stays
+-- counted until its time is up.
+-- Pure: one more guardian until now + life; past `max` the oldest is replaced.
+function Cooldowns.SummonPush(list, now, life, max)
+  while #list >= max do table.remove(list, 1) end
+  list[#list + 1] = now + life
+  return list
+end
+
+-- Pure: the guardians still out at `now`; ended stamps are pruned (oldest first).
+function Cooldowns.SummonCount(list, now)
+  while list[1] and list[1] <= now do table.remove(list, 1) end
+  return #list
+end
+
+-- The summon a cast belongs to: by id, else by name (ranks are separate spells).
+local function summonOf(spellID, id)
+  local defs = Nock.Spells and Nock.Spells.SUMMONS
+  if not defs then return nil end
+  local name
+  for i = 1, #defs do
+    local d = defs[i]
+    if d.id == spellID or d.id == id then return d end
+    name = name or nameOf(spellID) or false
+    if name and name == nameOf(d.id) then return d end
+  end
+  return nil
+end
+
+local function publishSummons(self, now)
+  local defs = Nock.Spells and Nock.Spells.SUMMONS
+  if not defs then return end
+  for i = 1, #defs do
+    local d = defs[i]
+    local list = self._summons and self._summons[d.id]
+    local n = list and Cooldowns.SummonCount(list, now) or 0
+    for j = 1, #d.tiles do
+      local s = Nock.state.cooldowns[d.tiles[j]]
+      if s then s.count = (n > 0) and n or nil end
+    end
+  end
+end
+
+-- Guardians do not outlive the hunter.
+function Cooldowns:OnPlayerDead()
+  self._summons = nil
+end
+
 function Cooldowns:OnEnable()
   if Nock.CooldownRows then Nock.CooldownRows.MigrateOnce() end
   lists(self)
@@ -614,6 +664,7 @@ function Cooldowns:OnEnable()
   self:RegisterEvent("UNIT_SPELLCAST_START")
   self:RegisterEvent("PLAYER_STARTED_MOVING", "OnMoveOrSwing")
   self:RegisterEvent("PLAYER_SWING", "OnMoveOrSwing")
+  self:RegisterEvent("PLAYER_DEAD", "OnPlayerDead")
   -- usability (dim while unavailable, the no-mana tint, reactive spells);
   -- AceEvent hard-errors on an event the client lacks
   pcall(self.RegisterEvent, self, "SPELL_UPDATE_USABLE", "ScanUsable")
@@ -688,6 +739,11 @@ function Cooldowns:UNIT_SPELLCAST_SUCCEEDED(event, unit, castGUID, spellID)
   self:BreakHeld(e and e.key)
   if not e then self:NoteRecent(spellID); return end
   stampBuff(self, e, GetTime())
+  local sm = summonOf(spellID, id)
+  if sm then
+    self._summons = self._summons or {}
+    self._summons[sm.id] = Cooldowns.SummonPush(self._summons[sm.id] or {}, GetTime(), sm.life, sm.max)
+  end
   -- a held buff's cooldown starts at its break (breakBuff), not here
   if e.untilBroken then return end
   Engine.OnCast(self.ledger, id, GetTime())
@@ -799,4 +855,5 @@ function Cooldowns:Refresh()
     local w = self._watch and self._watch[e.key]
     if w and w.armed and now - w.castAt > WATCH_MAX then disarm(self, w) end
   end
+  publishSummons(self, now)
 end
