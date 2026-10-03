@@ -1143,11 +1143,50 @@ end
 -- Severity colour for the Auto Shot delay readout, mirroring the React WA's
 -- thresholds (seconds): >=0.50 red, >=0.25 orange, >=0.10 yellow, else green.
 -- Shared by the classic swing row and the React cluster.
-function Nock.UI.DelaySeverityColor(sec)
-  if sec >= 0.50 then return 0.769, 0.118, 0.227 end
-  if sec >= 0.25 then return 1.000, 0.702, 0.000 end
-  if sec >= 0.10 then return 1.000, 0.957, 0.408 end
-  return 0.000, 1.000, 0.596
+-- The Auto Shot delay readout's tier colours: green under 0.10 s late,
+-- yellow from 0.10, orange from 0.25, red from 0.50. Each tier is a profile
+-- colour (Bars -> Delay readout on Forever) with the reference look as the
+-- fallback; `p` is the profile (Nock.db.profile when omitted).
+Nock.UI.DELAY_COLORS = {
+  good = { 0.000, 1.000, 0.596, 1 },
+  low  = { 1.000, 0.957, 0.408, 1 },
+  mid  = { 1.000, 0.702, 0.000, 1 },
+  high = { 0.769, 0.118, 0.227, 1 },
+}
+local DELAY_TIER_KEY = { good = "reactColorDelayGood", low = "reactColorDelayLow", mid = "reactColorDelayMid", high = "reactColorDelayHigh" }
+
+function Nock.UI.DelaySeverityColor(sec, p)
+  local tier
+  if sec >= 0.50 then tier = "high"
+  elseif sec >= 0.25 then tier = "mid"
+  elseif sec >= 0.10 then tier = "low"
+  else tier = "good" end
+  p = p or (Nock.db and Nock.db.profile)
+  local c = p and p[DELAY_TIER_KEY[tier]]
+  if type(c) ~= "table" or type(c[1]) ~= "number" then c = Nock.UI.DELAY_COLORS[tier] end
+  return c[1], c[2], c[3]
+end
+
+-- The readout's own look (Forever, Bars -> Delay readout): where it hangs on
+-- the Auto Shot bar and in what face. Returns anchor, x, y, fontPath (nil =
+-- the React font), size, flags. Pure: `p` is the profile.
+local DELAY_ANCHORS = { LEFT = true, CENTER = true, RIGHT = true }
+Nock.UI.DELAY_FONT_SIZE = 8
+
+function Nock.UI.DelayTextLayout(p)
+  p = p or {}
+  local anchor = DELAY_ANCHORS[p.reactDelayAnchor] and p.reactDelayAnchor or "CENTER"
+  local x = tonumber(p.reactDelayOffsetX) or 0
+  local y = tonumber(p.reactDelayOffsetY) or 0
+  local font
+  local name = p.reactDelayFont
+  if type(name) == "string" and name ~= "" and LSM then
+    font = LSM:Fetch("font", name, true) or nil
+  end
+  local size = tonumber(p.reactDelayFontSize) or Nock.UI.DELAY_FONT_SIZE
+  if size < 6 then size = 6 elseif size > 40 then size = 40 end
+  local flags = p.reactDelayFontThick == true and "THICKOUTLINE" or "OUTLINE"
+  return anchor, x, y, font, size, flags
 end
 
 function Nock.UI.SetIconHighlight(slot, color)

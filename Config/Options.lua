@@ -6860,6 +6860,76 @@ local function buildOptionsTable()
       set = function(_, v) visualsSet(_, "reactDirMelee", v) end,
     }
 
+    -- Delay readout (Forever only; TBC keeps the toggle in the Auto Shot card),
+    -- after Fill direction.
+    -- A header with a one-liner is a card of its own on this tab; the toggle
+    -- joins it on Forever (Config/OptionsForever.lua REORDER).
+    local notForever = function() return not (Nock.Flavor and Nock.Flavor.forever) end
+    barsArgs.delayHeader = {
+      type = "header", name = "Delay readout", order = 37.5, hidden = notForever,
+      desc = "How late each Auto Shot fired, as +0.00 on the Auto Shot bar: its face, place and tier colours.",
+    }
+    barsArgs.reactDelayFont = {
+      type = "select",
+      name = "Readout font",
+      desc = "The readout's own face. 'React font' keeps the Skin's font.",
+      order = 37.51,
+      dialogControl = lsmWidget(nil, "font"),
+      values = lsmSentinelValues("font", "React font"),
+      disabled = notReact, hidden = notForever,
+      get = lsmSentinelGet("reactDelayFont", "React font"),
+      set = lsmSentinelSet("reactDelayFont", "React font"),
+    }
+    barsArgs.reactDelayFontSize = {
+      type = "range", name = "Readout size", desc = "Font size of the readout (reference 8).",
+      min = 6, max = 40, step = 1, order = 37.52,
+      disabled = notReact, hidden = notForever,
+      get = function() return Nock.db.profile.reactDelayFontSize or 8 end,
+      set = function(_, v) visualsSet(_, "reactDelayFontSize", v) end,
+    }
+    barsArgs.reactDelayFontThick = {
+      type = "toggle", name = "Thick outline", desc = "A heavier outline on the readout, for busy backgrounds.",
+      order = 37.53, width = "full",
+      disabled = notReact, hidden = notForever,
+      get = function() return Nock.db.profile.reactDelayFontThick == true end,
+      set = function(_, v) visualsSet(_, "reactDelayFontThick", v and true or false) end,
+    }
+    barsArgs.reactDelayAnchor = {
+      type = "select", name = "Readout anchor", desc = "Which point of the Auto Shot bar the readout hangs on; the offsets nudge it from there.",
+      order = 37.54,
+      values = { LEFT = "Left", CENTER = "Centre", RIGHT = "Right" },
+      sorting = { "LEFT", "CENTER", "RIGHT" },
+      disabled = notReact, hidden = notForever,
+      get = function() return Nock.db.profile.reactDelayAnchor or "CENTER" end,
+      set = function(_, v) visualsSet(_, "reactDelayAnchor", v) end,
+    }
+    barsArgs.reactDelayOffsetX = {
+      type = "range", name = "Readout horizontal offset", desc = "Pixels right (+) or left (-) of the anchor.",
+      min = -200, max = 200, step = 1, order = 37.55,
+      disabled = notReact, hidden = notForever,
+      get = function() return Nock.db.profile.reactDelayOffsetX or 0 end,
+      set = function(_, v) visualsSet(_, "reactDelayOffsetX", v) end,
+    }
+    barsArgs.reactDelayOffsetY = {
+      type = "range", name = "Readout vertical offset", desc = "Pixels up (+) or down (-) from the anchor; past the bar's edge puts it above or below the bar.",
+      min = -60, max = 60, step = 1, order = 37.56,
+      disabled = notReact, hidden = notForever,
+      get = function() return Nock.db.profile.reactDelayOffsetY or 0 end,
+      set = function(_, v) visualsSet(_, "reactDelayOffsetY", v) end,
+    }
+    local function delayColorOpt(name, desc, order)
+      return {
+        type = "color", name = name, desc = desc, hasAlpha = false, order = order,
+        disabled = notReact, hidden = notForever,
+        get = getColor, set = setColor,
+      }
+    end
+    barsArgs.reactColorDelayGood = delayColorOpt("Colour: on time",      "Under 0.10 s late.", 34.57)
+    barsArgs.reactColorDelayLow  = delayColorOpt("Colour: a touch late", "From 0.10 s late.", 34.58)
+    barsArgs.reactColorDelayMid  = delayColorOpt("Colour: late",         "From 0.25 s late.", 34.59)
+    barsArgs.reactColorDelayHigh = delayColorOpt("Colour: clipped",      "From 0.50 s late.", 34.6)
+
+
     barsArgs.grpEngine = {
       type = "group",
       inline = true,

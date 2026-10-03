@@ -7,6 +7,12 @@ local SwingTimer = Nock:NewModule("SwingTimer", "AceEvent-3.0")
 
 local SAMPLE_MAX = 20
 
+-- A Ranged PLAYER_SWING this soon after a melee hit is the client's own reset
+-- of the ranged reload (Forever client bug: melee resets ranged; fix pending),
+-- not a shot. Same grace as the weave engine's RESET_GRACE. Delete with the
+-- rest of the reset handling once the client fix lands.
+local RESET_GRACE = 0.1
+
 local function swingType(name)
   local E = _G.Enum and _G.Enum.PlayerSwingType
   return E and E[name]
@@ -98,6 +104,29 @@ function SwingTimer:PLAYER_STOPPED_MOVING()
   self._moving, self._stoppedAt = false, GetTime()
 end
 
+-- Auto Shot delay (the "clip timer" readout): how much later than the bar's
+-- own due time this shot fired, clamped >= 0, in state.ranged.autoDelay. The
+-- same number Modules/SwingTimer.lua writes on TBC, measured here against
+-- state.ranged.swingStart + swingDuration (the bar as drawn), so a reload the
+-- weave helper re-anchored on a melee hit counts from the hit, not from the
+-- previous shot. Out of combat the readout rests at 0; the first shot of a
+-- fight only seeds the baseline. Reads the state BEFORE the shot overwrites it.
+function SwingTimer:UpdateAutoDelay(now)
+  local r = Nock.state.ranged
+  if not Nock.state.player.inCombat then
+    self._lastShotAt = nil
+    r.autoDelay = 0
+    return
+  end
+  if not self._lastShotAt or r.swingStart <= 0 or r.swingDuration <= 0 then
+    self._lastShotAt = now
+    r.autoDelay = 0
+    return
+  end
+  r.autoDelay = math.max(0, now - (r.swingStart + r.swingDuration))
+  self._lastShotAt = now
+end
+
 function SwingTimer:PLAYER_SWING(event, duration, kind)
   local now = GetTime()
   local S = self._samples
@@ -107,16 +136,20 @@ function SwingTimer:PLAYER_SWING(event, duration, kind)
   if type(duration) ~= "number" or duration <= 0 then return end
   if kind == swingType("Ranged") then
     local r = Nock.state.ranged
+    local isReset = self._lastHitAt ~= nil and (now - self._lastHitAt) <= RESET_GRACE
+    if not isReset then self:UpdateAutoDelay(now) end
     r.swingStart = now
     r.swingDuration = duration
   elseif kind == swingType("MainHand") then
     local m = Nock.state.melee
     m.swingStart = now
     m.swingDuration = duration
+    self._lastHitAt = now
   elseif kind == swingType("OffHand") then
     local m = Nock.state.melee
     m.offStart = now
     m.offDuration = duration
+    self._lastHitAt = now
   end
 end
 
@@ -159,6 +192,7 @@ function SwingTimer:PLAYER_ENTERING_WORLD()
   -- would keep the auto bar full (see Nock.AutoSwingLive).
   Nock.state.ranged.repeating = false
   Nock.state.ranged.autoDelay = 0
+  self._lastShotAt, self._lastHitAt = nil, nil
   Nock.state.melee.attacking = false
   self:RefreshDualWield()
 end

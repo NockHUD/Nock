@@ -713,6 +713,18 @@ Nock.Defaults = {
     reactScale           = 1.0,         -- shared per-row scale for both React rows
     reactCooldownDisabled = {},         -- ["<key>"] = true → hide that React grid slot
     reactShowDelay       = false,       -- show the +x.xx late-shot readout on the React auto bar
+    -- The readout's own look (Forever only, Bars -> Delay readout; read by
+    -- Nock.UI.DelayTextLayout / DelaySeverityColor). "" = the React font.
+    reactDelayFont       = "",
+    reactDelayFontSize   = 8,
+    reactDelayFontThick  = false,
+    reactDelayAnchor     = "CENTER",    -- LEFT | CENTER | RIGHT of the Auto Shot bar
+    reactDelayOffsetX    = 0,
+    reactDelayOffsetY    = 0,
+    reactColorDelayGood  = { 0.000, 1.000, 0.596, 1.00 },  -- under 0.10 s late
+    reactColorDelayLow   = { 1.000, 0.957, 0.408, 1.00 },  -- from 0.10 s
+    reactColorDelayMid   = { 1.000, 0.702, 0.000, 1.00 },  -- from 0.25 s
+    reactColorDelayHigh  = { 0.769, 0.118, 0.227, 1.00 },  -- from 0.50 s
     reactShowBrackets    = false,       -- show the eWS bracket marks on the React auto bar
     reactShowClipTicks   = true,        -- the Steady/Multi clip tick pairs on the React auto bar
     -- React buff row (UI/Frame_ReactBuffs.lua): the WA pack's Important +

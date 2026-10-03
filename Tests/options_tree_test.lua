@@ -683,7 +683,12 @@ ok(raSize.reactWeaveH and raSize.reactWeaveH.type == "range" and raSize.reactWea
    "react tabSize: strip toggle, strip height 18, forget-legs button")
 onlyKeys(raBars, { "autoHeader", "reactAutoLegend", "reactShowNotation", "reactShowClipTicks", "showWindupMark", "reactShowDelay",
   "reactShowBrackets", "reactShowGcdDivider", "dirHeader", "reactDirAuto", "reactDirMelee",
+  -- the delay readout's look (Forever only; hidden on TBC)
+  "delayHeader", "reactDelayFont", "reactDelayFontSize", "reactDelayFontThick", "reactDelayAnchor",
+  "reactDelayOffsetX", "reactDelayOffsetY", "reactColorDelayGood", "reactColorDelayLow", "reactColorDelayMid", "reactColorDelayHigh",
   "grpEngine" }, "react tabBars")
+ok(raBars.delayHeader and raBars.delayHeader.hidden and raBars.delayHeader.hidden() == true
+   and raBars.reactDelayAnchor.hidden() == true and raBars.reactColorDelayHigh.hidden() == true, "react tabBars: delay look rows hidden on TBC")
 onlyKeys(raRange, { "rangeHeader", "rangeFinderFindingStyle" }, "react tabRange")
 onlyKeys(raGrid, { "gridHeader", "cdBoardReset", "gridNote", "reactConsumablesAlways", "rcustHeader",
   "kcHeader", "reactKcProcGlow", "reactRaptorGoGlow", "kcActionBarGlow", "reactRangeTint", "reactTileDim", "reactManaTint", "gridIconZoom", "gridGcdSwipe",

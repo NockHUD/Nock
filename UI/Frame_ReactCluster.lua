@@ -557,6 +557,17 @@ function ReactCluster:ApplyLayout()
     Nock.UI.SafeSetFont(e.fs, font, math.max(6, e.size + delta), style)
     Nock.UI.ApplyReactTextShadow(e.fs)
   end
+  -- Forever: the delay readout's own place and face (Bars -> Delay readout),
+  -- applied after the skin pass so it wins over the shared font. On TBC the
+  -- readout keeps the skin's centred look.
+  if Nock.Flavor and Nock.Flavor.forever then
+    local anchor, dx, dy, dfont, dsize, dflags = Nock.UI.DelayTextLayout(p)
+    local dt = self.auto.delayText
+    dt:ClearAllPoints()
+    dt:SetPoint(anchor, self.auto, anchor, dx, dy)
+    Nock.UI.SafeSetFont(dt, dfont or font, dsize, dflags)
+    Nock.UI.ApplyReactTextShadow(dt)
+  end
 
   -- Melee takeover triangle runs: triangles the bar's inner height (minus
   -- MARCH_INSET each side), one pitch apart, two pitches more than fill a

@@ -158,5 +158,60 @@ do
   _G.C_PaperDollInfo = nil
 end
 
+-- Auto Shot delay readout (the "clip timer"): how much later than one reload
+-- after the previous shot this one fired, written to state.ranged.autoDelay.
+do
+  st.player.inCombat = true
+  fire("PLAYER_ENTERING_WORLD")
+  now = 300
+  fire("PLAYER_SWING", 2.0, 2)
+  ok(st.ranged.autoDelay == 0, "first shot of a fight seeds the baseline: 0")
+  now = 302.0
+  fire("PLAYER_SWING", 2.0, 2)
+  ok(st.ranged.autoDelay == 0, "shot on time -> 0")
+  now = 304.3
+  fire("PLAYER_SWING", 2.0, 2)
+  ok(math.abs(st.ranged.autoDelay - 0.3) < 1e-9, "shot 0.3 s late -> +0.30")
+  now = 306.0
+  fire("PLAYER_SWING", 1.5, 2)
+  ok(st.ranged.autoDelay == 0, "an early shot (haste proc) clamps to 0")
+
+  -- Measured against the bar, not the previous shot: a melee hit that
+  -- re-anchors the swing (Forever client bug, fix pending) moves the baseline.
+  now = 306.5
+  fire("PLAYER_SWING", 2.6, 0)
+  st.ranged.swingStart = 306.5            -- what the weave helper does on the hit
+  now = 308.0
+  fire("PLAYER_SWING", 1.5, 2)
+  ok(st.ranged.autoDelay == 0, "shot one reload after the re-anchored start -> 0")
+
+  -- The client's own reset event (a Ranged swing inside 0.1 s of a melee hit)
+  -- is not a shot: it must neither measure nor seed a delay.
+  now = 309.5
+  fire("PLAYER_SWING", 1.5, 2)
+  ok(st.ranged.autoDelay == 0, "on-time shot before the reset case")
+  now = 310.0
+  fire("PLAYER_SWING", 2.6, 0)
+  now = 310.05
+  fire("PLAYER_SWING", 1.5, 2)
+  ok(st.ranged.autoDelay == 0 and st.ranged.swingStart == 310.05, "reset event re-anchors but reads as no delay")
+  now = 311.95
+  fire("PLAYER_SWING", 1.5, 2)
+  ok(math.abs(st.ranged.autoDelay - 0.4) < 1e-9, "next real shot measures from the reset: +0.40")
+
+  -- Out of combat the readout rests at 0 and the next fight seeds afresh.
+  st.player.inCombat = false
+  now = 320
+  fire("PLAYER_SWING", 1.5, 2)
+  ok(st.ranged.autoDelay == 0, "out of combat -> 0")
+  st.player.inCombat = true
+  now = 330
+  fire("PLAYER_SWING", 1.5, 2)
+  ok(st.ranged.autoDelay == 0, "first shot of the next fight seeds again")
+  now = 332.0
+  fire("PLAYER_SWING", 1.5, 2)
+  ok(math.abs(st.ranged.autoDelay - 0.5) < 1e-9, "then measures: +0.50")
+end
+
 print(("forever_swing: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

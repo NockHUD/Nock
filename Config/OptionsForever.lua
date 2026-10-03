@@ -28,14 +28,15 @@ F.DROP = {
   "alerts.sounds.deadZone", "alerts.sounds.warnings", "alerts.sounds.weave", "alerts.sounds.other",
   -- HUD family: one HUD only, no mode switching.
   "hud.classic", "hud.fluffy", "hud.hudMode", "hud.react.hudMode", "hud.react.useLook",
-  -- React bars: no clip model (no wind-up feed, haste secret in combat), no papers.
+  -- React bars: no clip model (no wind-up feed, haste secret in combat), no
+  -- papers. The delay readout stays: Forever/SwingTimer feeds autoDelay.
   "hud.react.tabBars.grpEngine",
   -- Cooldown Grid: no consumables row (Forever/Spells.lua ROWS has no
   -- whenActive row), no Kill Command tile, and neither the action-bar glow
   -- (Modules/ActionGlow.lua) nor the weave coach loads on Forever.
   "hud.react.tabGrid.reactConsumablesAlways", "hud.react.tabGrid.reactKcProcGlow",
   "hud.react.tabGrid.reactRaptorGoGlow", "hud.react.tabGrid.kcActionBarGlow", "hud.react.tabGrid.kcHeader",
-  "hud.react.tabBars.reactShowBrackets", "hud.react.tabBars.reactShowClipTicks", "hud.react.tabBars.reactShowDelay",
+  "hud.react.tabBars.reactShowBrackets", "hud.react.tabBars.reactShowClipTicks",
   "hud.react.tabBars.reactShowGcdDivider", "hud.react.tabBars.reactShowNotation",
   -- The buff row tab lists TBC buffs (M3b). The range tab holds only the
   -- finding-ladder style, which has no feed on Forever (the three-zone
@@ -511,6 +512,13 @@ function F.QuickstartPage(root)
   return { type = "group", name = "Quickstarts", order = 3.5, args = { weaving = page } }
 end
 
+-- Rows that move to another card on Forever: path -> order. The delay
+-- readout toggle leads its own card (Bars -> Delay readout) instead of
+-- sitting in the Auto Shot card as it does on TBC.
+F.REORDER = {
+  ["hud.react.tabBars.reactShowDelay"] = 37.505,
+}
+
 function F.Apply(root)
   if type(root) ~= "table" or type(root.args) ~= "table" then return end
   local alerts = root.args.alerts
@@ -548,6 +556,10 @@ function F.Apply(root)
     end
   end
   for _, path in ipairs(F.DROP) do dropPath(root, path) end
+  for path, order in pairs(F.REORDER) do
+    local n = nodeAt(root, path)
+    if n then n.order = order end
+  end
   for path, name in pairs(F.RENAME) do
     local n = nodeAt(root, path)
     if n then

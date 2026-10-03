@@ -152,7 +152,7 @@ ok(nodeAt(opts, "hud.react.tabGrid.addId") == nil, "hud.react.tabGrid.addId gone
 
 -- Rows without a feed on Forever.
 for _, p in ipairs({
-  "hud.react.tabBars.reactShowBrackets", "hud.react.tabBars.reactShowClipTicks", "hud.react.tabBars.reactShowDelay",
+  "hud.react.tabBars.reactShowBrackets", "hud.react.tabBars.reactShowClipTicks",
   "hud.react.tabBars.reactShowGcdDivider", "hud.react.tabBars.reactShowNotation",
   "hud.react.tabSize.reactShowAutoShotCast",
   "hud.react.tabSkin.reactColorTickSteady", "hud.react.tabSkin.reactTickSteadyWidth", "hud.react.tabSkin.reactTickMultiWidth",
@@ -167,6 +167,11 @@ for _, p in ipairs({
   "hud.react.tabSize.weaveHelperEnabled", "hud.react.tabSize.weaveLegSeed", "hud.react.tabSize.weaveStartWindow", "hud.react.tabSize.reactShowWeaveStrip",
   "hud.react.tabSize.reactWeaveH", "hud.react.tabSize.weaveLegsReset",
   "hud.react.tabBars.reactDirAuto", "hud.react.tabBars.reactDirMelee",
+  -- the delay readout has a Forever feed (Forever/SwingTimer autoDelay, 2026-10-03)
+  "hud.react.tabBars.reactShowDelay", "hud.react.tabBars.delayHeader", "hud.react.tabBars.reactDelayFont",
+  "hud.react.tabBars.reactDelayFontSize", "hud.react.tabBars.reactDelayFontThick", "hud.react.tabBars.reactDelayAnchor",
+  "hud.react.tabBars.reactDelayOffsetX", "hud.react.tabBars.reactDelayOffsetY", "hud.react.tabBars.reactColorDelayGood",
+  "hud.react.tabBars.reactColorDelayLow", "hud.react.tabBars.reactColorDelayMid", "hud.react.tabBars.reactColorDelayHigh",
   "hud.react.tabSize.reactShowAutoBar", "hud.react.tabSize.reactShowMeleeBar", "hud.react.tabSize.reactShowManaBar",
   "hud.react.tabSize.reactScale", "hud.react.tabSize.reactWidth", "hud.react.tabSize.order_up_1",
   "hud.react.tabSize.reactShowCastBar", "hud.react.tabSize.castBarCard", "hud.react.tabSize.hideBlizzardCastBar", "hud.react.tabSize.reactShowGrid", "hud.react.tabSize.reactShowPetRow", "hud.react.tabSize.reactPetRowW", "hud.react.tabSize.reactPetRowH",
@@ -179,6 +184,19 @@ for _, p in ipairs({
   "profiles.stock", "profiles.sharing",
 }) do
   ok(nodeAt(opts, p) ~= nil, p .. " kept")
+end
+
+-- Delay readout card (2026-10-03): shown on Forever, and the toggle moves
+-- into it from the Auto Shot card so the card holds every readout control.
+do
+  local bars = nodeAt(opts, "hud.react.tabBars")
+  local hdr, tog, dir = bars.args.delayHeader, bars.args.reactShowDelay, bars.args.dirHeader
+  local was = Nock.Flavor.forever
+  Nock.Flavor.forever = true
+  ok(hdr and hdr.hidden and hdr.hidden() == false, "delay readout header shown on Forever")
+  Nock.Flavor.forever = was
+  ok(tog.order > hdr.order and tog.order < bars.args.reactDelayFont.order, "the toggle leads the delay readout card on Forever")
+  ok(hdr.order > bars.args.reactDirMelee.order and hdr.order > dir.order, "the card sits after Fill direction")
 end
 
 -- The Range Finder ladder (2026-09-24): the range-bar row reads as the ladder,
