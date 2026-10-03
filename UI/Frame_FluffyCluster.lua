@@ -30,6 +30,7 @@ local FLUFFY = {
   BORDER     = { 0.00, 0.00, 0.00, 1.00 },
   CAST_FILL  = { 0.40, 0.70, 1.00, 1.00 },
   SWING_FILL = { 1.00, 0.84, 0.00, 1.00 },  -- gold converge halves
+  SWING_WINDUP = { 0.85, 0.10, 0.10, 1.00 }, -- inverse mode: the wind-up phase
   TICK_STEADY = { 1.00, 0.10, 0.10, 1.00 }, -- Steady clip threshold
   TICK_MULTI  = { 1.00, 0.65, 0.10, 1.00 }, -- Multi/instant clip threshold
   TICK_WINDUP = { 0.85, 0.85, 0.85, 0.80 }, -- wind-up commit landmark
@@ -360,6 +361,9 @@ function FluffyCluster:ApplyLayout()
   local fillCol = skinColor("fluffyColorSwingFill", FLUFFY.SWING_FILL)
   swing.fillL:SetVertexColor(fillCol[1], fillCol[2], fillCol[3], fillCol[4] or 1)
   swing.fillR:SetVertexColor(fillCol[1], fillCol[2], fillCol[3], fillCol[4] or 1)
+  -- Inverse mode recolours the halves per phase (refreshSwing).
+  self._swingCool   = fillCol
+  self._swingWindupCol = skinColor("fluffyColorSwingWindup", FLUFFY.SWING_WINDUP)
   local markH = math.max(1, g.hSwing - 2)
   local function skinMark(tL, tR, key, ref)
     local c = skinColor(key, ref)
@@ -380,19 +384,31 @@ function FluffyCluster:ApplyLayout()
     end
   end
 
-  -- Fill direction (fluffyDirAuto): converge (reference) | ltr | rtl —
-  -- fillL doubles as the single directional fill, fillR only participates
-  -- in converge mode (React's exact scheme).
+  -- Fill direction (fluffyDirAuto): converge (reference) | ltr | rtl |
+  -- inverse — fillL doubles as the single directional fill, fillR only
+  -- participates in the two mirrored modes: converge grows the halves in
+  -- from the edges, inverse hangs them from the centre.
   self._dirAuto = p.fluffyDirAuto or "converge"
   swing.fillL:ClearAllPoints()
-  if self._dirAuto == "rtl" then
-    swing.fillL:SetPoint("TOPRIGHT", swing, "TOPRIGHT", -1, -1)
-    swing.fillL:SetPoint("BOTTOMRIGHT", swing, "BOTTOMRIGHT", -1, 1)
+  swing.fillR:ClearAllPoints()
+  if self._dirAuto == "inverse" then
+    swing.fillL:SetPoint("TOPRIGHT", swing, "TOP", 0, -1)
+    swing.fillL:SetPoint("BOTTOMRIGHT", swing, "BOTTOM", 0, 1)
+    swing.fillR:SetPoint("TOPLEFT", swing, "TOP", 0, -1)
+    swing.fillR:SetPoint("BOTTOMLEFT", swing, "BOTTOM", 0, 1)
   else
-    swing.fillL:SetPoint("TOPLEFT", swing, "TOPLEFT", 1, -1)
-    swing.fillL:SetPoint("BOTTOMLEFT", swing, "BOTTOMLEFT", 1, 1)
+    if self._dirAuto == "rtl" then
+      swing.fillL:SetPoint("TOPRIGHT", swing, "TOPRIGHT", -1, -1)
+      swing.fillL:SetPoint("BOTTOMRIGHT", swing, "BOTTOMRIGHT", -1, 1)
+    else
+      swing.fillL:SetPoint("TOPLEFT", swing, "TOPLEFT", 1, -1)
+      swing.fillL:SetPoint("BOTTOMLEFT", swing, "BOTTOMLEFT", 1, 1)
+    end
+    swing.fillR:SetPoint("TOPRIGHT", swing, "TOPRIGHT", -1, -1)
+    swing.fillR:SetPoint("BOTTOMRIGHT", swing, "BOTTOMRIGHT", -1, 1)
   end
-  if self._dirAuto == "converge" then
+  if self._swingInv then self._swingInv.w, self._swingInv.windup = nil, nil end
+  if self._dirAuto == "converge" or self._dirAuto == "inverse" then
     swing.fillR:Show()
   else
     swing.fillR:Hide()
@@ -515,11 +531,15 @@ local function positionSwingMarks(self, sd, steadyT, multiT, windup)
     end
   end
   local function placePair(tL, tR, T)
-    if not sd or sd <= 0 or not T or T <= 0 or T >= sd then
+    local frac
+    if sd and sd > 0 and T and T > 0 and T < sd then
+      frac = Nock.UI.AutoAxisFrac(dir, sd, T, windup)
+    end
+    if not frac then
       tL:Hide(); tR:Hide()
       return
     end
-    placeAt(tL, tR, (sd - T) / sd)
+    placeAt(tL, tR, frac)
   end
   -- The vertical marks are individually hideable: fluffyShowClipTicks owns
   -- the Steady/Multi pairs, the SHARED showWindupMark owns the commit mark.
@@ -544,9 +564,10 @@ local function positionSwingMarks(self, sd, steadyT, multiT, windup)
   if sd and sd > 0 and profile().fluffyShowBrackets == true then
     for i = 1, #list do
       local lo = list[i].lo
-      if lo and lo > 0 and lo < sd then
+      local frac = lo and lo > 0 and lo < sd and Nock.UI.AutoAxisFrac(dir, sd, sd - lo, windup)
+      if frac then
         local edge, x, mirrored, xR = Nock.UI.ReactAxisPoint(
-          lo / sd, dir, halfW, innerW, ps, devW, leftPx, rightPx)
+          frac, dir, halfW, innerW, ps, devW, leftPx, rightPx)
         if mirrored then
           if n + 2 > MAX_BRACKETS then break end
           local bL, bR = bar.brackets[n + 1], bar.brackets[n + 2]
@@ -570,7 +591,8 @@ local function positionSwingMarks(self, sd, steadyT, multiT, windup)
 end
 
 -- Auto Shot bar painter, the React converge look: p=0 at swing start (both
--- halves empty), p=1 at the fire moment (halves meet at center). Gating via
+-- halves empty), p=1 at the fire moment (halves meet at center); the inverse
+-- mode instead drains centred halves and regrows them through the wind-up. Gating via
 -- Nock.AutoSwingLive — a swing in flight always draws; expired only stays
 -- full in combat while auto is still armed (held shot); disarmed or out of
 -- combat a stale swing doesn't sit solid gold.
@@ -579,32 +601,47 @@ local function refreshSwing(self, state)
   if not bar:IsShown() then return end
   local r = state.ranged
 
-  local p01 = 0
+  local windup = Nock.AutoShotWindup()
   local h = self._swingFill
   if not h then h = {}; self._swingFill = h end
-  if Nock.AutoSwingLive() then
-    local sc = Nock.UI.SWING_CLOSE
-    p01 = Nock.UI.SwingFillProgress(h, r.swingStart, r.swingRemaining, r.swingDuration,
-                                    GetTime(), sc.hold, sc.ease, sc.catch)
-  else
-    Nock.UI.SwingFillBlank(h)
-  end
-  if not self._swingP or math.abs(p01 - self._swingP) > 0.002 then
-    if (self._dirAuto or "converge") == "converge" then
-      local w = math.max(0.01, p01 * (self._halfW or 0))
-      bar.fillL:SetWidth(w)
-      bar.fillR:SetWidth(w)
-    else
-      -- Directional single fill across the full inner width (fillR hidden).
-      bar.fillL:SetWidth(math.max(0.01, p01 * (self._innerW or 0)))
+  if self._dirAuto == "inverse" then
+    -- Centred halves: full at the shot, drained at the wind-up edge, full
+    -- again (wind-up colour) at the release. Continuous on its own, so no
+    -- close/catch-up; a blank bar is simply empty.
+    local frac, isWindup = 0, false
+    if Nock.AutoSwingLive() then
+      frac, isWindup = Nock.UI.InverseAutoPhase(r.swingRemaining, r.swingDuration, windup)
     end
-    self._swingP = p01
+    Nock.UI.SwingFillBlank(h)
+    local inv = self._swingInv
+    if not inv then inv = {}; self._swingInv = inv end
+    Nock.UI.PaintInverseAuto(bar.fillL, bar.fillR, inv, frac, isWindup, self._halfW or 0,
+                             Nock.UI.PixelScale(bar), self._swingCool, self._swingWindupCol)
+  else
+    local p01 = 0
+    if Nock.AutoSwingLive() then
+      local sc = Nock.UI.SWING_CLOSE
+      p01 = Nock.UI.SwingFillProgress(h, r.swingStart, r.swingRemaining, r.swingDuration,
+                                      GetTime(), sc.hold, sc.ease, sc.catch)
+    else
+      Nock.UI.SwingFillBlank(h)
+    end
+    if not self._swingP or math.abs(p01 - self._swingP) > 0.002 then
+      if (self._dirAuto or "converge") == "converge" then
+        local w = math.max(0.01, p01 * (self._halfW or 0))
+        bar.fillL:SetWidth(w)
+        bar.fillR:SetWidth(w)
+      else
+        -- Directional single fill across the full inner width (fillR hidden).
+        bar.fillL:SetWidth(math.max(0.01, p01 * (self._innerW or 0)))
+      end
+      self._swingP = p01
+    end
   end
 
   -- Marks reposition only when their inputs change (the bar's left edge is
   -- an input: positions snap in absolute screen space).
   local sd = r.swingDuration
-  local windup = r.windup or C.AUTO_SHOT_CAST
   local steadyT = Nock.ClipThreshold(1.5)
   local multiT  = Nock.ClipThreshold(0.5)
   local barLeft = bar:GetLeft()

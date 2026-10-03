@@ -744,7 +744,7 @@ ok(raGrid.kcHeader.order < raGrid.reactKcProcGlow.order
 onlyKeys(raBuff, { "buffHeader", "sharedNote", "reactBuffRows", "reactBuffPositional", "reactBuffFrenzyMode", "customHeader", "customNote",
   "addBuffId", "addBuffBtn" }, "react tabBuff", { "rb_en_", "rbc_" })
 onlyKeys(raSkin, { "skinHeader", "skinNote", "reactBarTexture", "reactFont", "reactFontSize", "reactFontStyle", "reactFontShadow", "reactTextOffsetY", "reactTextOffsetX", "reactCdFontSize", "reactCdWholeSeconds",
-  "reactColorAutoFill", "reactColorMeleeReady", "reactColorMeleeAuto", "reactColorMeleeOff", "reactColorManaFill", "reactColorManaTick",
+  "reactColorAutoFill", "reactColorAutoWindup", "reactColorMeleeReady", "reactColorMeleeAuto", "reactColorMeleeOff", "reactColorManaFill", "reactColorManaTick",
   "reactColorCastFill", "reactColorAutoShotFill",
   "reactColorRangeDeadzone", "reactColorRangeSweet", "reactColorRangePerfect",
   "reactColorRangeClose", "reactColorRangeResync", "reactRangeDividerWidth", "reactColorRangeDivider",
@@ -832,7 +832,7 @@ onlyKeys(faBuff, { "buffHeader", "sharedNote", "fluffyBuffRows", "reactBuffPosit
   "fluffy tabBuff", { "rb_en_", "rbc_" })
 onlyKeys(faSkin, { "skinHeader", "skinNote", "fluffyBarTexture", "fluffyFont", "fluffyFontSize",
   "fluffyCastH", "fluffySwingH", "fluffyRangedH", "fluffyMeleeH", "fluffyRangeH", "fluffyManaH",
-  "fluffyColorCastFill", "fluffyColorAutoShotFill", "fluffyColorSwingFill", "fluffyColorManaFill", "fluffyColorManaTick",
+  "fluffyColorCastFill", "fluffyColorAutoShotFill", "fluffyColorSwingFill", "fluffyColorSwingWindup", "fluffyColorManaFill", "fluffyColorManaTick",
   "fluffyColorTickSteady", "fluffyColorTickMulti", "fluffyColorTickWindup",
   "fluffyColorGcdDivider", "fluffyColorBracket",
   "fluffyColorSteady", "fluffyColorQueue", "fluffyColorQueueLive", "fluffyColorMulti",

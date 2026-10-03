@@ -6838,10 +6838,10 @@ local function buildOptionsTable()
     barsArgs.reactDirAuto = {
       type = "select",
       name = "Auto Shot bar",
-      desc = "Converge (reference): both halves close on the center at the fire moment. Left/right: a single fill across the bar; the clip ticks and eWS marks follow the fill's origin edge.",
+      desc = "Converge (reference): both halves close on the center at the fire moment. Left/right: a single fill across the bar; the clip ticks and eWS marks follow the fill's origin edge. Inverse: the bar starts full at the shot and drains to the center, then grows back out in the wind-up colour and is full again when the next shot fires.",
       order = 36,
-      values = { converge = "Converge to center (reference)", ltr = "Left to right", rtl = "Right to left" },
-      sorting = { "converge", "ltr", "rtl" },
+      values = { converge = "Converge to center (reference)", ltr = "Left to right", rtl = "Right to left", inverse = "Inverse: drain to center, then wind-up" },
+      sorting = { "converge", "ltr", "rtl", "inverse" },
       dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
       disabled = notReact,
       get = function() return Nock.db.profile.reactDirAuto or "converge" end,
@@ -7463,6 +7463,7 @@ local function buildOptionsTable()
       reactFontStyle = "OUTLINE", reactFontShadow = false, reactTextOffsetY = 0, reactTextOffsetX = 0,
       reactCdFontSize = 10, reactCdWholeSeconds = false,
       reactColorAutoFill      = { 1.00, 0.84, 0.00, 1.00 },
+      reactColorAutoWindup    = { 0.85, 0.10, 0.10, 1.00 },
       reactColorMeleeReady    = { 0.15, 0.68, 0.38, 1.00 },
       reactColorMeleeAuto     = { 0.55, 0.75, 1.00, 1.00 },
       reactColorMeleeOff      = { 1.00, 1.00, 1.00, 1.00 },
@@ -7628,6 +7629,7 @@ local function buildOptionsTable()
       }
     end
     skinArgs.reactColorAutoFill      = skinColorOpt("Auto Shot fill",     "The converging (or directional) Auto Shot fill.", 96)
+    skinArgs.reactColorAutoWindup    = skinColorOpt("Auto Shot wind-up (inverse)", "The Auto Shot bar's second phase in the Inverse fill direction: the fill growing back out from the center until the shot fires.", 96.5)
     skinArgs.reactColorMeleeReady    = skinColorOpt("Melee: Raptor ready", "Melee fill while Raptor Strike is off cooldown.", 97)
     skinArgs.reactColorMeleeAuto     = skinColorOpt("Melee: auto-only",    "Melee fill while Raptor Strike is on cooldown.", 98)
     -- Forever only (dual wield): built on both flavours, hidden on TBC.
@@ -7918,10 +7920,10 @@ local function buildOptionsTable()
     fBarsArgs.fluffyDirAuto = {
       type = "select",
       name = "Auto Shot bar",
-      desc = "Converge (reference): both halves close on the center at the fire moment. Left/right: a single fill across the bar; the clip ticks and eWS marks follow the fill's origin edge.",
+      desc = "Converge (reference): both halves close on the center at the fire moment. Left/right: a single fill across the bar; the clip ticks and eWS marks follow the fill's origin edge. Inverse: the bar starts full at the shot and drains to the center, then grows back out in the wind-up colour and is full again when the next shot fires.",
       order = 21,
-      values = { converge = "Converge to center (reference)", ltr = "Left to right", rtl = "Right to left" },
-      sorting = { "converge", "ltr", "rtl" },
+      values = { converge = "Converge to center (reference)", ltr = "Left to right", rtl = "Right to left", inverse = "Inverse: drain to center, then wind-up" },
+      sorting = { "converge", "ltr", "rtl", "inverse" },
       dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
       disabled = notFluffy,
       get = function() return Nock.db.profile.fluffyDirAuto or "converge" end,
@@ -8170,6 +8172,7 @@ local function buildOptionsTable()
       fluffyColorCastFill   = { 0.40, 0.70, 1.00, 1.00 },
       fluffyColorAutoShotFill = { 0.40, 0.70, 1.00, 1.00 },
       fluffyColorSwingFill  = { 1.00, 0.84, 0.00, 1.00 },
+      fluffyColorSwingWindup = { 0.85, 0.10, 0.10, 1.00 },
       fluffyColorTickSteady = { 1.00, 0.10, 0.10, 1.00 },
       fluffyColorTickMulti  = { 1.00, 0.65, 0.10, 1.00 },
       fluffyColorTickWindup = { 0.85, 0.85, 0.85, 0.80 },
@@ -8253,6 +8256,7 @@ local function buildOptionsTable()
     fSkinArgs.fluffyColorCastFill   = fSkinColor("Cast fill", nil, 31)
     fSkinArgs.fluffyColorAutoShotFill = fSkinColor("Cast: Auto Shot wind-up fill", "Cast bar fill while it shows the Auto Shot wind-up instead of a cast. Defaults to the cast fill.", 31.5)
     fSkinArgs.fluffyColorSwingFill  = fSkinColor("Auto Shot fill", "The converging gold halves.", 32)
+    fSkinArgs.fluffyColorSwingWindup = fSkinColor("Auto Shot wind-up (inverse)", "The Auto Shot bar's second phase in the Inverse fill direction: the fill growing back out from the center until the shot fires.", 32.2)
     fSkinArgs.fluffyColorTickSteady = fSkinColor("Auto: Steady tick", "The tick marking where a Steady Shot cast would clip the next Auto Shot.", 32.5)
     fSkinArgs.fluffyColorTickMulti  = fSkinColor("Auto: Multi tick", "The tick marking where a Multi-Shot cast would clip the next Auto Shot.", 32.7)
     fSkinArgs.fluffyColorTickWindup = fSkinColor("Auto: wind-up mark", "The neutral landmark where the next Auto Shot commits (wind-up start).", 33)

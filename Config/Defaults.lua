@@ -826,7 +826,7 @@ Nock.Defaults = {
     reactMarkIconPos     = false,
     -- React fill directions. Auto bar's reference look is the two halves
     -- converging on the shot moment; ltr/rtl swap it for a single fill.
-    reactDirAuto         = "converge",  -- "converge" | "ltr" | "rtl"
+    reactDirAuto         = "converge",  -- "converge" | "ltr" | "rtl" | "inverse"
     reactDirMelee        = "ltr",       -- "ltr" | "rtl"
     -- React skin overrides (React HUD tab → Skin). Defaults = the reference
     -- WA look; "Reset skin" writes these values back. Colors positional
@@ -854,6 +854,7 @@ Nock.Defaults = {
     reactManaH           = 12,          -- mana bar height px
     reactCastH           = 16,          -- cast bar height px (also the icon box edge)
     reactColorAutoFill      = { 1.00, 0.84, 0.00, 1.00 },  -- gold converge halves
+    reactColorAutoWindup    = { 0.85, 0.10, 0.10, 1.00 },  -- inverse mode: the wind-up phase
     reactColorMeleeReady    = { 0.15, 0.68, 0.38, 1.00 },  -- Raptor ready (green)
     reactColorMeleeAuto     = { 0.55, 0.75, 1.00, 1.00 },  -- auto-only weave (light blue)
     reactColorMeleeOff      = { 1.00, 1.00, 1.00, 1.00 },  -- dual wield: the off hand's half of the melee bar (Forever)
@@ -934,7 +935,7 @@ Nock.Defaults = {
     fluffyShowDelay      = false,       -- the +x.xx late-shot readout (opt-in)
     fluffyShowBrackets   = false,       -- eWS rotation-bracket marks (opt-in)
     fluffyShowGcdDivider = false,       -- moving GCD divider (opt-in)
-    fluffyDirAuto        = "converge",  -- "converge" | "ltr" | "rtl"
+    fluffyDirAuto        = "converge",  -- "converge" | "ltr" | "rtl" | "inverse"
     fluffyBuffRows       = true,        -- the procs row (ReactBuffs' fluffy host)
     fluffyBuffRowPos     = false,       -- false = weld above the cluster; else saved point
     fluffyCdKeys         = false,       -- false = seeded row {KC,Arc,MS,Raptor,Spec,RF}
@@ -954,6 +955,7 @@ Nock.Defaults = {
     fluffyColorCastFill   = { 0.40, 0.70, 1.00, 1.00 },
     fluffyColorAutoShotFill = { 0.40, 0.70, 1.00, 1.00 }, -- the Auto Shot wind-up on the cast bar
     fluffyColorSwingFill  = { 1.00, 0.84, 0.00, 1.00 },
+    fluffyColorSwingWindup = { 0.85, 0.10, 0.10, 1.00 },  -- inverse mode: the wind-up phase
     fluffyColorTickSteady = { 1.00, 0.10, 0.10, 1.00 },
     fluffyColorTickMulti  = { 1.00, 0.65, 0.10, 1.00 },
     fluffyColorTickWindup = { 0.85, 0.85, 0.85, 0.80 },

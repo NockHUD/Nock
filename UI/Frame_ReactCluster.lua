@@ -32,6 +32,7 @@ local REACT = {
   BAR_BG       = { 0.08, 0.08, 0.08, 0.90 },
   BORDER       = { 0.00, 0.00, 0.00, 1.00 },
   AUTO_FILL    = { 1.00, 0.84, 0.00, 1.00 },  -- gold converge halves
+  AUTO_WINDUP  = { 0.85, 0.10, 0.10, 1.00 },  -- inverse mode: the wind-up phase
   TICK_STEADY  = { 1.00, 0.10, 0.10, 1.00 },  -- Steady clip threshold
   TICK_MULTI   = { 1.00, 0.65, 0.10, 1.00 },  -- Multi/instant clip threshold
   TICK_WINDUP  = { 0.85, 0.85, 0.85, 0.80 },  -- Auto Shot wind-up start (commit point)
@@ -659,6 +660,9 @@ function ReactCluster:ApplyLayout()
   local cAuto = skinColor("reactColorAutoFill", REACT.AUTO_FILL)
   auto.fillL:SetVertexColor(cAuto[1], cAuto[2], cAuto[3], cAuto[4] or 1)
   auto.fillR:SetVertexColor(cAuto[1], cAuto[2], cAuto[3], cAuto[4] or 1)
+  -- Inverse mode recolours the halves per phase (RefreshAuto).
+  self._autoCool      = cAuto
+  self._autoWindupCol = skinColor("reactColorAutoWindup", REACT.AUTO_WINDUP)
   local cMana = skinColor("reactColorManaFill", REACT.MANA_FILL)
   self.mana.fill:SetVertexColor(cMana[1], cMana[2], cMana[3], cMana[4] or 1)
   if self.mana.sink then
@@ -670,12 +674,24 @@ function ReactCluster:ApplyLayout()
   self.mana.spark:SetHeight(hManaIn)
   self._lastManaSparkX = nil
 
-  -- Fill directions (React HUD tab). Auto: converge (reference) | ltr | rtl —
-  -- fillL doubles as the single directional fill, fillR only participates in
-  -- converge mode. Melee: ltr | rtl.
+  -- Fill directions (React HUD tab). Auto: converge (reference) | ltr | rtl |
+  -- inverse — fillL doubles as the single directional fill, fillR only
+  -- participates in the two mirrored modes: converge grows the halves in from
+  -- the edges, inverse hangs them from the centre (the inner width is an even
+  -- device-pixel count, so the centre is a pixel boundary). Melee: ltr | rtl.
   self._dirAuto = p.reactDirAuto or "converge"
-  insetFill(auto.fillL, auto, self._dirAuto == "rtl" and "right" or "left")
-  if self._dirAuto == "converge" then
+  if self._dirAuto == "inverse" then
+    auto.fillL:ClearAllPoints()
+    auto.fillL:SetPoint("TOPRIGHT", auto, "TOP", 0, -e)
+    auto.fillL:SetPoint("BOTTOMRIGHT", auto, "BOTTOM", 0, e)
+    auto.fillR:ClearAllPoints()
+    auto.fillR:SetPoint("TOPLEFT", auto, "TOP", 0, -e)
+    auto.fillR:SetPoint("BOTTOMLEFT", auto, "BOTTOM", 0, e)
+  else
+    insetFill(auto.fillL, auto, self._dirAuto == "rtl" and "right" or "left")
+  end
+  if self._autoInv then self._autoInv.w, self._autoInv.windup = nil, nil end
+  if self._dirAuto == "converge" or self._dirAuto == "inverse" then
     auto.fillR:Show()
   else
     auto.fillR:Hide()
@@ -744,8 +760,14 @@ function ReactCluster:PlaceMarkPair(tL, tR, sd, T, wKey)
   -- missing mark reads as "no clip risk". Mirrors Frame_SwingTimers:place.
   if T > sd then T = sd end
   -- Directional (ltr/rtl) modes project onto the FULL inner width from the
-  -- fill's origin edge; converge keeps the reference mirrored pairs.
+  -- fill's origin edge; converge keeps the reference mirrored pairs. Inverse
+  -- has no place for a threshold inside the wind-up (nil): no mark.
   local dir = self._dirAuto or "converge"
+  local frac = Nock.UI.AutoAxisFrac(dir, sd, T, Nock.AutoShotWindup())
+  if not frac then
+    tL:Hide(); tR:Hide()
+    return
+  end
   local ps  = self._pixelScale
   local devW = self._markDevW or {}
   -- The bar's edges in PHYSICAL pixels: the pixel grid lives in absolute
@@ -758,7 +780,7 @@ function ReactCluster:PlaceMarkPair(tL, tR, sd, T, wKey)
   -- Shared projection (Nock.UI.ReactAxisPoint) — same one the GCD divider
   -- places through, so the two can't drift apart.
   local edge, x, mirrored, xR =
-    Nock.UI.ReactAxisPoint((sd - T) / sd, dir, self._halfW or 0, self._innerW or 0,
+    Nock.UI.ReactAxisPoint(frac, dir, self._halfW or 0, self._innerW or 0,
                            ps, devW[wKey], leftPx, rightPx, self._edge)
   tL:ClearAllPoints(); tL:SetPoint("CENTER", auto, edge, x, 0); tL:Show()
   if mirrored then
@@ -807,9 +829,10 @@ function ReactCluster:PositionAutoMarks(sd, steadyT, multiT, windup)
   if sd > 0 and profile().reactShowBrackets == true then
     for i = 1, #list do
       local lo = list[i].lo
-      if lo and lo > 0 and lo < sd then
+      local frac = lo and lo > 0 and lo < sd and Nock.UI.AutoAxisFrac(dir, sd, sd - lo, Nock.AutoShotWindup())
+      if frac then
         local edge, x, mirrored, xR =
-          Nock.UI.ReactAxisPoint(lo / sd, dir, halfW, innerW, ps, devW.reactBracketWidth, leftPx, rightPx, self._edge)
+          Nock.UI.ReactAxisPoint(frac, dir, halfW, innerW, ps, devW.reactBracketWidth, leftPx, rightPx, self._edge)
         if mirrored then
           if n + 2 > MAX_BRACKETS then break end
           local bL = auto.brackets[n + 1]
@@ -907,47 +930,62 @@ function ReactCluster:RefreshAuto(state)
   -- flight always draws; expired only stays full in combat while auto is still
   -- armed (held shot). Disarmed (melee cancels auto-repeat) or out of combat,
   -- a stale swing doesn't sit fully filled (solid gold).
-  local p01 = 0
   local h = self._autoFill
   if not h then h = {}; self._autoFill = h end
-  if Nock.AutoSwingLive() then
-    p01 = Nock.UI.SwingFillProgress(h, r.swingStart, r.swingRemaining, r.swingDuration,
-                                    GetTime(), HOLD_SEC, EASE_SEC, CATCH_SEC)
-  else
-    -- Blank bar (auto-repeat off, target out of range): the next live cycle
-    -- is a fresh start, not a shot to close.
-    Nock.UI.SwingFillBlank(h)
-  end
-  -- Fill widths in whole device pixels (Nock.UI.DeviceRound): the moving edge
-  -- never sits between two columns, and a full bar's halves meet exactly.
-  -- Diffed on the rounded width, so SetWidth runs once per pixel crossed.
-  local span = (self._dirAuto == "converge") and (self._halfW or 0) or (self._innerW or 0)
-  local fw = Nock.UI.DeviceRound(p01 * span, ps)
-  if fw ~= self._lastAutoW then
-    -- Forever diagnostic (/nock probe "auto bar cycles"): at each reset note
-    -- what the previous cycle ended on -- bar and fill widths in device
-    -- pixels, the peak fill and how long the fill sat at its final width.
-    if Nock.Flavor and Nock.Flavor.forever and self._lastAutoW and self._lastAutoW > 0 and fw < self._lastAutoW then
-      local log = self._cycleLog
-      if not log then log = {}; self._cycleLog = log end
-      local now = GetTime()
-      log[#log + 1] = {
-        barPx  = ps and math.floor(auto:GetWidth() * ps + 0.5) or -1,
-        fillPx = ps and math.floor(self._lastAutoW * ps + 0.5) or -1,
-        peakP  = self._lastAutoP or 0,
-        held   = self._lastAutoAt and (now - self._lastAutoAt) or 0,
-        halves = self._dirAuto == "converge",
-      }
-      if #log > 12 then table.remove(log, 1) end
+  if self._dirAuto == "inverse" then
+    -- Centred halves: full at the shot, drained at the wind-up edge, full
+    -- again (wind-up colour) at the release. Continuous on its own, so no
+    -- close/catch-up; a blank bar is simply empty.
+    local frac, isWindup = 0, false
+    if Nock.AutoSwingLive() then
+      frac, isWindup = Nock.UI.InverseAutoPhase(r.swingRemaining, r.swingDuration, Nock.AutoShotWindup())
     end
-    -- Remember the ROUNDED width (0 when empty); the 0.01 floor is only for
-    -- SetWidth, where 0 would let the texture take its own size.
-    self._lastAutoW = fw
-    self._lastAutoP = p01
-    self._lastAutoAt = GetTime()
-    fw = math.max(0.01, fw)
-    auto.fillL:SetWidth(fw)
-    if self._dirAuto == "converge" then auto.fillR:SetWidth(fw) end
+    Nock.UI.SwingFillBlank(h)
+    local inv = self._autoInv
+    if not inv then inv = {}; self._autoInv = inv end
+    Nock.UI.PaintInverseAuto(auto.fillL, auto.fillR, inv, frac, isWindup, self._halfW or 0,
+                             ps, self._autoCool, self._autoWindupCol)
+  else
+    local p01 = 0
+    if Nock.AutoSwingLive() then
+      p01 = Nock.UI.SwingFillProgress(h, r.swingStart, r.swingRemaining, r.swingDuration,
+                                      GetTime(), HOLD_SEC, EASE_SEC, CATCH_SEC)
+    else
+      -- Blank bar (auto-repeat off, target out of range): the next live cycle
+      -- is a fresh start, not a shot to close.
+      Nock.UI.SwingFillBlank(h)
+    end
+    -- Fill widths in whole device pixels (Nock.UI.DeviceRound): the moving edge
+    -- never sits between two columns, and a full bar's halves meet exactly.
+    -- Diffed on the rounded width, so SetWidth runs once per pixel crossed.
+    local span = (self._dirAuto == "converge") and (self._halfW or 0) or (self._innerW or 0)
+    local fw = Nock.UI.DeviceRound(p01 * span, ps)
+    if fw ~= self._lastAutoW then
+      -- Forever diagnostic (/nock probe "auto bar cycles"): at each reset note
+      -- what the previous cycle ended on -- bar and fill widths in device
+      -- pixels, the peak fill and how long the fill sat at its final width.
+      if Nock.Flavor and Nock.Flavor.forever and self._lastAutoW and self._lastAutoW > 0 and fw < self._lastAutoW then
+        local log = self._cycleLog
+        if not log then log = {}; self._cycleLog = log end
+        local now = GetTime()
+        log[#log + 1] = {
+          barPx  = ps and math.floor(auto:GetWidth() * ps + 0.5) or -1,
+          fillPx = ps and math.floor(self._lastAutoW * ps + 0.5) or -1,
+          peakP  = self._lastAutoP or 0,
+          held   = self._lastAutoAt and (now - self._lastAutoAt) or 0,
+          halves = self._dirAuto == "converge",
+        }
+        if #log > 12 then table.remove(log, 1) end
+      end
+      -- Remember the ROUNDED width (0 when empty); the 0.01 floor is only for
+      -- SetWidth, where 0 would let the texture take its own size.
+      self._lastAutoW = fw
+      self._lastAutoP = p01
+      self._lastAutoAt = GetTime()
+      fw = math.max(0.01, fw)
+      auto.fillL:SetWidth(fw)
+      if self._dirAuto == "converge" then auto.fillR:SetWidth(fw) end
+    end
   end
 
   -- Forever: no clip model (no wind-up feed, and the cast time behind
@@ -958,7 +996,7 @@ function ReactCluster:RefreshAuto(state)
   -- lower edge of the clip band), gated by the shared showWindupMark toggle.
   if Nock.Flavor and Nock.Flavor.forever then
     local sd = r.swingDuration
-    local qw = (profile().showWindupMark ~= false) and (r.queueWindow or 0) or 0
+    local qw = (profile().showWindupMark ~= false) and Nock.AutoShotWindup() or 0
     local barLeft = auto:GetLeft()
     if sd ~= self._markSd or qw ~= self._markWindup or barLeft ~= self._markBarLeft then
       self:PlaceMarkPair(auto.windupL, auto.windupR, sd, qw, "reactTickWindupWidth")
@@ -970,7 +1008,7 @@ function ReactCluster:RefreshAuto(state)
     -- Marks reposition only when their inputs change. Thresholds come from the
     -- shared Nock.ClipThreshold, same as the classic bar and the rotation engine.
     local sd = r.swingDuration
-    local windup = r.windup or C.AUTO_SHOT_CAST
+    local windup = Nock.AutoShotWindup()
     local steadyT = Nock.ClipThreshold(1.5)
     local multiT  = Nock.ClipThreshold(0.5)
     -- The bar's left edge is part of the mark inputs now: positions are snapped

@@ -86,6 +86,7 @@ ok(type(D.fluffyCooldownDisabled) == "table" and next(D.fluffyCooldownDisabled) 
 local COLORS = {
   fluffyColorCastFill   = { 0.40, 0.70, 1.00, 1.00 },
   fluffyColorSwingFill  = { 1.00, 0.84, 0.00, 1.00 },
+  fluffyColorSwingWindup = { 0.85, 0.10, 0.10, 1.00 },
   fluffyColorTickSteady = { 1.00, 0.10, 0.10, 1.00 },
   fluffyColorTickMulti  = { 1.00, 0.65, 0.10, 1.00 },
   fluffyColorTickWindup = { 0.85, 0.85, 0.85, 0.80 },
@@ -123,7 +124,15 @@ for k, v in pairs(Nock.Defaults.profile) do Nock.db.profile[k] = v end
 local p = Nock.db.profile
 
 Nock.parentFrame = Stub.CreateFrame("Frame", "NockHUD", UIParent)
+-- The inverse auto bar's helpers are the real ones (pure; tested on their own
+-- in inverse_auto_bar_test), the rest of Nock.UI stays stubbed.
+dofile("UI/Widgets.lua")
+local RealUI = Nock.UI
 Nock.UI = {
+  DeviceRound        = RealUI.DeviceRound,
+  InverseAutoPhase   = RealUI.InverseAutoPhase,
+  AutoAxisFrac       = RealUI.AutoAxisFrac,
+  PaintInverseAuto   = RealUI.PaintInverseAuto,
   ApplyBackdrop      = function() end,
   PixelScale         = function() return 1 end,
   DeviceWidth        = function(n) return n end,
@@ -143,7 +152,7 @@ Nock.UI = {
   end,
   ReactAxisPoint     = function(frac, dir, halfW, innerW)
     if frac < 0 then frac = 0 elseif frac > 1 then frac = 1 end
-    if dir == "converge" then
+    if dir == "converge" or dir == "inverse" then
       local d = 1 + frac * (halfW or 0)
       return "LEFT", d, true, d
     end
@@ -381,9 +390,54 @@ FC:ApplyLayout()
 FC:Refresh(Nock.state)
 ok(math.abs(FC.swing.fillL._w - 0.5 * 318) < 0.01, "auto: ltr single fill spans innerW")
 ok(FC.swing.fillR._shown == false, "auto: ltr hides the mirrored half")
+
+-- Fill direction: inverse = two centred halves that drain to the middle over
+-- the cooldown, then regrow in the wind-up colour (sd 2.0, wind-up 0.4).
+p.fluffyDirAuto = "inverse"
+FC:ApplyLayout()
+Nock.state.ranged.swingRemaining = 1.2
+FC:Refresh(Nock.state)
+ok(FC.swing.fillR._shown == true, "auto inverse: both halves drawn")
+ok(FC.swing.fillL._point[1] == "BOTTOMRIGHT" and FC.swing.fillL._point[3] == "BOTTOM"
+   and FC.swing.fillR._point[1] == "BOTTOMLEFT" and FC.swing.fillR._point[3] == "BOTTOM",
+   "auto inverse: the halves hang from the centre")
+ok(math.abs(FC.swing.fillL._w - 0.5 * 159) <= 0.5 and FC.swing.fillL._w == FC.swing.fillR._w,
+   "auto inverse: halfway through the cooldown = half extent")
+ok(eqColor(FC.swing.fillL._color, p.fluffyColorSwingFill), "auto inverse: cooldown in the Auto Shot fill colour")
+ok(FC.swing.windupL._shown == false and FC.swing.windupR._shown == false,
+   "auto inverse: no wind-up mark (it would sit on the centre)")
+do
+  local sT2 = Nock.ClipThreshold(1.5)
+  local f = RealUI.AutoAxisFrac("inverse", 2.0, sT2, 0.4)
+  if f and sT2 < 2.0 then
+    ok(FC.swing.steadyL._shown == true and math.abs(FC.swing.steadyL._point[4] - (1 + f * 159)) < 0.01,
+       "auto inverse: Steady tick where the draining edge is at the threshold")
+  else
+    ok(FC.swing.steadyL._shown == false, "auto inverse: Steady tick hidden (no place on the axis)")
+  end
+end
+Nock.state.ranged.swingRemaining = 0.2
+FC:Refresh(Nock.state)
+ok(math.abs(FC.swing.fillL._w - 0.5 * 159) <= 0.5, "auto inverse: halfway through the wind-up = half extent")
+ok(eqColor(FC.swing.fillL._color, p.fluffyColorSwingWindup) and eqColor(FC.swing.fillR._color, p.fluffyColorSwingWindup),
+   "auto inverse: wind-up in its own colour")
+Nock.state.ranged.swingRemaining = -0.1
+FC:Refresh(Nock.state)
+ok(FC.swing.fillL._w == 159, "auto inverse: held shot stays full")
+Nock.state.ranged.swingStart = 0
+FC:Refresh(Nock.state)
+ok(FC.swing.fillL._w == 0.01 and FC.swing.fillR._w == 0.01, "auto inverse: no live swing -> empty")
+Nock.state.ranged.swingStart = 999
+Nock.state.ranged.swingRemaining = 1.0
+
 p.fluffyDirAuto = "converge"
 FC:ApplyLayout()
 FC:Refresh(Nock.state)
+ok(FC.swing.fillL._point[1] == "BOTTOMLEFT" and FC.swing.fillL._point[3] == "BOTTOMLEFT",
+   "auto: back to converge re-anchors the halves to the edges")
+ok(eqColor(FC.swing.fillL._color, p.fluffyColorSwingFill), "auto: ...and restores the fill colour")
+ok(math.abs(FC.swing.fillL._w - 0.5 * 159) < 0.01, "auto: ...and the converge fill")
+ok(FC.swing.windupL._shown == true, "auto: ...and the wind-up mark")
 
 -- ---------------------------------------------------------------------------
 -- §5 Range sub-bar painter — the shared view branch both existing range views

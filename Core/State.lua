@@ -130,6 +130,11 @@ Nock.state = {
     -- cycle is queued behind the shot instead of clipping it; the auto bar
     -- marks that edge (Forever/SwingTimer keeps it current).
     queueWindow    = 0.4,
+    -- Forever: true once the client has an Auto Shot wind-up and
+    -- Forever/SwingTimer feeds windupRatio from it. Until then `windup` above
+    -- is only the TBC seed there; views read Nock.AutoShotWindup(), which
+    -- falls back to queueWindow.
+    windupMeasured = false,
   },
   melee = {
     swingStart     = 0,
@@ -706,6 +711,20 @@ end
 -- than promising a queue that might not land.
 function Nock.ClipQueueEdge()
   return Nock.state.ranged.windup or 0
+end
+
+-- The Auto Shot wind-up in seconds, as the VIEWS draw it (the inverse auto
+-- bar's second phase, the wind-up mark). TBC: the measured state.ranged.windup.
+-- Forever has no wind-up yet, so the spell-queue window stands in -- it marks
+-- the same thing, the lower edge of the clip band -- until
+-- state.ranged.windupMeasured says a real feed exists. That flag is the one
+-- switch to flip when the wind-up lands there.
+function Nock.AutoShotWindup()
+  local r = Nock.state.ranged
+  if Nock.Flavor and Nock.Flavor.forever and not r.windupMeasured then
+    return r.queueWindow or 0
+  end
+  return r.windup or (Nock.Constants and Nock.Constants.AUTO_SHOT_CAST) or 0.5
 end
 
 -- Should the auto-swing views (React auto bar, release bar always-mode) render?

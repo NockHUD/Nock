@@ -1981,9 +1981,71 @@ function Nock.UI.ReactAxisPoint(frac, dir, halfW, innerW, scale, nDevice, leftPx
   elseif dir == "rtl" then
     return "RIGHT", -snapR(inset + frac * (innerW or 0)), false
   end
-  -- converge (the reference look) and any unrecognised value.
+  -- converge (the reference look), inverse (the same mirrored axis; its
+  -- callers pick the fraction through Nock.UI.AutoAxisFrac) and any
+  -- unrecognised value.
   local d = inset + frac * (halfW or 0)
   return "LEFT", snap(d, scale, nDevice, leftPx), true, snapR(d)
+end
+
+-- ---------------------------------------------------------------------------
+-- The "inverse" auto bar: a CENTRED fill that starts full at the shot, drains
+-- to the middle over the cooldown, then regrows in the wind-up colour and is
+-- full again at the release. Both phases end where the next one starts, so
+-- this mode needs none of SwingFillProgress's close/catch-up.
+-- ---------------------------------------------------------------------------
+
+-- (frac, isWindup): the fill's extent as a fraction of the HALF width, and
+-- which phase it is in. `windup` nil/0 leaves one phase: a plain drain.
+function Nock.UI.InverseAutoPhase(remaining, duration, windup)
+  local sd = tonumber(duration) or 0
+  if sd <= 0 then return 0, false end
+  local rem = tonumber(remaining) or 0
+  local w = tonumber(windup) or 0
+  if w < 0 then w = 0 elseif w > sd then w = sd end
+  if w > 0 and rem <= w then
+    if rem <= 0 then return 1, true end
+    return 1 - rem / w, true
+  end
+  if rem >= sd then return 1, false end
+  if rem <= w then return 0, false end
+  return (rem - w) / (sd - w), false
+end
+
+-- The fraction to hand ReactAxisPoint for a threshold `T` seconds before the
+-- release on a cycle of `sd` seconds. Every mark on the auto bar goes through
+-- here so the marks and the fill cannot disagree about the axis. Inverse puts
+-- the mark where the draining edge is at remaining == T; a threshold inside
+-- the wind-up has no place on that axis, and nil says so.
+function Nock.UI.AutoAxisFrac(dir, sd, T, windup)
+  sd, T = tonumber(sd) or 0, tonumber(T) or 0
+  if sd <= 0 then return nil end
+  if dir == "inverse" then
+    local w = tonumber(windup) or 0
+    if w < 0 then w = 0 end
+    if T <= w or w >= sd then return nil end
+    return (sd - T) / (sd - w)
+  end
+  return (sd - T) / sd
+end
+
+-- Paint the two centred halves. `cache` is the bar's own table (wipe .w and
+-- .windup to force a repaint); widths are whole device pixels and both setters
+-- run only when the pixel width or the phase actually changed.
+function Nock.UI.PaintInverseAuto(fillL, fillR, cache, frac, isWindup, halfW, scale, coolColor, windupColor)
+  local fw = Nock.UI.DeviceRound((frac or 0) * (halfW or 0), scale)
+  if fw ~= cache.w then
+    cache.w = fw
+    local w = math.max(0.01, fw)
+    fillL:SetWidth(w)
+    fillR:SetWidth(w)
+  end
+  if isWindup ~= cache.windup then
+    cache.windup = isWindup
+    local c = isWindup and windupColor or coolColor
+    fillL:SetVertexColor(c[1], c[2], c[3], c[4] or 1)
+    fillR:SetVertexColor(c[1], c[2], c[3], c[4] or 1)
+  end
 end
 
 -- GCD progress for the divider, on the same 0-at-the-start / 1-at-the-end
