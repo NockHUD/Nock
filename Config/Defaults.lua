@@ -516,7 +516,7 @@ Nock.Defaults = {
     weaponStoneExpiringSec   = 120,   -- blue "expiring" warning fires below this many seconds (countdown shown on icon)
 
     -- Mana bar (thin row above the range finder). manaBarText: what the
-    -- centered label shows — "none" | "percent" | "value" | "both".
+    -- centered label shows — "none" | "percent" | "percentPlain" | "value" | "both".
     manaBarHeight = 14,
     manaBarColor  = { 0.20, 0.40, 0.95, 1.00 },
     manaBarText   = "percent",
@@ -751,7 +751,7 @@ Nock.Defaults = {
     reactWeaveH          = 18,          -- strip height px (icons square at it)
     reactShowRangeBar    = true,        -- slide range finder
     reactShowManaBar     = true,        -- thin mana bar
-    reactManaText        = "percent",   -- mana bar center text: "none" | "percent" | "value" | "both"
+    reactManaText        = "percent",   -- mana bar center text: "none" | "percent" | "percentPlain" | "value" | "both"
     reactManaTick        = false,       -- mana tick / five-second-rule spark on the mana bar (opt-in)
     reactManaTickDirCombat = "ltr",     -- spark travel in combat: "ltr" | "rtl"
     reactManaTickDirOoc    = "rtl",     -- ... out of combat
@@ -918,7 +918,7 @@ Nock.Defaults = {
     fluffyShowMelee      = true,
     fluffyShowRange      = true,        -- above the mana bar
     fluffyShowMana       = true,        -- thin mana bar, bottom of the stack, above the CD row
-    fluffyManaText       = "percent",   -- mana bar center text: "none" | "percent" | "value" | "both"
+    fluffyManaText       = "percent",   -- mana bar center text: "none" | "percent" | "percentPlain" | "value" | "both"
     fluffyManaTick       = false,       -- mana tick / five-second-rule spark on the mana bar (opt-in)
     fluffyManaTickDirCombat = "ltr",    -- spark travel in combat: "ltr" | "rtl"
     fluffyManaTickDirOoc    = "rtl",    -- ... out of combat

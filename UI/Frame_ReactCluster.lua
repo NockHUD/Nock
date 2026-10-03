@@ -1446,7 +1446,7 @@ function ReactCluster:RefreshMana(state)
         -- UnitPowerPercent answers a 0..1 fraction; a secret cannot be
         -- multiplied by Nock, so the client evaluates a 0..100 curve instead.
         local pctRaw = UnitPowerPercent and UnitPowerPercent("player", 0, false, self:PercentCurve())
-        if pctRaw ~= nil then mana.text:SetFormattedText("%d%%", pctRaw) else mana.text:SetText("") end
+        if pctRaw ~= nil then mana.text:SetFormattedText(mode == "percentPlain" and "%d" or "%d%%", pctRaw) else mana.text:SetText("") end
       end
     end
     -- Tick spark (reactManaTick): the engine's timed bar, driven by

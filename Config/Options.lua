@@ -5741,6 +5741,7 @@ local function buildOptionsTable()
             values = {
               none    = "None",
               percent = "Percent (e.g. 73%)",
+              percentPlain = "Percent, no % sign (e.g. 73)",
               value   = "Value (e.g. 4820)",
               both    = "Value / Max (e.g. 4820 / 6600)",
             },
@@ -6429,10 +6430,10 @@ local function buildOptionsTable()
     sizeArgs.reactManaText = {
       type = "select",
       name = "Mana bar text",
-      desc = "Center text on the React mana bar: percent (reference look), the actual mana value, both, or nothing. (The classic mana bar has its own setting under Classic HUD → Mana Bar.)",
+      desc = "Center text on the React mana bar: percent (reference look, with or without the % sign), the actual mana value, both, or nothing. (The classic mana bar has its own setting under Classic HUD → Mana Bar.)",
       order = 24.5,
-      values = { none = "None", percent = "Percent", value = "Value", both = "Value / Max" },
-      sorting = { "percent", "value", "both", "none" },
+      values = { none = "None", percent = "Percent", percentPlain = "Percent, no % sign", value = "Value", both = "Value / Max" },
+      sorting = { "percent", "percentPlain", "value", "both", "none" },
       dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
       disabled = function()
         return notReact() or Nock.db.profile.reactShowManaBar == false
@@ -7803,10 +7804,10 @@ local function buildOptionsTable()
     fSizeArgs.fluffyManaText = {
       type = "select",
       name = "Mana bar text",
-      desc = "Center text on the mana bar: percent, the actual mana value, both, or nothing.",
+      desc = "Center text on the mana bar: percent (with or without the % sign), the actual mana value, both, or nothing.",
       order = 27.5,
-      values = { none = "None", percent = "Percent", value = "Value", both = "Value / Max" },
-      sorting = { "percent", "value", "both", "none" },
+      values = { none = "None", percent = "Percent", percentPlain = "Percent, no % sign", value = "Value", both = "Value / Max" },
+      sorting = { "percent", "percentPlain", "value", "both", "none" },
       dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
       disabled = function()
         return notFluffy() or Nock.db.profile.fluffyShowMana == false

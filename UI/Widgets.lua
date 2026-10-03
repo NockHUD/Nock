@@ -1141,6 +1141,7 @@ function Nock.UI.FormatManaText(mode, cur, max, pct)
   if mode == "none"  then return "" end
   if mode == "value" then return string.format("%d", cur) end
   if mode == "both"  then return string.format("%d / %d", cur, max) end
+  if mode == "percentPlain" then return string.format("%d", pct) end
   return string.format("%d%%", pct)   -- "percent" (default)
 end
 
