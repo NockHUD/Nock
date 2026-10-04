@@ -276,6 +276,11 @@ ok(raSize.reactCornerIconSize and raSize.reactCornerIconSize.type == "range"
 ok(raSize.reactCornerIconX and raSize.reactCornerIconX.max == 120
    and raSize.reactCornerIconY and raSize.reactCornerIconY.max == 120,
    "react: corner offset sliders span up to 120px")
+ok(raSize.reactCornerStyle and raSize.reactCornerStyle.type == "select" and raSize.reactCornerStyle.dialogControl ~= nil
+   and raSize.reactCornerStyle.get() == "nock"
+   and raSize.reactCornerStyle.order > raSize.reactShowMarkIcon.order
+   and raSize.reactCornerStyle.order < raSize.reactCornerIconSize.order,
+   "react: corner style select (Nock default, LSM leak guard) between the toggles and the geometry")
 ok(raSize.reactCornerIconSize.order > raSize.reactShowMarkIcon.order,
    "react: corner geometry sits under the corner toggles in Size & Elements")
 -- Forever's own Buff Row tab (tabProcs): the row's switch and size, the
@@ -652,7 +657,7 @@ onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "
   "weaveHelperEnabled", "reactShowWeaveStrip", "weaveLegSeed", "weaveStartWindow", "reactWeaveH", "weaveLegsReset",
   "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
   "reactShowCastBar", "reactShowAutoShotCast", "hideBlizzardCastBar", "reactShowGrid", "reactShowPetRow", "reactPetRowW", "reactShowAspectIcon", "reactShowMarkIcon",
-  "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY",
+  "reactCornerStyle", "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY",
   "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH", "reactPetRowH",
   "orderHeader", "order_reset", "castBarNonCombatCasts" }, "react tabSize",
   { "order_lbl_", "order_up_", "order_dn_" })

@@ -6503,7 +6503,7 @@ local function buildOptionsTable()
       27)
     sizeArgs.reactShowMarkIcon = reactOptInToggle("reactShowMarkIcon",
       "Hunter's Mark corner icon",
-      "Show Hunter's Mark and its remaining time above the cluster's top-right corner, greyed when your target isn't marked. Off by default. A mark applied by another hunter counts.",
+      "Show Hunter's Mark and its remaining time above the cluster's top-right corner, greyed when your target isn't marked (the Redtuzk style below hides it instead). Off by default. A mark applied by another hunter counts.",
       28)
     -- Corner geometry: beside the corner switches, so Simple mode reaches it.
     local function cornerGeo(key, name, desc, order, minV, maxV)
@@ -6515,11 +6515,24 @@ local function buildOptionsTable()
         set = function(_, v) visualsSet(_, key, v) end,
       }
     end
+    sizeArgs.reactCornerStyle = {
+      type = "select", name = "Corner icon style", order = 28.05,
+      desc = "Nock: square icons on the cluster's top corners, Hunter's Mark greyed while your target isn't marked. Redtuzk: wide rectangles centred above the cluster; the aspect sits in the middle and Hunter's Mark joins it only while it is on your target, the pair growing out from the centre. Each style remembers its own dragged positions. Thanks to redtuzk for the idea.",
+      values = { nock = "Nock (corner squares)", redtuzk = "Redtuzk (centred rectangles)" },
+      sorting = { "nock", "redtuzk" },
+      dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
+      disabled = notReact,
+      get = function() return Nock.db.profile.reactCornerStyle == "redtuzk" and "redtuzk" or "nock" end,
+      set = function(_, v) visualsSet(_, "reactCornerStyle", v) end,
+    }
     sizeArgs.reactCornerIconSize = cornerGeo("reactCornerIconSize",
-      "Corner icon size", "Edge length of both corner icons, in pixels.", 28.1, 20, 48)
+      "Corner icon size", "Edge length of both corner icons, in pixels. The Redtuzk rectangles are this wide and half as tall.", 28.1, 20, 48)
     sizeArgs.reactCornerIconX = cornerGeo("reactCornerIconX",
       "Corner icon distance out",
-      "Gap between the cluster's side edge and the near edge of each corner icon. Mirrored: the aspect icon moves left, the mark icon right.", 28.2, 0, 120)
+      "Gap between the cluster's side edge and the near edge of each corner icon. Mirrored: the aspect icon moves left, the mark icon right. Not used by the Redtuzk style, which is centred.", 28.2, 0, 120)
+    sizeArgs.reactCornerIconX.disabled = function()
+      return notReact() or Nock.db.profile.reactCornerStyle == "redtuzk"
+    end
     sizeArgs.reactCornerIconY = cornerGeo("reactCornerIconY",
       "Corner icon distance up",
       "Gap between the cluster's top edge and the bottom of each corner icon. The default clears the buff row.", 28.3, 0, 120)

@@ -12,6 +12,11 @@
 -- already nags about a missing Hawk, in combat only and at center screen, so
 -- duplicating it here would be noise. Both icons ship OFF and the wizard marks
 -- them NOT RECOMMENDED.
+--
+-- reactCornerStyle = "redtuzk" (after redtuzk's restyle) swaps the squares for
+-- 2:1 rectangles centred above the cluster: the aspect alone in the middle,
+-- joined by Hunter's Mark only while the target carries it, the pair growing
+-- out from the centre. No caster caption in that style.
 
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 local ReactCorners = Nock:NewModule("ReactCorners", "AceEvent-3.0")
@@ -64,6 +69,51 @@ local function num(key, ref)
   return ref
 end
 
+local function isRect()
+  return profile().reactCornerStyle == "redtuzk"
+end
+
+-- Each style keeps its own free positions, so switching back restores the
+-- other style's layout.
+local POS_KEYS = {
+  aspect = { nock = "reactAspectIconPos", redtuzk = "reactAspectRectPos" },
+  mark   = { nock = "reactMarkIconPos",   redtuzk = "reactMarkRectPos" },
+}
+local function posKey(which)
+  return POS_KEYS[which][isRect() and "redtuzk" or "nock"]
+end
+
+local function storedPos(key)
+  local pos = profile()[key]
+  if type(pos) == "table" and pos.point then return pos end
+  return nil
+end
+
+-- Redtuzk rectangle: 2:1, the corner size wide and half of it tall. The icon
+-- keeps the stock horizontal crop and shows only its middle band, so it fills
+-- the box (inside the 1px border) unstretched. One reused coords table: PaintReactSlot diffs
+-- it by identity and ApplyLayout drops the slot caches on a resize.
+local RECT_RATIO, RECT_GAP = 0.5, 2
+-- Extra height over reactCornerIconY: the corner squares clear the buff row by
+-- sitting beside it, a centred rectangle has to sit above both of its lines.
+local RECT_LIFT = 30
+local rectCoords = { 0.08, 0.92, 0.08, 0.92 }
+
+function ReactCorners.RectGeometry(size)
+  local h = math.floor(size * RECT_RATIO + 0.5)
+  local half = 0.42 * (h - 2) / (size - 2)
+  rectCoords[3], rectCoords[4] = 0.5 - half, 0.5 + half
+  return size, h, rectCoords
+end
+
+-- Anchor point on the icon and X offset from the cluster's top centre: a lone
+-- icon sits centred, a pair grows out from the middle.
+function ReactCorners.RectAnchor(which, pair)
+  if not pair then return "BOTTOM", 0 end
+  if which == "aspect" then return "BOTTOMRIGHT", -RECT_GAP / 2 end
+  return "BOTTOMLEFT", RECT_GAP / 2
+end
+
 function ReactCorners:OnInitialize()
   -- Glued onto the React cluster (ReactBuffs / ReactCastBar convention):
   -- inherits reactScale, follows free-layout drags, vanishes with the cluster
@@ -79,9 +129,10 @@ function ReactCorners:OnInitialize()
   -- One reused paint item per icon -- no per-tick allocation.
   self._aspectItem = { icon = nil, exp = 0, dur = 0, label = nil, desat = false }
   self._markItem   = { icon = nil, exp = 0, dur = 0, label = nil, desat = false, sub = nil }
+  self._slots      = { aspect = self.aspect, mark = self.mark }
 
-  self:SetupMove(self.aspect, "reactAspectIconPos", "reactShowAspectIcon", "Aspect Icon")
-  self:SetupMove(self.mark,   "reactMarkIconPos",   "reactShowMarkIcon",   "Hunter's Mark Icon")
+  self:SetupMove(self.aspect, "aspect", "reactShowAspectIcon", "Aspect Icon")
+  self:SetupMove(self.mark,   "mark",   "reactShowMarkIcon",   "Hunter's Mark Icon")
 
   self:ApplyLayout()
   self:ApplyLock()
@@ -106,7 +157,7 @@ end
 -- stays cluster-relative, so no `capture` override is needed for the pad: the
 -- corner weld's own GetPoint() already reports against the cluster, which is
 -- exactly the space set()/ApplyLayout re-anchor in.
-function ReactCorners:SetupMove(slot, posKey, toggleKey, label)
+function ReactCorners:SetupMove(slot, which, toggleKey, label)
   local view = self
   slot:SetMovable(true)
   slot:SetClampedToScreen(true)
@@ -116,7 +167,7 @@ function ReactCorners:SetupMove(slot, posKey, toggleKey, label)
   slot:SetScript("OnDragStop", function(s)
     s:StopMovingOrSizing()
     local pos = view:CaptureClusterPos(s)
-    if pos then Nock.db.profile[posKey] = pos end
+    if pos then Nock.db.profile[posKey(which)] = pos end
     view:ApplyLayout()
   end)
   Nock.UI.RegisterNudgeable(slot, {
@@ -126,12 +177,12 @@ function ReactCorners:SetupMove(slot, posKey, toggleKey, label)
       local p = profile()
       return Nock.HudIsReact() and p[toggleKey] == true
     end,
-    get     = function() return Nock.db.profile[posKey] end,
+    get     = function() return Nock.db.profile[posKey(which)] end,
     set     = function(pos)
-      Nock.db.profile[posKey] = pos
+      Nock.db.profile[posKey(which)] = pos
       view:ApplyLayout()
     end,
-    -- false re-welds the mirrored corner: that IS the icon's default position.
+    -- false re-welds the default spot (mirrored corner, or the centred pair).
     default = function() return false end,
   })
 end
@@ -182,10 +233,22 @@ end
 -- values drives both icons -- unless an icon carries a free position
 -- (reactAspectIconPos / reactMarkIconPos, written by drag or nudge pad),
 -- which anchors it to the cluster on its own and leaves the mirror behind.
-local function storedPos(key)
-  local pos = profile()[key]
-  if type(pos) == "table" and pos.point then return pos end
-  return nil
+-- Redtuzk anchors: free positions first, the rest welded to the cluster's top
+-- centre. Re-run from Refresh only when `pair` flips (mark up / down).
+function ReactCorners:AnchorRect(pair)
+  local parent = self._parent
+  local y = num("reactCornerIconY", REF_Y) + RECT_LIFT
+  self._pair = pair
+  for which, slot in pairs(self._slots) do
+    slot:ClearAllPoints()
+    local pos = storedPos(posKey(which))
+    if pos then
+      slot:SetPoint(pos.point, parent, pos.relPoint, pos.x, pos.y)
+    else
+      local point, x = ReactCorners.RectAnchor(which, pair)
+      slot:SetPoint(point, parent, "TOP", x, y)
+    end
+  end
 end
 
 function ReactCorners:ApplyLayout()
@@ -193,30 +256,40 @@ function ReactCorners:ApplyLayout()
   local x    = num("reactCornerIconX",    REF_X)
   local y    = num("reactCornerIconY",    REF_Y)
   local parent = self._parent
+  local a, m = self.aspect, self.mark
 
-  Nock.UI.SetReactSlotSize(self.aspect, size)
-  self.aspect:ClearAllPoints()
-  local posA = storedPos("reactAspectIconPos")
-  if posA then
-    self.aspect:SetPoint(posA.point, parent, posA.relPoint, posA.x, posA.y)
-  else
-    self.aspect:SetPoint("BOTTOMRIGHT", parent, "TOPLEFT", -x, y)
-  end
+  Nock.UI.SetReactSlotSize(a, size)
+  Nock.UI.SetReactSlotSize(m, size)
 
-  Nock.UI.SetReactSlotSize(self.mark, size)
-  self.mark:ClearAllPoints()
-  local posM = storedPos("reactMarkIconPos")
-  if posM then
-    self.mark:SetPoint(posM.point, parent, posM.relPoint, posM.x, posM.y)
+  if isRect() then
+    local w, h = ReactCorners.RectGeometry(size)
+    a:SetSize(w, h)
+    m:SetSize(w, h)
+    -- Both centred for now; the next Refresh knows whether the mark is up.
+    self:AnchorRect(false)
+    self._pair = nil
   else
-    self.mark:SetPoint("BOTTOMLEFT", parent, "TOPRIGHT", x, y)
+    a:ClearAllPoints()
+    local posA = storedPos("reactAspectIconPos")
+    if posA then
+      a:SetPoint(posA.point, parent, posA.relPoint, posA.x, posA.y)
+    else
+      a:SetPoint("BOTTOMRIGHT", parent, "TOPLEFT", -x, y)
+    end
+
+    m:ClearAllPoints()
+    local posM = storedPos("reactMarkIconPos")
+    if posM then
+      m:SetPoint(posM.point, parent, posM.relPoint, posM.x, posM.y)
+    else
+      m:SetPoint("BOTTOMLEFT", parent, "TOPRIGHT", x, y)
+    end
   end
 
   -- A SetFont call clears nothing, so the paint caches have to be dropped by
   -- hand or the next Refresh diffs against pre-resize values and skips.
-  local a, m = self.aspect, self.mark
-  a._icon, a._desat, a._mode, a._label, a._tval, a._low = nil, nil, nil, nil, nil, nil
-  m._icon, m._desat, m._mode, m._label, m._tval, m._low = nil, nil, nil, nil, nil, nil
+  a._icon, a._desat, a._mode, a._label, a._tval, a._low, a._coords = nil, nil, nil, nil, nil, nil, nil
+  m._icon, m._desat, m._mode, m._label, m._tval, m._low, m._coords = nil, nil, nil, nil, nil, nil, nil
 end
 
 -- Slow lane (Core:Tick). Both sources are event-driven (Modules/Auras.lua) and
@@ -227,15 +300,28 @@ function ReactCorners:Refresh(state)
   local p = Nock.db and Nock.db.profile
   -- Guided wizard: the corners come with the React page, not the HUD page.
   local react = Nock.HudIsReact() and not Nock.WizardHides("react.corners")
+  local rect  = isRect()
+  local mk    = state.target.huntersMark
+  local showA = react and p.reactShowAspectIcon == true
+  -- Redtuzk: the mark exists only while it is on the target (or while
+  -- unlocked, so it can be placed with nothing targeted).
+  local showM = react and p.reactShowMarkIcon == true
+    and (not rect or mk ~= nil or not Nock.IsLockedFor("react.corners"))
+  if rect then
+    local pair = (showA and showM
+      and not storedPos(posKey("aspect")) and not storedPos(posKey("mark"))) or false
+    if pair ~= self._pair then self:AnchorRect(pair) end
+  end
 
   -- Aspect: full colour for whatever is up, desaturated Hawk when none.
   -- exp/dur are forced to 0 -- an aspect is a steady aura and a countdown on it
   -- would be noise even if the client reported one.
-  if react and p.reactShowAspectIcon == true then
+  if showA then
     local a = state.player.aspect
     local it = self._aspectItem
     it.icon  = (a and a.icon) or self:HawkIcon()
     it.desat = (a == nil)
+    it.coords = rect and rectCoords or nil
     Nock.UI.PaintReactSlot(self.aspect, it, 0)
     if not self.aspect:IsShown() then self.aspect:Show() end
   elseif self.aspect:IsShown() then
@@ -253,14 +339,14 @@ function ReactCorners:Refresh(state)
   -- out of range), NOT that nobody cast it, so the caption simply goes away and
   -- the icon reads exactly as it did before. Truncated to keep a long name from
   -- growing far past a 42px box; the countdown sits centred above it.
-  if react and p.reactShowMarkIcon == true then
-    local mk = state.target.huntersMark
+  if showM then
     local it = self._markItem
     it.icon  = (mk and mk.icon) or self:MarkIcon()
     it.exp   = (mk and mk.expirationTime) or 0
     it.dur   = (mk and mk.duration) or 0
     it.desat = (mk == nil)
-    it.sub   = mk and shortName(mk.sourceName) or nil
+    it.sub   = (not rect) and mk and shortName(mk.sourceName) or nil
+    it.coords = rect and rectCoords or nil
     Nock.UI.PaintReactSlot(self.mark, it, GetTime())
     -- Out of Hunter's Mark range (Modules/ and Forever/RangeFinder publish
     -- markOut): the grid's red range tint, so the icon says "can't cast it

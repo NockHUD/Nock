@@ -824,6 +824,12 @@ Nock.Defaults = {
     -- the pad's reset re-welds (`false` = default spot).
     reactAspectIconPos   = false,
     reactMarkIconPos     = false,
+    -- "nock" = the corner squares above; "redtuzk" = 2:1 rectangles centred
+    -- above the cluster, the mark only while it is on the target. The
+    -- rectangles keep their own free positions.
+    reactCornerStyle     = "nock",      -- "nock" | "redtuzk"
+    reactAspectRectPos   = false,
+    reactMarkRectPos     = false,
     -- React fill directions. Auto bar's reference look is the two halves
     -- converging on the shot moment; ltr/rtl swap it for a single fill.
     reactDirAuto         = "converge",  -- "converge" | "ltr" | "rtl" | "inverse"
