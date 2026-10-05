@@ -656,7 +656,7 @@ onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "
   "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview",
   "weaveHelperEnabled", "reactShowWeaveStrip", "weaveLegSeed", "weaveStartWindow", "reactWeaveH", "weaveLegsReset",
   "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
-  "reactShowCastBar", "reactShowAutoShotCast", "hideBlizzardCastBar", "reactShowGrid", "reactShowPetRow", "reactPetRowW", "reactShowAspectIcon", "reactShowMarkIcon",
+  "reactShowCastBar", "reactShowAutoShotCast", "reactCastLatency", "hideBlizzardCastBar", "reactShowGrid", "reactShowPetRow", "reactPetRowW", "reactShowAspectIcon", "reactShowMarkIcon",
   "reactCornerStyle", "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY",
   "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH", "reactPetRowH",
   "orderHeader", "order_reset", "castBarNonCombatCasts" }, "react tabSize",
@@ -750,7 +750,7 @@ onlyKeys(raBuff, { "buffHeader", "sharedNote", "reactBuffRows", "reactBuffPositi
   "addBuffId", "addBuffBtn" }, "react tabBuff", { "rb_en_", "rbc_" })
 onlyKeys(raSkin, { "skinHeader", "skinNote", "reactBarTexture", "reactFont", "reactFontSize", "reactFontStyle", "reactFontShadow", "reactTextOffsetY", "reactTextOffsetX", "reactCdFontSize", "reactCdWholeSeconds",
   "reactColorAutoFill", "reactColorAutoWindup", "reactColorMeleeReady", "reactColorMeleeAuto", "reactColorMeleeOff", "reactColorManaFill", "reactColorManaTick",
-  "reactColorCastFill", "reactColorAutoShotFill",
+  "reactColorCastFill", "reactColorCastLatency", "reactColorAutoShotFill",
   "reactColorRangeDeadzone", "reactColorRangeSweet", "reactColorRangePerfect",
   "reactColorRangeClose", "reactColorRangeResync", "reactRangeDividerWidth", "reactColorRangeDivider",
   "reactGcdDividerWidth", "reactColorGcdDivider",

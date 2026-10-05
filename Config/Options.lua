@@ -6476,6 +6476,12 @@ local function buildOptionsTable()
       "Auto Shot wind-up on cast bar",
       "Show the 0.5s Auto Shot wind-up on the React cast bar. On by default in React mode. (The classic HUD has its own switch on the General tab.)",
       25.5)
+    sizeArgs.reactCastLatency = reactOptInToggle("reactCastLatency", "Latency zone",
+      "A red zone at the end of each cast, as wide as your latency: from there a move or your next press reaches the server after the cast has landed. Sized by the latency the game reports when the cast starts; channels and the Auto Shot wind-up get none. Off by default.",
+      25.52)
+    sizeArgs.reactCastLatency.disabled = function()
+      return notReact() or Nock.db.profile.reactShowCastBar == false
+    end
     sizeArgs.castBarNonCombatCasts =
       castBarSharedArgs("(same setting as General → Cast bar)").castBarNonCombatCasts
     sizeArgs.castBarNonCombatCasts.order = 25.5
@@ -7484,6 +7490,7 @@ local function buildOptionsTable()
       reactColorManaFill      = { 0.20, 0.55, 1.00, 1.00 },
       reactColorManaTick      = { 1.00, 1.00, 1.00, 0.80 },
       reactColorCastFill      = { 0.40, 0.70, 1.00, 1.00 },
+      reactColorCastLatency   = { 1.00, 0.00, 0.00, 0.60 },
       reactColorAutoShotFill  = { 0.40, 0.70, 1.00, 1.00 },
       reactColorRangeDeadzone = { 0.68, 0.18, 0.20, 1.00 },
       reactColorRangeSweet    = { 0.85, 0.66, 0.00, 1.00 },
@@ -7652,6 +7659,7 @@ local function buildOptionsTable()
     skinArgs.reactColorManaFill      = skinColorOpt("Mana fill", nil, 99)
     skinArgs.reactColorManaTick      = skinColorOpt("Mana tick spark", "The mana tick line (Bars -> Mana tick spark).", 99.5)
     skinArgs.reactColorCastFill      = skinColorOpt("Cast fill", nil, 100)
+    skinArgs.reactColorCastLatency   = skinColorOpt("Cast: latency zone", "The latency zone at the end of a cast (Size & Elements -> Latency zone). The fill covers it as the cast runs.", 100.2)
     skinArgs.reactColorAutoShotFill  = skinColorOpt("Cast: Auto Shot wind-up fill", "Cast bar fill while it shows the Auto Shot wind-up instead of a cast. Defaults to the cast fill.", 100.5)
     -- Auto Shot bar marks. Each mark gets its own width + colour; the mirrored
     -- halves share one setting (they are one mark drawn twice). Deliberately

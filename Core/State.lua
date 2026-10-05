@@ -953,6 +953,19 @@ function Nock.CastFillKind(c)
   return "cast"
 end
 
+-- Quartz's latency zone on a cast bar: the last `latency` seconds of the
+-- cast, where a move or the next press already reaches the server after the
+-- cast has finished there. Width in the units of `trackW`, clamped to the
+-- track; 0 = draw nothing (no latency, no cast length, a channel or the Auto
+-- Shot wind-up, which is a queue window and not a cast). Pure.
+function Nock.CastLatencyWidth(c, latencySecs, trackW)
+  if not c or c.auto or c.isChannel then return 0 end
+  local span = (c.endTime or 0) - (c.startTime or 0)
+  local lat, w = tonumber(latencySecs) or 0, tonumber(trackW) or 0
+  if span <= 0 or lat <= 0 or w <= 0 then return 0 end
+  return math.min(lat / span, 1) * w
+end
+
 -- The profile colour for that kind: castKey for a cast, autoKey for the
 -- wind-up, `ref` when the chosen key is missing or not a colour table. Pure;
 -- shared by the classic, React and Fluffy cast bars so the three can't drift.

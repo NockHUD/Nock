@@ -763,7 +763,10 @@ Nock.Defaults = {
     -- React-only: the 0.5s Auto Shot wind-up on the cast bar. Classic keeps the
     -- separate opt-in showAutoShotCast (off above) — its swing timer covers it.
     reactShowAutoShotCast = true,
-    reactShowGrid        = true,        -- 3-row cooldown grid
+    -- Quartz's latency zone: the last `latency` of a cast, where a move or the
+    -- next press already reaches the server after the cast has finished there.
+    reactCastLatency     = false,       -- opt-in
+    reactShowGrid       = true,        -- 3-row cooldown grid
     reactShowPetRow      = false,       -- Forever: pet happiness lamps under the grid (opt-in)
     reactPetRowW         = 25,          -- Forever: pet lamps strip width, % of the HUD
     reactPetRowH         = 4,           -- Forever: pet lamps height px
@@ -867,6 +870,7 @@ Nock.Defaults = {
     reactColorManaFill      = { 0.20, 0.55, 1.00, 1.00 },
     reactColorManaTick      = { 1.00, 1.00, 1.00, 0.80 },  -- mana tick spark
     reactColorCastFill      = { 0.40, 0.70, 1.00, 1.00 },
+    reactColorCastLatency   = { 1.00, 0.00, 0.00, 0.60 },   -- the latency zone at the cast's end (Quartz red)
     reactColorAutoShotFill  = { 0.40, 0.70, 1.00, 1.00 },   -- the Auto Shot wind-up on the cast bar
     reactColorRangeDeadzone = { 0.68, 0.18, 0.20, 1.00 },  -- MELEE band (red)
     reactColorRangeSweet    = { 0.85, 0.66, 0.00, 1.00 },

@@ -71,5 +71,17 @@ ok(D.castBarAutoShotColor ~= D.castBarColor and D.reactColorAutoShotFill ~= D.re
    and D.fluffyColorAutoShotFill ~= D.fluffyColorCastFill,
    "defaults are separate tables (a shared table would alias the two colours)")
 
+-- §4 Latency zone (Quartz): the last `latency` of a cast, clamped to the track.
+local W = Nock.CastLatencyWidth
+local cast = { startTime = 10, endTime = 12 }
+ok(W(cast, 0.1, 200) == 10, "100 ms of a 2 s cast on a 200 px track -> 10 px")
+ok(W(cast, 5, 200) == 200, "latency longer than the cast -> the whole track")
+ok(W(cast, 0, 200) == 0 and W(cast, nil, 200) == 0, "no latency -> nothing")
+ok(W({ startTime = 10, endTime = 10 }, 0.1, 200) == 0, "zero-length cast -> nothing")
+ok(W({ startTime = 10, endTime = 12, isChannel = true }, 0.1, 200) == 0, "channel -> nothing")
+ok(W({ startTime = 10, endTime = 12, auto = true }, 0.1, 200) == 0, "Auto Shot wind-up -> nothing")
+ok(W(nil, 0.1, 200) == 0, "no record -> nothing")
+ok(D.reactCastLatency == false and eqColor(D.reactColorCastLatency, { 1, 0, 0, 0.6 }), "off by default, Quartz red")
+
 print(("castbar_fill_color_test: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

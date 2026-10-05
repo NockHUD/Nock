@@ -14,6 +14,7 @@ local REACT = {
   BAR_BG    = { 0.08, 0.08, 0.08, 0.90 },
   BORDER    = { 0.00, 0.00, 0.00, 1.00 },
   CAST_FILL = { 0.40, 0.70, 1.00, 1.00 },
+  LATENCY   = { 1.00, 0.00, 0.00, 0.60 },
   TEXT      = { 1.00, 1.00, 1.00, 1.00 },
 }
 
@@ -44,6 +45,15 @@ function ReactCastBar:OnInitialize()
   bar:SetPoint("TOPLEFT", iconF, "TOPRIGHT", -1, 0)
   bar:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", 0, 0)
   Nock.UI.ApplyBackdrop(bar, REACT.BAR_BG, REACT.BORDER)
+
+  -- Latency zone (reactCastLatency): pinned to the bar's right end, under the
+  -- fill, which covers it as the cast runs -- Quartz's look.
+  local lag = bar:CreateTexture(nil, "ARTWORK", nil, -1)
+  lag:SetTexture(WHITE8X8)
+  lag:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -1, -1)
+  lag:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -1, 1)
+  lag:Hide()
+  bar.lag = lag
 
   local fill = bar:CreateTexture(nil, "ARTWORK")
   fill:SetTexture(WHITE8X8)
@@ -100,6 +110,33 @@ function ReactCastBar:ApplyLayout()
   Nock.UI.SafeSetFont(self.bar.timeText, font, size, style)
   Nock.UI.ApplyReactTextShadow(self.bar.nameText)
   Nock.UI.ApplyReactTextShadow(self.bar.timeText)
+  local lc = p.reactColorCastLatency
+  if type(lc) ~= "table" then lc = REACT.LATENCY end
+  self.bar.lag:SetVertexColor(lc[1] or 1, lc[2] or 0, lc[3] or 0, lc[4] or 1)
+  self._lagW = nil
+end
+
+-- The zone is sized once per cast with the latency at its start (Quartz and
+-- AppelSwings do the same), and re-placed only when the device-pixel width
+-- changes.
+function ReactCastBar:PaintLatency(c, p, maxW, state)
+  local lag = self.bar.lag
+  if c.startTime ~= self._lagStart then
+    self._lagStart = c.startTime
+    self._lagSecs = ((state.network and state.network.latencyMs) or 0) / 1000
+  end
+  local w = 0
+  if p.reactCastLatency == true then
+    w = Nock.UI.DeviceRound(Nock.CastLatencyWidth(c, self._lagSecs, maxW), Nock.UI.PixelScale(self.bar))
+  end
+  if w == self._lagW then return end
+  self._lagW = w
+  if w > 0 then
+    lag:SetWidth(w)
+    lag:Show()
+  else
+    lag:Hide()
+  end
 end
 
 -- Recolour the fill when the source flips between a real cast and the Auto
@@ -147,6 +184,7 @@ function ReactCastBar:Refresh(state)
   end
   local maxW = (self.bar:GetWidth() or 2) - 2
   self.bar.fill:SetWidth(math.max(0.01, progress * maxW))
+  self:PaintLatency(c, p, maxW, state)
 
   local name = c.name or "?"
   if name ~= self._lastName then
