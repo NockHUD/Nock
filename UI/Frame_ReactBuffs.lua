@@ -328,6 +328,8 @@ function ReactBuffs:OnEnable()
   local RB = C.REACT_BUFFS
   self:RebuildImportantIds()
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "OnVisualsChanged")
+  -- The tiles are laid out in whole device pixels: re-lay on a new grid.
+  self:RegisterMessage("NOCK_PIXEL_GRID_CHANGED", function() self._lastN = nil end)
   -- Utility name-sets carry the entry's STABLE KEY as the value (not just
   -- true), so a match knows which reactBuffDisabled toggle governs it.
   self._playerNames, self._petNames, self._lotpNames = {}, {}, {}
@@ -796,11 +798,19 @@ function ReactBuffs:Refresh(state)
       local y = size + AR.LINE_GAP
       for i = 1, n do AR.AnchorTile(slots[i], self.frame, AR.TileX(i, n, pet, gap, w), y) end
     else
-      local x0 = (w - totalW) / 2
+      -- Whole device pixels with exactly one shared pixel per seam
+      -- (Nock.UI.SeamPx); a 1-unit overlap let a neighbour's icon cover the
+      -- border at UI scales off 1 px/unit.
+      local dev = Nock.UI.PixelScale(self.frame)
+      local ds = (dev and dev > 0) and dev or 1
+      local tPx = Nock.UI.SeamPx(size, ds)
+      local x0 = math.floor((w * ds - (n * tPx - (n - 1))) / 2 + 0.5)
       for i = 1, n do
         local s = slots[i]
+        s:SetSize(tPx / ds, tPx / ds)
+        Nock.UI.PixelInset(s.icon, s)
         s:ClearAllPoints()
-        s:SetPoint("BOTTOMLEFT", self.frame, "BOTTOMLEFT", x0 + (i - 1) * (size + gap), 0)
+        s:SetPoint("BOTTOMLEFT", self.frame, "BOTTOMLEFT", (x0 + (i - 1) * (tPx - 1)) / ds, 0)
       end
     end
   end

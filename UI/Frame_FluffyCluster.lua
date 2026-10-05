@@ -23,7 +23,7 @@ local FLUFFY = {
   MELEE_H  = 10,
   RANGE_H  = 12,
   MANA_H   = 12,
-  GAP      = -1,  -- bars overlap their 1px borders → one shared black seam
+  GAP      = -1,  -- bars overlap their 1px borders → one shared black seam (in DEVICE pixels, see Geometry)
   FONT     = 10,
 
   BAR_BG     = { 0.08, 0.08, 0.08, 0.90 },
@@ -260,6 +260,7 @@ function FluffyCluster:OnInitialize()
   self:ApplyLayout()
   container:Hide()  -- HUD:ApplyRowVisibility shows it in fluffy mode
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "ApplyLayout")
+  self:RegisterMessage("NOCK_PIXEL_GRID_CHANGED", "ApplyLayout")   -- device-pixel seams
 end
 
 -- Single source of truth for the cluster geometry (ReactCluster:Geometry's
@@ -288,13 +289,22 @@ function FluffyCluster:Geometry()
     mana   = skinNum("fluffyManaH",   FLUFFY.MANA_H),
   }
 
+  -- Stack in whole DEVICE pixels (Nock.UI.SeamPx): whole-pixel heights and a
+  -- shared seam of exactly one pixel, so no bar covers its neighbour's border
+  -- at any UI scale. The width is whole pixels too.
+  local dev = Nock.UI.PixelScale(self.frame)
+  local ds = (dev and dev > 0) and dev or 1
+  w = Nock.UI.SeamPx(w, ds) / ds
+  for k, v in pairs(h) do h[k] = Nock.UI.SeamPx(v, ds) / ds end
+  local seam = FLUFFY.GAP / ds
+
   local ORDER = Nock.UI.ResolveFluffyBarOrder(p.fluffyBarOrder)
   local ys = {}
   local y = 0
   for i = 1, #ORDER do
     local k = ORDER[i]
     if show[k] then
-      if y > 0 then y = y + FLUFFY.GAP end
+      if y > 0 then y = y + seam end
       ys[k] = y
       y = y + h[k]
     end

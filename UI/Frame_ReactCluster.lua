@@ -24,7 +24,8 @@ local REACT = {
   RANGE_H = 12,
   MANA_H  = 12,
   WEAVE_H = 18,  -- Forever weave strip (icons square at this height)
-  GAP     = -1,  -- bars overlap their 1px borders → one shared black seam (clamped, reference look)
+  -- (bars overlap their 1px borders → one shared black seam, the reference
+  -- look; Geometry stacks them by exactly one DEVICE pixel)
   FONT_BIG   = 9,    -- auto-bar texts
   FONT_SMALL = 9,    -- melee / range / mana texts
   FONT_STAGE = 9,    -- melee takeover word (GO IN / HOLD / BACK OUT / RELEASE): READY's size (user, 2026-09-02)
@@ -357,6 +358,7 @@ function ReactCluster:OnInitialize()
   self:ApplyLayout()
   container:Hide()  -- HUD:ApplyRowVisibility shows it in React mode
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "ApplyLayout")
+  self:RegisterMessage("NOCK_PIXEL_GRID_CHANGED", "ApplyLayout")   -- device-pixel seams
 end
 
 -- Single source of truth for the cluster geometry (pattern of
@@ -404,13 +406,24 @@ function ReactCluster:Geometry()
   show.weave = showWeave
   h.weave = skinNum("reactWeaveH", REACT.WEAVE_H)
 
+  -- Stack in whole DEVICE pixels (Nock.UI.SeamPx): every height a whole
+  -- pixel count and the shared seam exactly one pixel, so the y offsets are
+  -- exact and no bar's fill covers its neighbour's border at any UI scale.
+  local dev = Nock.UI.PixelScale(self.frame)
+  local ds = (dev and dev > 0) and dev or 1
+  local function snap(v) return Nock.UI.SeamPx(v, ds) / ds end
+  for k, v in pairs(h) do h[k] = snap(v) end
+  if hStrip > 0 then hStrip = snap(hStrip) end
+  if hLadder > 0 then hLadder = snap(hLadder) end
+  local seam = -1 / ds   -- REACT.GAP, as one device pixel
+
   local order = Nock.UI.ResolveReactBarOrder(p.reactBarOrder)
   local ys = {}
   local y = 0
   for i = 1, #order do
     local k = order[i]
     if show[k] then
-      if y > 0 then y = y + REACT.GAP end
+      if y > 0 then y = y + seam end
       if k == "range" and forever then
         ys.ladder = y
         y = y + hLadder
@@ -418,7 +431,7 @@ function ReactCluster:Geometry()
         ys[k] = y
         y = y + h[k]
         if k == "range" and showStrip then
-          y = y + REACT.GAP
+          y = y + seam
           ys.strip = y
           y = y + hStrip
         end

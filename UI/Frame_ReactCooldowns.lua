@@ -22,15 +22,13 @@ end
 local WHITE8X8 = "Interface\\Buttons\\WHITE8X8"
 -- Slots overlap their 1px borders (same trick as the BuffTracker cells) so
 -- adjacent icons share a single black seam — the reference's tight packing.
-local GAP = -1
+-- The overlap is ONE DEVICE PIXEL, laid out in whole pixels (Nock.UI.SeamPx).
 local SLOT_BG = { 0.08, 0.08, 0.08, 0.90 }
 
 local function applyFixedSlotSkin(slot)
   slot._fixedBorder = true
   Nock.UI.ApplyBackdrop(slot, SLOT_BG, { 0, 0, 0, 1 })   -- 1 device-pixel edge
-  slot.icon:ClearAllPoints()
-  slot.icon:SetPoint("TOPLEFT",     slot, "TOPLEFT",     1, -1)
-  slot.icon:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -1, 1)
+  Nock.UI.PixelInset(slot.icon, slot)
 end
 
 -- whenActive rows (consumables): a slot is visible only while mid-cooldown or
@@ -68,6 +66,7 @@ function ReactCooldownsView:OnInitialize()
   container:Hide()  -- HUD:ApplyRowVisibility shows it in React mode
 
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "Rebuild")
+  self:RegisterMessage("NOCK_PIXEL_GRID_CHANGED", "Rebuild")   -- device-pixel seams
   self:RegisterEvent("SPELL_UPDATE_COOLDOWN", "OnSpellCooldown")
   self:RegisterEvent("PLAYER_LOGIN",          "ApplyExternalCdAddon")
   self:RegisterEvent("PLAYER_ENTERING_WORLD", "ApplyExternalCdAddon")
@@ -139,12 +138,20 @@ end
 -- the shared Cooldowns builder and shrink the icon edge when reactWidth can't
 -- fit the row at its design size. A fully-disabled row costs zero height.
 -- Shared by Rebuild and ContentHeight so the HUD row can never drift.
+--
+-- Laid out in whole DEVICE pixels (Nock.UI.SeamPx): each row and tile is a
+-- whole number of pixels and neighbours overlap by exactly one, so every seam
+-- is one black line at any UI scale. Rows carry the pixel fields (hPx, yPx,
+-- tilePx or stretch) plus the same values in units (w, h, y) for readers.
+-- Returns rows, width, height (units) and the pixels-per-unit used.
 function ReactCooldownsView:RowsGeometry()
   local p = profile()
-  local w = tonumber(p.reactWidth) or 220
+  local dev = Nock.UI.PixelScale(self.frame)
+  local ds = (dev and dev > 0) and dev or 1
+  -- Even, like the React cluster above it, so the two share both edges.
+  local wPx = Nock.UI.EvenPx(tonumber(p.reactWidth) or 220, ds)
   local disabled = p.reactCooldownDisabled or {}
   local mod = Nock:GetModule("Cooldowns", true)
-  local gap = GAP
 
   -- reactConsumablesAlways (React HUD tab): keep whenActive rows fully
   -- visible while idle (dormant icons) instead of the reference auto-hide.
@@ -152,7 +159,7 @@ function ReactCooldownsView:RowsGeometry()
   -- Row DEFS (height/stretch/whenActive) always come from REACT_CD_ROWS —
   -- only the key lists can be user-customized (rowKeys above).
 
-  local rows, totalH = {}, 0
+  local rows, totalPx = {}, 0
   for rowIndex, def in ipairs(C.REACT_CD_ROWS) do
     local keys = rowKeys(p, rowIndex, def)
     local entries = {}
@@ -176,21 +183,25 @@ function ReactCooldownsView:RowsGeometry()
     -- is invisible (no backdrop in React mode). A row with NO enabled
     -- members at all still collapses fully.
     if n > 0 or (def.whenActive and members > 0) then
-      local tileH = def.h
-      local tileW
-      if def.stretch and n > 0 then
-        -- Fill the full React width: n tiles overlapping (n-1) 1px seams.
-        tileW = (w + (n - 1)) / n
+      local hPx = Nock.UI.SeamPx(def.h, ds)
+      local stretch = (def.stretch and n > 0) and true or false
+      local tilePx
+      if stretch then
+        -- Fill the full React width: n tiles overlapping (n-1) 1px seams,
+        -- split by Nock.UI.SeamSplit (widths differ by at most a pixel).
+        tilePx = (wPx + (n - 1)) / n
       else
         -- Fixed tiles (def.w, fallback ~1.3:1), centered by Rebuild.
-        tileW = def.w or math.floor(tileH * 1.3 + 0.5)
+        tilePx = Nock.UI.SeamPx(def.w or math.floor(def.h * 1.3 + 0.5), ds)
       end
-      if totalH > 0 then totalH = totalH + gap end
-      rows[#rows + 1] = { entries = entries, w = tileW, h = tileH, y = totalH, index = rowIndex }
-      totalH = totalH + tileH
+      if totalPx > 0 then totalPx = totalPx - 1 end   -- the shared seam
+      rows[#rows + 1] = { entries = entries, stretch = stretch, tilePx = tilePx,
+                          hPx = hPx, yPx = totalPx, index = rowIndex,
+                          w = tilePx / ds, h = hPx / ds, y = totalPx / ds }
+      totalPx = totalPx + hPx
     end
   end
-  return rows, w, math.max(totalH, 1)
+  return rows, wPx / ds, math.max(totalPx, 1) / ds, ds
 end
 
 -- Logical (unscaled) height, for HUD's LAYOUT height fn.
@@ -199,19 +210,26 @@ function ReactCooldownsView:ContentHeight()
   return h
 end
 
+-- Pixel box of tile `col` in `row` (left, width) within a `wPx`-wide frame.
+local function tileBox(row, col, wPx)
+  local n = #row.entries
+  if row.stretch then return Nock.UI.SeamSplit(wPx, n, col) end
+  local t = row.tilePx
+  local x0 = math.floor((wPx - (n * t - (n - 1))) / 2)
+  return x0 + (col - 1) * (t - 1), t
+end
+
 -- (Re)place the pooled slots row by row, centered. Pool indices are sequential
 -- across rows; surplus slots are hidden, never freed.
 function ReactCooldownsView:Rebuild()
   self._gcdDirty = true   -- re-seat the GCD swipes on the fresh layout
   self._stingDirty = self._stingTiles ~= nil   -- and the sting tiles on their slots
-  local rows, w, totalH = self:RowsGeometry()
+  local rows, w, totalH, ds = self:RowsGeometry()
   local p = profile()
-  local gap = GAP
-  -- Slot sizes and offsets rounded to whole device pixels so the 1 px slot
-  -- borders land on single rows/columns at any UI scale.
-  local dev = Nock.UI.PixelScale(self.frame)
-  local round = Nock.UI.DeviceRound
-  self.frame:SetSize(round(w, dev), round(totalH, dev))
+  -- Everything below is whole device pixels (RowsGeometry), converted to
+  -- units only here, so every 1 px seam is exactly one shared pixel.
+  local wPx = math.floor(w * ds + 0.5)
+  self.frame:SetSize(w, totalH)
 
   for _, s in ipairs(self._pool) do
     s._entry = nil
@@ -220,9 +238,6 @@ function ReactCooldownsView:Rebuild()
 
   local i = 0
   for _, row in ipairs(rows) do
-    local n = #row.entries
-    local rowW = n * row.w + (n - 1) * gap
-    local x0 = (w - rowW) / 2
     for col, entry in ipairs(row.entries) do
       i = i + 1
       local slot = self._pool[i]
@@ -234,14 +249,16 @@ function ReactCooldownsView:Rebuild()
         self._pool[i] = slot
         self:ApplyExternalCdAddonToSlot(slot)
       end
-      slot:SetSize(round(row.w, dev), round(row.h, dev))
+      local xPx, tPx = tileBox(row, col, wPx)
+      local tw = tPx / ds
+      slot:SetSize(tw, row.h)
       slot:ClearAllPoints()
-      slot:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
-                    round(x0 + (col - 1) * (row.w + gap), dev), -round(row.y, dev))
+      slot:SetPoint("TOPLEFT", self.frame, "TOPLEFT", xPx / ds, -row.y)
+      Nock.UI.PixelInset(slot.icon, slot)
       -- Wider-than-tall tiles crop the texture vertically instead of
       -- stretching it — the reference's "zoomed" icon look. The edge trim is
       -- the user's icon zoom (gridIconZoom, 8 % = the standard 0.08–0.92).
-      slot.icon:SetTexCoord(Nock.UI.IconCoords(row.w, row.h, p.gridIconZoom))
+      slot.icon:SetTexCoord(Nock.UI.IconCoords(tw, row.h, p.gridIconZoom))
       slot._entry          = entry
       slot._row            = row.index
       -- Per-HUD active-highlight geometry (thickness + contained/overflow);
@@ -272,7 +289,7 @@ function ReactCooldownsView:Rebuild()
           if slot.seam.SetSnapToPixelGrid then slot.seam:SetSnapToPixelGrid(false) end
           if slot.seam.SetTexelSnappingBias then slot.seam:SetTexelSnappingBias(0) end
         end
-        local cl, cr = Nock.UI.PairIconCoords(row.w, row.h, p.gridIconZoom)
+        local cl, cr = Nock.UI.PairIconCoords(tw, row.h, p.gridIconZoom)
         slot.iconL:SetTexCoord(cl[1], cl[2], cl[3], cl[4])
         slot.iconR:SetTexCoord(cr[1], cr[2], cr[3], cr[4])
         -- Strip geometry in UI units for a 1:1 device-pixel draw: 12 px wide,

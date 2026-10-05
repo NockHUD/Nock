@@ -61,7 +61,18 @@ function ReactPetRow.Geometry(w, frac)
   return sw, lw, lx
 end
 
-function ReactPetRow:ContentHeight() return stripH(profile()) + LABEL_GAP + LABEL_H end
+-- Device pixels per unit for this row (1 when unknown). The strip geometry
+-- above is whole PIXELS; it shares a 1 px seam with the grid above it, so the
+-- row's height must be whole pixels too (Nock.UI.SeamPx).
+local function pixelScale(f)
+  local dev = Nock.UI.PixelScale(f)
+  return (dev and dev > 0) and dev or 1
+end
+
+function ReactPetRow:ContentHeight()
+  local ds = pixelScale(self.frame)
+  return (Nock.UI.SeamPx(stripH(profile()), ds) + Nock.UI.SeamPx(LABEL_GAP + LABEL_H, ds)) / ds
+end
 function ReactPetRow:Wanted() return self._want == true end
 
 function ReactPetRow:OnInitialize()
@@ -89,26 +100,30 @@ function ReactPetRow:OnInitialize()
   self:ApplyLayout()
   f:Hide()  -- HUD:ApplyRowVisibility shows it through :Wanted()
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "ApplyLayout")
+  self:RegisterMessage("NOCK_PIXEL_GRID_CHANGED", "ApplyLayout")   -- device-pixel geometry
 end
 
 function ReactPetRow:ApplyLayout()
   local p = profile()
-  local w = tonumber(p.reactWidth) or 220
-  local sw, lw, lx = ReactPetRow.Geometry(w, ReactPetRow.WidthFrac(p))
-  local h = stripH(p)
-  self.frame:SetSize(w, self:ContentHeight())
+  -- Geometry in device pixels, converted to units at Set* time.
+  local ds = pixelScale(self.frame)
+  local wPx = Nock.UI.EvenPx(tonumber(p.reactWidth) or 220, ds)
+  local sw, lw, lx = ReactPetRow.Geometry(wPx, ReactPetRow.WidthFrac(p))
+  local h = Nock.UI.SeamPx(stripH(p), ds)
+  self.frame:SetSize(wPx / ds, self:ContentHeight())
   self.strip:ClearAllPoints()
   self.strip:SetPoint("TOP", self.frame, "TOP", 0, 0)
-  self.strip:SetSize(sw, h)
+  self.strip:SetSize(sw / ds, h / ds)
   for _, k in ipairs(KEYS) do
     local l = self.lamps[k]
-    l.w = lw[l.index]
+    l.wPx, l.ds = lw[l.index], ds
+    l.w = l.wPx / ds
     l.tex:ClearAllPoints()
-    l.tex:SetPoint("TOPLEFT", self.strip, "TOPLEFT", lx[l.index], -1)
-    l.tex:SetSize(l.w, h - 2)
+    l.tex:SetPoint("TOPLEFT", self.strip, "TOPLEFT", lx[l.index] / ds, -1 / ds)
+    l.tex:SetSize(l.w, (h - 2) / ds)
     l.fill:ClearAllPoints()
     l.fill:SetPoint("TOPLEFT", l.tex, "TOPLEFT", 0, 0)
-    l.fill:SetHeight(h - 2)
+    l.fill:SetHeight((h - 2) / ds)
   end
   local font = Nock.UI.GetReactFont() or C.FONT.PATH
   Nock.UI.SafeSetFont(self.label, font, math.max(6, FONT_SIZE + (Nock.UI.GetReactFontDelta() or 0)), Nock.UI.GetReactFontStyle())
@@ -151,7 +166,7 @@ function ReactPetRow:Refresh(state)
   if o.fill ~= self._lastFill then
     self._lastFill = o.fill
     if o.fill and o.fill > 0 then
-      lit.fill:SetWidth(math.max(1, math.floor(lit.w * o.fill + 0.5)))
+      lit.fill:SetWidth(math.max(1, math.floor(lit.wPx * o.fill + 0.5)) / lit.ds)
       lit.fill:Show()
     else
       lit.fill:Hide()

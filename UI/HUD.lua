@@ -28,6 +28,10 @@ end
 function HUD:OnPixelGridChanged()
   self._ps = Nock.UI.PixelScale(self.frame)
   Nock.UI.RefreshPixelBackdrops()
+  -- The seam layouts (React/Fluffy clusters, grids, buff row) are computed in
+  -- whole device pixels: re-run them on the new grid BEFORE the rows are
+  -- re-stacked, so the stack reads their new heights.
+  self:SendMessage("NOCK_PIXEL_GRID_CHANGED")
   self:ApplyPosition()
   self:LayoutChildren()
 end
@@ -358,8 +362,8 @@ local LAYOUT = {
   { module = "ManaBarView",     anchor = "TOP",     height = manaBarH                                   },
   { module = "RangeFinderView", anchor = "TOP",     height = rangeFinderH                               },
   { module = "CooldownsView",   anchor = "TOP",     height = cooldownsH                                 },
-  { module = "ReactCooldownsView", anchor = "TOP",  height = reactCooldownsH, gap = -1                  },
-  { module = "ReactPetRow",     anchor = "TOP",     height = reactPetRowH, gap = -1                     },
+  { module = "ReactCooldownsView", anchor = "TOP",  height = reactCooldownsH, seam = true               },
+  { module = "ReactPetRow",     anchor = "TOP",     height = reactPetRowH, seam = true                  },
   { module = "InfoRow",         anchor = "TOPLEFT", height = function() return C.DIM.INFO_ROW_H     end },
 }
 
@@ -431,11 +435,16 @@ function HUD:LayoutGridPass()
       m.frame:ClearAllPoints()
       Nock.UI.SetPointSnapped(m.frame, point, self.frame, point, baseX / s, y / s)
       local h = (entry.height and entry.height()) or m.frame:GetHeight() or 0
-      -- entry.gap overrides the spacing ABOVE this row (bottom-up walk) — the
-      -- React grid overlaps the React cluster's border at -1 (one shared 1px
-      -- seam, same packing as inside the cluster/grid) instead of the 4px
-      -- ROW_GAP.
-      y = y + h * s + (entry.gap or GAP)
+      -- entry.seam replaces the spacing ABOVE this row (bottom-up walk): the
+      -- React grid overlaps the React cluster's border by one DEVICE pixel
+      -- (one shared 1px seam, same packing as inside the cluster/grid)
+      -- instead of the 4px ROW_GAP. A 1-unit overlap was 0-3 px depending on
+      -- the UI scale (Nock.UI.SeamPx).
+      local gap = GAP
+      if entry.seam then
+        gap = -Nock.UI.DeviceWidth(1, Nock.UI.PixelScale(self.frame))
+      end
+      y = y + h * s + gap
       maxRowW = math.max(maxRowW, (m.frame:GetWidth() or 0) * s)
       visible = visible + 1
     end

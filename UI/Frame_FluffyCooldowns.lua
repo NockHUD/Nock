@@ -18,25 +18,15 @@ end
 
 -- Fixed flat skin, immune to the profile iconBorder/LSM settings (slots opt
 -- out via _fixedBorder — see Nock.UI.ApplyIconBorder). Slots overlap their
--- 1px borders so adjacent icons share a single black seam.
-local WHITE8X8 = "Interface\\Buttons\\WHITE8X8"
-local GAP = -1
+-- 1px borders so adjacent icons share a single black seam: one DEVICE pixel,
+-- laid out in whole pixels (Nock.UI.SeamPx).
 local ROW_H = 32
 local SLOT_BG = { 0.08, 0.08, 0.08, 0.90 }
 
 local function applyFixedSlotSkin(slot)
   slot._fixedBorder = true
-  slot:SetBackdrop({
-    bgFile   = WHITE8X8,
-    edgeFile = WHITE8X8,
-    edgeSize = 1,
-    insets   = { left = 1, right = 1, top = 1, bottom = 1 },
-  })
-  slot:SetBackdropColor(unpack(SLOT_BG))
-  slot:SetBackdropBorderColor(0, 0, 0, 1)
-  slot.icon:ClearAllPoints()
-  slot.icon:SetPoint("TOPLEFT",     slot, "TOPLEFT",     1, -1)
-  slot.icon:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -1, 1)
+  Nock.UI.ApplyBackdrop(slot, SLOT_BG, { 0, 0, 0, 1 })   -- 1 device-pixel edge
+  Nock.UI.PixelInset(slot.icon, slot)
 end
 
 local function formatCD(remaining)
@@ -63,6 +53,7 @@ function FluffyCooldownsView:OnInitialize()
   container:Hide()  -- HUD:ApplyRowVisibility shows it in fluffy mode + fluffyShowGrid
 
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "Rebuild")
+  self:RegisterMessage("NOCK_PIXEL_GRID_CHANGED", "Rebuild")   -- device-pixel seams
   self:RegisterEvent("SPELL_UPDATE_COOLDOWN", "OnSpellCooldown")
   self:RegisterEvent("PLAYER_LOGIN",          "ApplyExternalCdAddon")
   self:RegisterEvent("PLAYER_ENTERING_WORLD", "ApplyExternalCdAddon")
@@ -80,8 +71,10 @@ function FluffyCooldownsView:Seat()
   local f = self.frame
   if f:GetParent() ~= host then f:SetParent(host) end
   f:ClearAllPoints()
-  f:SetPoint("TOPLEFT",  host, "BOTTOMLEFT",  0, 1)
-  f:SetPoint("TOPRIGHT", host, "BOTTOMRIGHT", 0, 1)
+  -- The shared seam is one DEVICE pixel (re-seated by Rebuild on a scale change).
+  local e = Nock.UI.PixelEdge(f)
+  f:SetPoint("TOPLEFT",  host, "BOTTOMLEFT",  0, e)
+  f:SetPoint("TOPRIGHT", host, "BOTTOMRIGHT", 0, e)
 end
 
 -- ONE stretch row over fluffyWidth: n tiles overlapping (n-1) 1px seams.
@@ -92,7 +85,11 @@ end
 -- extension, not a rewrite.
 function FluffyCooldownsView:RowsGeometry()
   local p = profile()
-  local w = tonumber(p.fluffyWidth) or 320
+  -- Whole device pixels, like the cluster it hangs from (FluffyCluster:Geometry).
+  local dev = Nock.UI.PixelScale(self.frame)
+  local ds = (dev and dev > 0) and dev or 1
+  local wPx = Nock.UI.SeamPx(tonumber(p.fluffyWidth) or 320, ds)
+  local hPx = Nock.UI.SeamPx(ROW_H, ds)
   local disabled = p.fluffyCooldownDisabled or {}
   local mod = Nock:GetModule("Cooldowns", true)
 
@@ -105,13 +102,14 @@ function FluffyCooldownsView:RowsGeometry()
     end
   end
 
-  local rows, totalH = {}, 0
+  local rows, totalPx = {}, 0
   local n = #entries
   if n > 0 then
-    rows[1] = { entries = entries, w = (w + (n - 1)) / n, h = ROW_H, y = 0 }
-    totalH = ROW_H
+    rows[1] = { entries = entries, stretch = true, hPx = hPx, yPx = 0,
+                w = (wPx + (n - 1)) / n / ds, h = hPx / ds, y = 0 }
+    totalPx = hPx
   end
-  return rows, w, math.max(totalH, 1)
+  return rows, wPx / ds, math.max(totalPx, 1) / ds, ds
 end
 
 -- Logical (unscaled) height, for HUD's LAYOUT height fn.
@@ -124,8 +122,10 @@ end
 -- weld's two points own the width; only the height is ours to set.
 function FluffyCooldownsView:Rebuild()
   self._gcdDirty = true   -- re-seat the GCD swipes on the fresh layout
-  local rows, w, totalH = self:RowsGeometry()
+  self:Seat()   -- the seam offset is a device pixel: re-fit it with the scale
+  local rows, w, totalH, ds = self:RowsGeometry()
   local p = profile()
+  local wPx = math.floor(w * ds + 0.5)
   self.frame:SetHeight(totalH)
 
   for _, s in ipairs(self._pool) do
@@ -136,8 +136,6 @@ function FluffyCooldownsView:Rebuild()
   local i = 0
   for _, row in ipairs(rows) do
     local n = #row.entries
-    local rowW = n * row.w + (n - 1) * GAP
-    local x0 = (w - rowW) / 2
     for col, entry in ipairs(row.entries) do
       i = i + 1
       local slot = self._pool[i]
@@ -147,14 +145,16 @@ function FluffyCooldownsView:Rebuild()
         self._pool[i] = slot
         self:ApplyExternalCdAddonToSlot(slot)
       end
-      slot:SetSize(row.w, row.h)
+      local xPx, tPx = Nock.UI.SeamSplit(wPx, n, col)
+      local tw = tPx / ds
+      slot:SetSize(tw, row.h)
       slot:ClearAllPoints()
-      slot:SetPoint("TOPLEFT", self.frame, "TOPLEFT",
-                    x0 + (col - 1) * (row.w + GAP), -row.y)
+      slot:SetPoint("TOPLEFT", self.frame, "TOPLEFT", xPx / ds, -row.y)
+      Nock.UI.PixelInset(slot.icon, slot)
       -- Wider-than-tall tiles crop the texture vertically instead of
       -- stretching it — the "zoomed" icon look, same math as the React grid
       -- (edge trim = the user's icon zoom, gridIconZoom).
-      slot.icon:SetTexCoord(Nock.UI.IconCoords(row.w, row.h, p.gridIconZoom))
+      slot.icon:SetTexCoord(Nock.UI.IconCoords(tw, row.h, p.gridIconZoom))
       slot._entry          = entry
       -- Per-HUD active-highlight geometry (thickness + contained/overflow);
       -- style + color are the Refresh look's job.

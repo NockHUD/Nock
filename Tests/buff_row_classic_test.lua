@@ -70,6 +70,9 @@ Nock.UI = {
   ApplyBackdrop   = function() end,
   RegisterNudgeable = function(frame, spec) nudgeSpec = spec end,
   SetReactSlotSize = function() end,
+  PixelScale = function() return nil end,   -- headless: 1 px per unit
+  SeamPx = function(v, s) return math.max(1, math.floor(v * (s or 1) + 0.5)) end,
+  PixelInset = function() end,
 }
 -- The HUD frame (Classic host) and the cluster (React host).
 local hudFrame = Stub.CreateFrame("Frame", "NockHUD", UIParent)

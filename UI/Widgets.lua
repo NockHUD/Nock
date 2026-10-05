@@ -838,6 +838,7 @@ function Nock.UI.RefreshPixelBackdrops()
       f:SetBackdrop(Nock.UI.PixelBackdrop(f))
       if r then f:SetBackdropColor(r, g, b, a) end
       if br then f:SetBackdropBorderColor(br, bg, bb, ba) end
+      if f._pixelInset then Nock.UI.PixelInset(f._pixelInset, f) end
     end
   end
 end
@@ -1547,18 +1548,12 @@ end
 
 function Nock.UI.CreateReactSlot(parent, name, size)
   local slot = CreateFrame("Frame", name, parent, "BackdropTemplate")
-  slot:SetBackdrop({
-    bgFile   = SOLID_TEX,
-    edgeFile = SOLID_TEX,
-    edgeSize = 1,
-    insets   = { left = 1, right = 1, top = 1, bottom = 1 },
-  })
-  slot:SetBackdropColor(unpack(REACT_SLOT_BG))
-  slot:SetBackdropBorderColor(0, 0, 0, 1)
+  -- One DEVICE pixel edge and icon inset (see SeamPx): the buff row overlaps
+  -- neighbours by that pixel, so a 1-unit inset let them cover each other.
+  Nock.UI.ApplyBackdrop(slot, REACT_SLOT_BG, { 0, 0, 0, 1 })
 
   local icon = slot:CreateTexture(nil, "ARTWORK")
-  icon:SetPoint("TOPLEFT",     slot, "TOPLEFT",      1, -1)
-  icon:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -1,  1)
+  Nock.UI.PixelInset(icon, slot)
   icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
   slot.icon = icon
 
@@ -1820,6 +1815,57 @@ function Nock.UI.DeviceRound(units, scale)
   local s = tonumber(scale)
   if not s or s <= 0 then return v end
   return math.floor(v * s + 0.5) / s
+end
+
+-- ---------------------------------------------------------------------------
+-- Shared 1 px seams. Tiles and bars that butt together overlap by their
+-- border so neighbours share ONE black line. That only works when the overlap
+-- is exactly one DEVICE pixel and every icon/fill is inset by exactly one
+-- device pixel: sibling frames at one frame level draw layer by layer, so a
+-- neighbour's ARTWORK covers every border it overlaps. A 1-UNIT overlap with
+-- independently rounded edges came out 0-3 px at UI scales off 1 px/unit:
+-- 2 px hid both borders and ate a pixel of the tile ("the bottom row clips
+-- the top row"), 0 px drew a double line. So seam layouts are computed in
+-- whole device pixels and only converted to units at SetPoint/SetSize time.
+-- ---------------------------------------------------------------------------
+
+-- A length in units as whole device pixels (at least 1). No scale = 1 px/unit.
+function Nock.UI.SeamPx(units, scale)
+  local s = tonumber(scale)
+  if not s or s <= 0 then s = 1 end
+  local px = math.floor((tonumber(units) or 0) * s + 0.5)
+  if px < 1 then px = 1 end
+  return px
+end
+
+-- SeamPx rounded up to an EVEN count: a width split into two halves (the
+-- React converge bars) needs the halves to meet on a whole pixel, and every
+-- React row shares the cluster's width so their edges line up.
+function Nock.UI.EvenPx(units, scale)
+  local px = Nock.UI.SeamPx(units, scale)
+  if px % 2 == 1 then px = px + 1 end
+  return px
+end
+
+-- Tile `i` of `n` splitting `totalPx` with shared 1 px seams: returns its left
+-- offset and width, both in pixels. Widths differ by at most one pixel, the
+-- outer edges are exactly 0 and totalPx, neighbours overlap by exactly 1.
+function Nock.UI.SeamSplit(totalPx, n, i)
+  local span = totalPx - 1
+  local l = math.floor((i - 1) * span / n)
+  local r = math.floor(i * span / n) + 1
+  return l, r - l
+end
+
+-- Anchor `region` inside `frame` by exactly one device pixel (the PixelBackdrop
+-- edge) and remember it, so RefreshPixelBackdrops re-insets it when the UI
+-- scale moves the grid.
+function Nock.UI.PixelInset(region, frame)
+  local e = Nock.UI.PixelEdge(frame)
+  region:ClearAllPoints()
+  region:SetPoint("TOPLEFT",     frame, "TOPLEFT",     e, -e)
+  region:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -e, e)
+  frame._pixelInset = region
 end
 
 -- Offset correction (dx, dy in the frame's OWN units) that moves the edges

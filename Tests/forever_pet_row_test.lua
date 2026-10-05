@@ -22,7 +22,11 @@ local Nock = {
   Flavor = { forever = true, Plain = function(v) return v end },
   Constants = { FONT = { PATH = "font" } },
   db = { profile = { reactShowPetRow = true, reactWidth = 220 } },
-  UI = setmetatable({}, { __index = function() return function() end end }),
+  UI = setmetatable({
+    -- headless: 1 px per unit (PixelScale falls through to the nil stub)
+    SeamPx = function(v, s) return math.max(1, math.floor(v * (s or 1) + 0.5)) end,
+    EvenPx = function(v, s) local px = math.max(1, math.floor(v * (s or 1) + 0.5)); return px + px % 2 end,
+  }, { __index = function() return function() end end }),
   parentFrame = stubFrame(),
 }
 local sent = 0
@@ -100,7 +104,7 @@ ok(R.WidthFrac(p) == 0.25, "default 25 %")
 local hud = io.open("UI/HUD.lua"):read("*a")
 ok(hud:find('ReactPetRow%s*=%s*"reactScale"') ~= nil, "ReactPetRow shares reactScale with the cluster and grid")
 ok(hud:find('ReactPetRow%s*=%s*"Pet Happiness"') ~= nil, "ReactPetRow has an edit-mode label")
-ok(hud:find('module = "ReactPetRow",[^\n]*gap = %-1') ~= nil, "welded under the grid: one shared 1px seam, no row gap")
+ok(hud:find('module = "ReactPetRow",[^\n]*seam = true') ~= nil, "welded under the grid: one shared 1px seam, no row gap")
 
 print(("forever_pet_row: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

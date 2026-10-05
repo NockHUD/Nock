@@ -14,6 +14,8 @@ local Nock = {
     ResolveReactBarOrder = function() return { "auto", "melee", "range", "mana" } end,
     RangeLadder = {},
     SWING_CLOSE = { ease = 0.06, hold = 0.04, catch = 0.30 },
+    PixelScale = function() return nil end,   -- headless: 1 px per unit
+    SeamPx = function(v, s) return math.max(1, math.floor(v * (s or 1) + 0.5)) end,
   },
 }
 function Nock:NewModule() mod = {}; function mod:RegisterMessage() end; return mod end

@@ -130,6 +130,11 @@ dofile("UI/Widgets.lua")
 local RealUI = Nock.UI
 Nock.UI = {
   DeviceRound        = RealUI.DeviceRound,
+  SeamPx             = RealUI.SeamPx,
+  EvenPx             = RealUI.EvenPx,
+  SeamSplit          = RealUI.SeamSplit,
+  PixelInset         = function() end,
+  PixelEdge          = function() return 1 end,
   InverseAutoPhase   = RealUI.InverseAutoPhase,
   AutoAxisFrac       = RealUI.AutoAxisFrac,
   PaintInverseAuto   = RealUI.PaintInverseAuto,
