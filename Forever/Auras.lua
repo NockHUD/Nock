@@ -49,10 +49,14 @@ local function resolve(spellID)
   return type(n) == "string" and nameMap()[n] or nil
 end
 
-local function setAspect(id)
+-- `rec` is the aura cache's record when the aspect was read rather than
+-- cast: its instance id and icon let a right-click cancel be recognised.
+local function setAspect(id, rec)
   local p = Nock.state.player
   if not id then p.aspect = nil; return end
   aspectRec.name, aspectRec.spellId, aspectRec.icon = Nock.API.SpellName(id), id, Nock.API.SpellIcon(id)
+  aspectRec.auraInstanceID = rec and rec.auraInstanceID or nil
+  aspectRec.auraIcon = rec and rec.icon or nil
   p.aspect = aspectRec
 end
 
@@ -95,6 +99,85 @@ local function setConsume(AC)
   p.drinking = consumeRec(AC.ByName("player", consumeName(S.DRINK, "Drink")), drinkRec, now)
 end
 
+-- A cancel by name (`/cancelaura <aspect>` in a macro) fires no cast, and
+-- while auras are secret no aura read sees the aspect drop, so the ledger
+-- would hold it until combat ends. A post-hook on the cancel clears the
+-- aspect when the cancelled name is the one up. The name is the macro's
+-- own plain text; "(Rank n)" and case are ignored.
+local function cancelledName(spell)
+  if type(spell) == "number" then
+    spell = Nock.Flavor.Plain(Nock.API.SpellName(spell))
+  end
+  if type(spell) ~= "string" then return nil end
+  spell = spell:gsub("%(.-%)", ""):match("^%s*(.-)%s*$")
+  return spell ~= "" and spell:lower() or nil
+end
+
+function Auras.OnCancel(spell)
+  local a = Nock.state.player.aspect
+  if not (a and a.spellId) then return end
+  local n = cancelledName(spell)
+  if not n then return end
+  local cur = Nock.Flavor.Plain(Nock.API.SpellName(a.spellId))
+  if type(cur) == "string" and cur:lower() == n then setAspect(nil) end
+end
+
+-- The slash command's own entry as a second route, in case the client's
+-- /cancelaura does not go through the global CancelSpellByName.
+local function onCancelCmd(msg)
+  local parse = _G.SecureCmdOptionParse
+  if type(msg) ~= "string" or not parse then return end
+  local okp, spell = pcall(parse, msg)
+  if okp then Auras.OnCancel(spell) end
+end
+
+-- Is the buff a buff button describes the aspect record `a`? By instance id
+-- when both sides have one (read out of combat), by icon otherwise (an aspect
+-- cast in combat; ranks share the icon and no other buff wears it).
+function Auras.IsAspectAura(a, inst, icon)
+  if not a then return false end
+  if inst ~= nil and a.auraInstanceID ~= nil then return inst == a.auraInstanceID end
+  return icon ~= nil and (icon == a.auraIcon or icon == a.icon)
+end
+
+-- A right-click on the default buff bar runs CancelUnitBuff("player", index,
+-- filter); in combat the index alone says nothing, but the button holding it
+-- still carries its aura's instance id and icon as plain values (probed
+-- 2026-10-06). `frames` is BuffFrame.auraFrames.
+function Auras.OnCancelBuff(unit, index, filter, frames)
+  local P = Nock.Flavor.Plain
+  unit, index, filter = P(unit), P(index), P(filter)
+  if unit ~= "player" or type(index) ~= "number" or type(frames) ~= "table" then return end
+  if type(filter) == "string" and filter:find("HARMFUL") then return end
+  local a = Nock.state.player.aspect
+  if not a then return end
+  for _, b in ipairs(frames) do
+    local info = type(b) == "table" and b.buttonInfo
+    if type(info) == "table" and P(info.index) == index then
+      local icon = b.Icon and b.Icon.GetTexture and P(b.Icon:GetTexture())
+      if Auras.IsAspectAura(a, P(info.auraInstanceID), icon) then setAspect(nil) end
+      return
+    end
+  end
+end
+
+local hooked
+local function hookCancels()
+  if hooked or not _G.hooksecurefunc then return end
+  hooked = true
+  if _G.CancelSpellByName then hooksecurefunc("CancelSpellByName", Auras.OnCancel) end
+  local SC = _G.SecureCmdList
+  if type(SC) == "table" and type(SC.CANCELAURA) == "function" then
+    hooksecurefunc(SC, "CANCELAURA", onCancelCmd)
+  end
+  if _G.CancelUnitBuff then
+    hooksecurefunc("CancelUnitBuff", function(unit, index, filter)
+      local bf = _G.BuffFrame
+      Auras.OnCancelBuff(unit, index, filter, bf and bf.auraFrames)
+    end)
+  end
+end
+
 function Auras:OnEnable()
   local p = Nock.state.player
   p.feign, p.dazed, p.eating, p.drinking = nil, nil, nil, nil
@@ -102,6 +185,7 @@ function Auras:OnEnable()
   p.canWeave = true
   self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
   self:RegisterEvent("PLAYER_TARGET_CHANGED")
+  hookCancels()
 end
 
 function Auras:UNIT_SPELLCAST_SUCCEEDED(event, unit, castGUID, spellID)
@@ -128,17 +212,21 @@ function Auras:Refresh()
   setConsume(AC)
   if not AC then return end
   local S = Nock.Spells
-  local found
+  local found, rec
   for id in pairs(S.ASPECTS) do
-    if AC.BySpell("player", id) then found = id; break end
+    rec = AC.BySpell("player", id)
+    if rec then found = id; break end
   end
   -- A higher rank's aura carries its own id: find it by name.
   if not found then
     for n, id in pairs(nameMap()) do
-      if id ~= S.HUNTERS_MARK and AC.ByName("player", n) then found = id; break end
+      if id ~= S.HUNTERS_MARK then
+        rec = AC.ByName("player", n)
+        if rec then found = id; break end
+      end
     end
   end
-  setAspect(found)
+  setAspect(found, rec)
   local m = AC.BySpell("target", S.HUNTERS_MARK)
   if not m then
     local hmName = Nock.Flavor.Plain(Nock.API.SpellName(S.HUNTERS_MARK))

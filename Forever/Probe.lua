@@ -1433,8 +1433,187 @@ function Probe.WeaveReport(src)
   return table.concat(L, "\n")
 end
 
+-- `/nock probe aspect`: which signals can tell, IN COMBAT, that an aspect
+-- dropped without a cast (a right-click on the buff, a /cancelaura)? For 60 s
+-- (or until `/nock probe aspect stop`) it samples every candidate at 4 Hz and
+-- logs only the changes, plus every cancel route the client runs (the global
+-- cancels, /cancelaura, the default buff buttons' clicks) with its arguments
+-- described plain or secret. Hooks stay installed; they log only while armed.
+local ASPECT_SECONDS = 60
+local aw -- the armed session, or nil
+
+local function awLog(fmt, ...)
+  if not aw then return end
+  aw.L[#aw.L + 1] = ("%7.2f  " .. fmt):format(GetTime() - aw.t0, ...)
+end
+
+local function awCall(fn, ...)
+  if type(fn) ~= "function" then return "n/a" end
+  local okc, v = pcall(fn, ...)
+  if not okc then return "ERR" end
+  if type(v) == "table" then return "table" end
+  return describe(v)
+end
+
+-- Every learned aspect: the base id, the learned rank's id (by name) and the
+-- action slots holding it. Built when armed (out of combat ideally).
+local function awAspects()
+  local list = {}
+  local S, API = Nock.Spells, Nock.API
+  for base in pairs(S.ASPECTS) do
+    local name = Nock.Flavor.Plain(API.SpellName(base))
+    local learned = type(name) == "string" and select(6, API.SpellInfo(name)) or nil
+    learned = Nock.Flavor.Plain(learned)
+    list[#list + 1] = { base = base, name = name or ("#" .. base), id = type(learned) == "number" and learned or base, slots = {} }
+  end
+  table.sort(list, function(a, b) return a.base < b.base end)
+  if _G.GetActionInfo then
+    for slot = 1, 180 do
+      local okc, kind, id = pcall(GetActionInfo, slot)
+      if okc and kind == "spell" and type(Nock.Flavor.Plain(id)) == "number" then
+        for _, a in ipairs(list) do
+          if id == a.id or id == a.base then a.slots[#a.slots + 1] = slot end
+        end
+      end
+    end
+  end
+  return list
+end
+
+-- One sample: key -> described value, every candidate signal.
+local function awSample(list, out)
+  local CS, CU = _G.C_Spell, _G.C_UnitAuras
+  out.aurasSecret = describe(Nock.AuraCache and Nock.AuraCache.AurasSecret and Nock.AuraCache.AurasSecret())
+  out.inCombat = describe(InCombatLockdown and InCombatLockdown())
+  local pa = Nock.state.player.aspect
+  out.stateAspect = pa and tostring(pa.name) or "nil"
+  out.shapeshiftForm = awCall(_G.GetShapeshiftForm)
+  for _, a in ipairs(list) do
+    local k = a.name
+    out[k .. " IsCurrentSpell"] = awCall(_G.IsCurrentSpell, a.id)
+    out[k .. " C_Spell.IsCurrentSpell"] = awCall(CS and CS.IsCurrentSpell, a.id)
+    out[k .. " GetPlayerAuraBySpellID"] = awCall(CU and CU.GetPlayerAuraBySpellID, a.id)
+    out[k .. " GetAuraDataBySpellName"] = awCall(CU and CU.GetAuraDataBySpellName, "player", a.name, "HELPFUL")
+    for _, slot in ipairs(a.slots) do
+      out[k .. " IsCurrentAction(" .. slot .. ")"] = awCall(_G.IsCurrentAction, slot)
+    end
+  end
+end
+
+local function awArgs(...)
+  local parts = {}
+  for i = 1, select("#", ...) do parts[i] = describe((select(i, ...))) end
+  return table.concat(parts, ", ")
+end
+
+local awHooked, awButtons = false, {}
+
+-- The default buff buttons: classic BuffButtonN and the modern BuffFrame
+-- pool. HookScript is a post-hook; it logs what the button can tell us.
+local function awHookButtons()
+  local function hook(b, label)
+    if not b or awButtons[b] or not b.HookScript then return end
+    awButtons[b] = true
+    b:HookScript("OnClick", function(self, button)
+      local icon = self.Icon or self.icon or (self.GetName and self:GetName() and _G[self:GetName() .. "Icon"])
+      local info = self.buttonInfo
+      awLog("CLICK %s %s  index=%s auraInstanceID=%s info.index=%s info.auraInstanceID=%s icon=%s",
+        label, describe(button), describe(self.GetID and self:GetID()), describe(self.auraInstanceID),
+        describe(type(info) == "table" and info.index), describe(type(info) == "table" and info.auraInstanceID),
+        describe(icon and icon.GetTexture and icon:GetTexture()))
+    end)
+  end
+  for i = 1, 40 do hook(_G["BuffButton" .. i], "BuffButton" .. i) end
+  local bf = _G.BuffFrame
+  if bf and type(bf.auraFrames) == "table" then
+    for i, b in ipairs(bf.auraFrames) do hook(b, "auraFrames[" .. i .. "]") end
+  end
+  if bf and bf.AuraContainer and bf.AuraContainer.GetChildren then
+    for i, b in ipairs({ bf.AuraContainer:GetChildren() }) do hook(b, "AuraContainer[" .. i .. "]") end
+  end
+end
+
+local function awInstallHooks()
+  if awHooked or not _G.hooksecurefunc then return end
+  awHooked = true
+  for _, fn in ipairs({ "CancelUnitBuff", "CancelSpellByName", "CancelPlayerBuff" }) do
+    if _G[fn] then hooksecurefunc(fn, function(...) awLog("%s(%s)", fn, awArgs(...)) end) end
+  end
+  local CU = _G.C_UnitAuras
+  if CU then
+    for _, fn in ipairs({ "CancelAuraByAuraInstanceID", "CancelAuraBySpellID" }) do
+      if CU[fn] then hooksecurefunc(CU, fn, function(...) awLog("C_UnitAuras.%s(%s)", fn, awArgs(...)) end) end
+    end
+  end
+  local SC = _G.SecureCmdList
+  if type(SC) == "table" and type(SC.CANCELAURA) == "function" then
+    hooksecurefunc(SC, "CANCELAURA", function(msg) awLog("SecureCmdList.CANCELAURA(%s)", describe(msg)) end)
+  end
+  local f = CreateFrame("Frame")
+  f:RegisterUnitEvent("UNIT_AURA", "player")
+  f:SetScript("OnEvent", function(_, _, _, info)
+    if not aw then return end
+    if type(info) ~= "table" then awLog("UNIT_AURA info=%s", describe(info)); return end
+    local function n(t) return type(t) == "table" and describe(#t) or describe(t) end
+    awLog("UNIT_AURA full=%s added=%s updated=%s removed=%s removed[1]=%s",
+      describe(info.isFullUpdate), n(info.addedAuras), n(info.updatedAuraInstanceIDs),
+      n(info.removedAuraInstanceIDs),
+      describe(type(info.removedAuraInstanceIDs) == "table" and info.removedAuraInstanceIDs[1]))
+  end)
+  local c = CreateFrame("Frame")
+  c:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+  c:SetScript("OnEvent", function(_, _, _, _, spellID)
+    if aw then awLog("CAST %s", describe(spellID)) end
+  end)
+end
+
+function Probe.AspectReport(s)
+  local L = { ("Nock aspect probe  %d s  aspects: %d"):format(math.floor(GetTime() - s.t0), #s.list) }
+  for _, a in ipairs(s.list) do
+    local slots = {}
+    for i, v in ipairs(a.slots) do slots[i] = tostring(v) end
+    L[#L + 1] = ("  %s  base %d  learned %s  slots %s"):format(a.name, a.base, tostring(a.id),
+      #slots > 0 and table.concat(slots, ",") or "-")
+  end
+  L[#L + 1] = "-- log (t, change or event):"
+  for i = 1, #s.L do L[#L + 1] = s.L[i] end
+  return table.concat(L, "\n")
+end
+
+function Probe:AspectWatch(rest)
+  local function finish()
+    if not aw then return end
+    local s = aw
+    aw = nil
+    if s.ticker then s.ticker:Cancel() end
+    local text = Probe.AspectReport(s)
+    if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
+  end
+  if rest == "stop" then finish(); return end
+  local T = _G.C_Timer
+  if not (T and T.NewTicker) then Nock:Print("No ticker on this client."); return end
+  if aw then finish() end
+  awInstallHooks()
+  awHookButtons()
+  aw = { t0 = GetTime(), L = {}, list = awAspects(), last = {}, cur = {} }
+  local s = aw
+  local ticks = 0
+  s.ticker = T.NewTicker(0.25, function()
+    if aw ~= s then return end
+    ticks = ticks + 1
+    awSample(s.list, s.cur)
+    for k, v in pairs(s.cur) do
+      if s.last[k] ~= v then awLog("%s = %s", k, v); s.last[k] = v end
+    end
+    if ticks % 8 == 0 then awHookButtons() end -- buttons made mid-fight
+    if ticks >= ASPECT_SECONDS * 4 then finish() end
+  end)
+  Nock:Print(("Aspect probe armed for %d s: pull, cancel your aspect by right-click (and once by macro), then /nock probe aspect stop."):format(ASPECT_SECONDS))
+end
+
 function Probe:Show(which, rest)
   local text
+  if which == "aspect" then self:AspectWatch(rest); return end
   if which == "range" then self:RangeRecord(rest); return end
   if which == "keys" then self:KeysRecord(rest); return end
   if which == "camera" then

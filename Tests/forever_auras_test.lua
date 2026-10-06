@@ -105,5 +105,51 @@ Nock.API.SpellName = function() return nil end
 cache = { ["playerFood"] = { spellId = 1, icon = 9, expirationTime = 1030, duration = 30 } }
 A:Refresh()
 ok(p.eating and p.eating.icon == 9, "Food by the fallback name")
+-- 11. /cancelaura in combat: no cast, no aura read -- the cancel hook clears
+-- the aspect when the cancelled name is the one up, and nothing else.
+Nock.API.SpellName = function(id) return "spell" .. (rankOf[id] or id) end
+secretAuras = true
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 13165)
+A.OnCancel("spell13163")
+ok(p.aspect and p.aspect.spellId == 13165, "cancelling another aspect leaves Hawk up")
+A.OnCancel(nil)
+A.OnCancel("")
+ok(p.aspect and p.aspect.spellId == 13165, "an empty cancel is ignored")
+A.OnCancel("  SPELL13165(Rank 3) ")
+ok(p.aspect == nil, "cancelling Hawk by name clears it (rank and case ignored)")
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 13165)
+A.OnCancel(14318)
+ok(p.aspect == nil, "a cancel by a rank's spell id clears it too")
+A.OnCancel("spell13165")
+ok(p.aspect == nil, "a cancel with no aspect up is harmless")
+-- 12. right-click on the buff bar in combat: CancelUnitBuff(player, index)
+-- is matched through the button holding that index.
+local function btn(index, inst, icon)
+  return { buttonInfo = { index = index, auraInstanceID = inst },
+           Icon = { GetTexture = function() return icon end } }
+end
+secretAuras = false
+cache = { ["player13165"] = { spellId = 13165, auraInstanceID = 89, icon = 136076 } }
+A:Refresh()
+ok(p.aspect and p.aspect.auraInstanceID == 89 and p.aspect.auraIcon == 136076, "out of combat the aspect keeps its instance id and icon")
+secretAuras = true
+local frames = { btn(1, 50, 111), btn(2, 89, 136076) }
+A.OnCancelBuff("player", 1, "HELPFUL", frames)
+ok(p.aspect ~= nil, "cancelling another buff leaves the aspect")
+A.OnCancelBuff("target", 2, "HELPFUL", frames)
+A.OnCancelBuff("player", 2, "HARMFUL", frames)
+A.OnCancelBuff("player", 2, "HELPFUL", nil)
+ok(p.aspect ~= nil, "another unit, a debuff, or no buff frame is ignored")
+A.OnCancelBuff("player", 2, "HELPFUL", { btn(2, 90, 136076) })
+ok(p.aspect ~= nil, "a different instance with the same icon is not the aspect")
+A.OnCancelBuff("player", 2, "HELPFUL", frames)
+ok(p.aspect == nil, "right-click on the aspect's button clears it")
+-- Cast in combat: no instance id known, matched by icon.
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 13165)
+ok(p.aspect and p.aspect.auraInstanceID == nil, "a cast aspect has no instance id")
+A.OnCancelBuff("player", 3, "HELPFUL", { btn(3, 120, 111) })
+ok(p.aspect ~= nil, "another icon is not the aspect")
+A.OnCancelBuff("player", 3, "HELPFUL", { btn(3, 121, 1000 + 13165) })
+ok(p.aspect == nil, "a cast aspect is matched by its icon")
 print(("forever_auras: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
