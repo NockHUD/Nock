@@ -387,8 +387,9 @@ end
 
 function Cooldowns:GetGridEntries() return lists(self) end
 
--- Racial buffs: the tile lights while the racial's own buff is up (Elune's
--- Light, Blood Fury, Berserking ...) and pivots to its countdown. Own auras
+-- Spell buffs: the tile lights while the spell's own buff is up (the racials
+-- -- Elune's Light, Blood Fury, Berserking ... -- and any class spell whose
+-- entry names a `buff`: Rapid Fire) and pivots to its countdown. Own auras
 -- throw in combat here, so the buff is a ledger too: the cast stamps it with
 -- the learned (or seeded) length, and out of combat the aura cache is the
 -- truth both ways and teaches the length. An `untilBroken` buff (Shadowmeld)
@@ -444,8 +445,12 @@ function Cooldowns:UNIT_SPELLCAST_START(event, unit)
   if unit == "player" then self:BreakHeld(nil) end
 end
 
+-- A tile with an active phase: every racial (a buff length may be learned
+-- from its aura), and a class spell whose catalog entry names its buff.
+local function hasBuff(e) return e.racial == true or e.buff ~= nil end
+
 local function stampBuff(self, e, now)
-  if not e.racial then return end
+  if not hasBuff(e) then return end
   local b = buffOf(self, e)
   if e.untilBroken then
     b.held, b.stamp = true, now
@@ -846,7 +851,7 @@ function Cooldowns:Refresh()
   for _, e in ipairs(self._tracked) do
     local s = Nock.state.cooldowns[e.key]
     -- buff first: a break seen here stamps the cooldown read below
-    if e.racial then
+    if hasBuff(e) then
       readBuffTruth(self, e, now)
       publishBuff(self, e, s, now)
     end

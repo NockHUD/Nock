@@ -134,7 +134,7 @@ Spells.TRACKED = {
   { key = "Multi", id = 2643,  name = "Multi-Shot", label = "Multi", cat = "Class", row = 1, shared = "aimedMulti" },   -- shares the cooldown with Aimed Shot and the AimMulti pair tile
   { key = "Aimed", id = 19434, name = "Aimed Shot", label = "Aimed", cat = "Class", row = 1, shared = "aimedMulti" },   -- shares the cooldown with Multi-Shot and the AimMulti pair tile
   { key = "Conc",     id = 5116,  name = "Concussive Shot", label = "Conc", cat = "Class", row = 2 },                                 -- Concussive Shot
-  { key = "RF",       id = 3045,  name = "Rapid Fire", label = "RF",     lv = 26, cat = "Class", row = 1 },                                -- Rapid Fire
+  { key = "RF",       id = 3045,  name = "Rapid Fire", label = "RF",     lv = 26, cat = "Class", row = 1, buff = 15 },                                -- Rapid Fire
   { key = "FD",       id = 5384,  name = "Feign Death", label = "FD",     lv = 30, cat = "Class", row = 2 },                                 -- Feign Death
   -- Catalog additions (cooldown grid picker, 2026-09-27). Keyed by ID and name for
   -- locale-safe matching; lv marks spells not trained by level 20.

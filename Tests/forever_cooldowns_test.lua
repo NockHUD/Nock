@@ -381,6 +381,29 @@ do
   secretAuras = true
   fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 1259718); CD:Refresh()
   ok(cds.WillSurv.procActive == false, "Will to Survive has no buff: never active")
+
+  -- A class spell with a buff of its own (Rapid Fire, 15 s; user report
+  -- 2026-10-09: its tile had no active timer, only the cooldown): the same
+  -- active phase as a racial, the cooldown running underneath.
+  ok(CD:GetEntry("RF").buff == 15, "Rapid Fire carries its 15 s buff")
+  secretAuras = true; now = 5000
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 3045)
+  CD:Refresh(); derive("RF")
+  ok(cds.RF.procActive == true and cds.RF.buffDuration == 15 and cds.RF.buffStartTime == 5000, "Rapid Fire cast in combat: active for 15 s")
+  ok(cds.RF.startTime == 5000 and cds.RF.duration == 300, "its cooldown runs underneath")
+  now = 5016; CD:Refresh()
+  ok(cds.RF.procActive == false and cds.RF.buffIcon == nil, "buff over: the tile shows the cooldown")
+  secretAuras = false; now = 6000
+  auras[3045] = { spellId = 3045, name = "Rapid Fire", duration = 15, expirationTime = 6012, icon = 555 }
+  CD:Refresh()
+  ok(cds.RF.procActive == true and cds.RF.buffStartTime == 5997 and cds.RF.buffIcon == 555, "out of combat the aura is the truth")
+  auras[3045] = nil; now = 6001
+  CD:Refresh()
+  ok(cds.RF.procActive == false, "and its absence clears it")
+  -- A class spell with no buff never lights.
+  secretAuras = true
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 2973); CD:Refresh()
+  ok(cds.Raptor.procActive == false, "Raptor Strike has no buff: never active")
   Nock.AuraCache = nil
 end
 
