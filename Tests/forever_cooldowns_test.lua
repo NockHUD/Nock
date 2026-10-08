@@ -294,10 +294,11 @@ end
 do
   local secretAuras = false
   _G.C_Secrets.ShouldAurasBeSecret = function() return secretAuras end
-  local auras = {}   -- spellId -> record
+  local auras, petAuras = {}, {}   -- spellId -> record, per unit
+  local function on(unit) return unit == "pet" and petAuras or auras end
   Nock.AuraCache = {
-    BySpell = function(_, id) return auras[id] end,
-    ByName = function(_, n) for _, a in pairs(auras) do if a.name == n then return a end end end,
+    BySpell = function(unit, id) return on(unit)[id] end,
+    ByName = function(unit, n) for _, a in pairs(on(unit)) do if a.name == n then return a end end end,
   }
   local procMsgs = {}
   CD.SendMessage = function(_, m, key, on) if m == "NOCK_PROC_ACTIVE" then procMsgs[#procMsgs + 1] = key .. "=" .. tostring(on) end end
@@ -400,6 +401,31 @@ do
   auras[3045] = nil; now = 6001
   CD:Refresh()
   ok(cds.RF.procActive == false, "and its absence clears it")
+  -- Deterrence: a buff on the hunter, 10 s seed.
+  ok(CD:GetEntry("Deter").buff == 10 and CD:GetEntry("Deter").buffUnit == nil, "Deterrence carries its 10 s buff, on you")
+  secretAuras = true; now = 7000
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 19263)
+  CD:Refresh(); derive("Deter")
+  ok(cds.Deter.procActive == true and cds.Deter.buffDuration == 10 and cds.Deter.buffStartTime == 7000, "Deterrence cast in combat: active for 10 s")
+  now = 7011; CD:Refresh()
+  ok(cds.Deter.procActive == false, "Deterrence over: the cooldown")
+  -- Bestial Wrath: the buff lives on the PET (18 s seed), so out of combat
+  -- the pet's auras are the truth, not yours.
+  ok(CD:GetEntry("BW").buff == 18 and CD:GetEntry("BW").buffUnit == "pet", "Bestial Wrath carries its 18 s buff, on the pet")
+  secretAuras = true; now = 8000
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 19574)
+  CD:Refresh(); derive("BW")
+  ok(cds.BW.procActive == true and cds.BW.buffDuration == 18 and cds.BW.buffStartTime == 8000, "Bestial Wrath cast in combat: active for 18 s")
+  secretAuras = false; now = 8001
+  petAuras[19574] = { spellId = 19574, name = "Bestial Wrath", duration = 18, expirationTime = 8018, icon = 666 }
+  CD:Refresh()
+  ok(cds.BW.procActive == true and cds.BW.buffIcon == 666 and cds.BW.buffStartTime == 8000, "out of combat the PET's aura is the truth")
+  auras[19574] = { spellId = 19574, name = "Bestial Wrath", duration = 18, expirationTime = 9999 }
+  petAuras[19574] = nil; now = 8003
+  CD:Refresh()
+  ok(cds.BW.procActive == false, "gone from the pet: off (a same-named aura on you is not it)")
+  auras[19574] = nil
+
   -- A class spell with no buff never lights.
   secretAuras = true
   fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 2973); CD:Refresh()

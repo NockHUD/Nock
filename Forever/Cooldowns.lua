@@ -459,13 +459,15 @@ local function stampBuff(self, e, now)
   end
 end
 
--- Out of combat: the aura (by the entry's id, else its name) is the truth.
+-- Out of combat: the aura (by the entry's id, else its name) is the truth,
+-- on the unit it lands on (`buffUnit`: Bestial Wrath's is the pet's; else you).
 local function readBuffTruth(self, e, now)
   local AC = Nock.AuraCache
   if not AC or Nock.Restricted("auras") then return end
   local b = buffOf(self, e)
   local id = ledgerId(e)
-  local a = (id and AC.BySpell("player", id)) or AC.ByName("player", e.name or (id and nameOf(id)) or false)
+  local unit = e.buffUnit or "player"
+  local a = (id and AC.BySpell(unit, id)) or AC.ByName(unit, e.name or (id and nameOf(id)) or false)
   if a then
     local P = Nock.Flavor.Plain
     local dur, exp = P(a.duration), P(a.expirationTime)

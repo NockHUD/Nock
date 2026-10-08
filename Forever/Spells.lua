@@ -144,10 +144,10 @@ Spells.TRACKED = {
   { key = "Scare",     id = 1513,  name = "Scare Beast",        label = "Scare",    cat = "Class",  row = 2 },
   { key = "Flare",     id = 1543,  name = "Flare",              label = "Flare",    lv = 32, cat = "Class",  row = 2 },
   { key = "Tranq",     id = 19801, name = "Tranquilizing Shot", label = "Tranq",    lv = 60, cat = "Class",  row = 2 },
-  { key = "BW",        id = 19574, name = "Bestial Wrath",      label = "BW",       talent = true, cat = "Talent", row = 2 },
+  { key = "BW",        id = 19574, name = "Bestial Wrath",      label = "BW",       talent = true, cat = "Talent", row = 2, buff = 18, buffUnit = "pet" }, -- the buff lives on the pet
   { key = "Intim",     id = 19577, name = "Intimidation",       label = "Intim",    talent = true, cat = "Talent", row = 2 },
   { key = "Scatter",   id = 19503, name = "Scatter Shot",       label = "Scatter",  talent = true, cat = "Talent", row = 2 },
-  { key = "Deter",     id = 19263, name = "Deterrence",         label = "Deter",    talent = true, cat = "Talent", row = 2 },
+  { key = "Deter",     id = 19263, name = "Deterrence",         label = "Deter",    talent = true, cat = "Talent", row = 2, buff = 10 },
   { key = "Counter",   id = 19306, name = "Counterattack",      label = "Counter",  talent = true, cat = "Talent", row = 2, melee = true },
   { key = "Sniper",    id = 1310687, name = "Sniper Shot",     label = "Sniper",  talent = true, cat = "Talent", row = 2 },               -- MM talent (Forever)
   { key = "Strider",   id = 1317257, name = "Strider Kick",    label = "Strider", talent = true, cat = "Talent", row = 2, melee = true }, -- SV talent (Forever)
