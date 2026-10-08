@@ -1402,6 +1402,11 @@ if Nock.Flavor and Nock.Flavor.forever then
   -- (Forever/TrackingWheel.lua) has no key until the user picks one.
   p.warnTrackingEnabled  = true
   p.warnTrackingGate     = "always"
+  -- The Trueshot Aura warning (Forever/Warnings.lua): on, everywhere; it
+  -- only fires with the talent taken.
+  p.warnTrueshotEnabled  = true
+  p.warnTrueshotGate     = "always"
+  p.warnTrueshotLead     = 60        -- seconds left on the 30-minute buff
   -- The auto-switch (Forever/Tracking.lua AutoSwitch): off until asked for,
   -- it casts on the user's behalf.
   p.trackingAutoSwitch   = false

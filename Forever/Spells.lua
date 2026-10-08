@@ -49,6 +49,10 @@ local Spells = {
   -- with `/nock probe talents` (2026-09-26: node 105007, tree 1091). The
   -- no-pet warning stands down while it is talented (Forever/Warnings.lua).
   LONE_WOLF = 415370,
+  -- Trueshot Aura (Marksmanship talent; `/nock probe talents` 2026-09-26). A
+  -- self buff with no duration: the warning fires while it is talented and
+  -- not up (Forever/Auras.lua reads it, Forever/Warnings.lua warns).
+  TRUESHOT_AURA = 1299346,
   -- Tracking (vanilla ids; Forever/Tracking.lua). Track spells by base id,
   -- and the wheel's slot order clockwise from straight up.
   TRACKING = {

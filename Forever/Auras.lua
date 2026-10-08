@@ -1,7 +1,7 @@
 -- Forever/Auras.lua
--- The Forever `Auras` module: aspect and Hunter's Mark from own casts while
--- auras are secret, from the aura cache (the truth) while they are not; the
--- eating / drinking records from the cache only.
+-- The Forever `Auras` module: aspect, Trueshot Aura and Hunter's Mark from
+-- own casts while auras are secret, from the aura cache (the truth) while
+-- they are not; the eating / drinking records from the cache only.
 
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 local Auras = Nock:NewModule("Auras", "AceEvent-3.0")
@@ -60,6 +60,60 @@ local function setAspect(id, rec)
   p.aspect = aspectRec
 end
 
+-- Trueshot Aura, a 30-minute self buff on Forever: is it up
+-- (state.player.trueshot), when does it run out (state.player.trueshotExpires,
+-- nil = unknown) and is it talented (state.player.trueshotTalented). Out of
+-- combat the aura cache is the truth for all three. In combat a cast starts
+-- the timer (the duration last read, else 30 min), a /cancelaura stops it and
+-- the timer running out takes the aura down. A right-click on the buff bar is
+-- NOT read: in combat the clicked button's aura id and icon are secret for
+-- this buff (probe 2026-10-09), so nothing says which buff went. The talent
+-- is re-read every few seconds (talents only change out of combat).
+local TALENT_RECHECK = 2
+local TRUESHOT_DURATION = 1800
+local trueshotTalentAt, trueshotDuration
+
+local function setTrueshot(on, expires)
+  local p = Nock.state.player
+  p.trueshot = on
+  p.trueshotExpires = on and expires or nil
+end
+
+function Auras.TrueshotRank()
+  local T = Nock.Traits
+  return T and T.LiveRank and T.LiveRank(Nock.Spells.TRUESHOT_AURA) or nil
+end
+
+local function trueshotName()
+  local n = Nock.Flavor.Plain(Nock.API.SpellName(Nock.Spells.TRUESHOT_AURA))
+  return type(n) == "string" and n or nil
+end
+
+local function isTrueshot(spellID)
+  local S = Nock.Spells
+  if spellID == S.TRUESHOT_AURA or baseSpell(spellID) == S.TRUESHOT_AURA then return true end
+  local n, ts = Nock.Flavor.Plain(Nock.API.SpellName(spellID)), trueshotName()
+  return ts ~= nil and n == ts
+end
+
+local function readTrueshot(AC)
+  local p, S, now = Nock.state.player, Nock.Spells, GetTime()
+  local rec = AC.BySpell("player", S.TRUESHOT_AURA)
+  if not rec then
+    local n = trueshotName()
+    if n then rec = AC.ByName("player", n) end
+  end
+  local exp = rec and tonumber(rec.expirationTime)
+  local dur = rec and tonumber(rec.duration)
+  if dur and dur > 0 then trueshotDuration = dur end
+  setTrueshot(rec ~= nil, (exp and exp > 0) and exp or nil)
+  if not trueshotTalentAt or now - trueshotTalentAt >= TALENT_RECHECK then
+    trueshotTalentAt = now
+    local r = Auras.TrueshotRank()
+    if type(r) == "number" then p.trueshotTalented = r > 0 else p.trueshotTalented = nil end
+  end
+end
+
 local function setMark(expirationTime, duration)
   local t = Nock.state.target
   if not expirationTime then t.huntersMark = nil; return end
@@ -114,10 +168,13 @@ local function cancelledName(spell)
 end
 
 function Auras.OnCancel(spell)
-  local a = Nock.state.player.aspect
-  if not (a and a.spellId) then return end
   local n = cancelledName(spell)
   if not n then return end
+  local p = Nock.state.player
+  local ts = trueshotName()
+  if p.trueshot and ts and ts:lower() == n then setTrueshot(false); return end
+  local a = p.aspect
+  if not (a and a.spellId) then return end
   local cur = Nock.Flavor.Plain(Nock.API.SpellName(a.spellId))
   if type(cur) == "string" and cur:lower() == n then setAspect(nil) end
 end
@@ -190,6 +247,10 @@ end
 
 function Auras:UNIT_SPELLCAST_SUCCEEDED(event, unit, castGUID, spellID)
   if unit ~= "player" or type(spellID) ~= "number" then return end
+  if isTrueshot(spellID) then
+    setTrueshot(true, GetTime() + (trueshotDuration or TRUESHOT_DURATION))
+    return
+  end
   local id = resolve(spellID)
   if not id then return end
   local S = Nock.Spells
@@ -207,6 +268,9 @@ end
 
 -- Out of combat the cache is the truth and overrides the ledger both ways.
 function Auras:Refresh()
+  -- The Trueshot timer runs out in combat too, where no aura read sees it.
+  local p = Nock.state.player
+  if p.trueshot and p.trueshotExpires and GetTime() >= p.trueshotExpires then setTrueshot(false) end
   if Nock.Restricted("auras") then setConsume(nil); return end
   local AC = Nock.AuraCache
   setConsume(AC)
@@ -227,7 +291,8 @@ function Auras:Refresh()
     end
   end
   setAspect(found, rec)
-  local m = AC.BySpell("target", S.HUNTERS_MARK)
+  readTrueshot(AC)
+  local m =AC.BySpell("target", S.HUNTERS_MARK)
   if not m then
     local hmName = Nock.Flavor.Plain(Nock.API.SpellName(S.HUNTERS_MARK))
     if type(hmName) == "string" then m = AC.ByName("target", hmName) end

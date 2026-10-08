@@ -22,7 +22,7 @@ dofile("Forever/Spells.lua")
 dofile("Forever/Warnings.lua")
 local W = module
 ok(W and W.name == "Warnings" and W.refreshInterval == 0.1, "registers as Warnings on the slow lane")
-ok(#W.Catalog == 10 and W.Catalog[10].key == "wrongTracking" and W.Catalog[9].key == "petGrowl" and W.Catalog[6].key == "notAttacking" and W.Catalog[7].key == "notInRange" and W.Catalog[7].category == "combat" and W.Catalog[8].key == "petAttack" and W.Catalog[8].category == "pet" and W.Catalog[1].key == "ammo" and W.Catalog[2].key == "petDead" and W.Catalog[3].key == "petMissing" and W.Catalog[4].key == "petUnhappy", "ten catalog entries")
+ok(#W.Catalog == 11 and W.Catalog[10].key == "wrongTracking" and W.Catalog[9].key == "petGrowl" and W.Catalog[6].key == "notAttacking" and W.Catalog[7].key == "notInRange" and W.Catalog[7].category == "combat" and W.Catalog[8].key == "petAttack" and W.Catalog[8].category == "pet" and W.Catalog[1].key == "ammo" and W.Catalog[2].key == "petDead" and W.Catalog[3].key == "petMissing" and W.Catalog[4].key == "petUnhappy", "eleven catalog entries")
 for _, e in ipairs(W.Catalog) do
   ok(e.category and e.name and e.severity and e.enabledKey and e.iconFn and e.description and e.logic, "catalog entry complete: " .. e.key)
   ok(type(e.iconFn()) == "number", "catalog icon resolves: " .. e.key)
@@ -247,6 +247,56 @@ do
   slots[4] = nil
   ok(W:GrowlAutocast() == nil, "reads: no Growl on the bar")
   _G.IsInInstance, _G.GetPetActionInfo, Nock.API.SpellName = nil, nil, nil
+end
+
+-- Trueshot Aura: talented and not on, wherever the gate allows. An unknown
+-- aura state (nil: not read yet) stays quiet; so does a dead player.
+do
+  local ts = { trueshotTalented = true, trueshotOn = false, instanceKind = "none" }
+  local function tsa(t) local r = with(ts); for k, v in pairs(t or {}) do r[k] = v end; return r end
+  local w = C.trueshot(tsa())
+  ok(w and w.id == "trueshot" and w.severity == "amber" and w.text == "TSA" and w.icon == 1000 + 1299346, "talented, aura off: amber TSA with the Trueshot icon")
+  ok(C.trueshot(tsa({ inCombat = false })) ~= nil, "out of combat too (before the pull)")
+  ok(C.trueshot(tsa({ trueshotOn = true })) == nil, "aura on, no expiry known: quiet")
+  ok(C.trueshot(tsa({ trueshotOn = true, trueshotRemaining = 600 })) == nil, "aura on, ten minutes left: quiet")
+  local low = C.trueshot(tsa({ trueshotOn = true, trueshotRemaining = 45 }))
+  ok(low and low.text == "TSA" and low.remaining == 45, "under a minute left: TSA with the time left")
+  ok(C.trueshot(tsa({ trueshotOn = true, trueshotRemaining = 60 })) ~= nil, "exactly the lead: warns")
+  Nock.db.profile.warnTrueshotLead = 120
+  ok(C.trueshot(tsa({ trueshotOn = true, trueshotRemaining = 100 })) ~= nil, "lead from the profile")
+  Nock.db.profile.warnTrueshotLead = 0
+  ok(C.trueshot(tsa({ trueshotOn = true, trueshotRemaining = 5 })) == nil, "lead 0: only a missing aura warns")
+  Nock.db.profile.warnTrueshotLead = nil
+  ok(C.trueshot(tsa()).remaining == nil, "missing: no time on the square")
+  local unk = tsa(); unk.trueshotOn = nil
+  ok(C.trueshot(unk) == nil, "aura unknown: quiet")
+  ok(C.trueshot(tsa({ trueshotTalented = false })) == nil, "not talented: quiet")
+  unk = tsa(); unk.trueshotTalented = nil
+  ok(C.trueshot(unk) == nil, "talent unknown: quiet")
+  ok(C.trueshot(tsa({ playerDead = true })) == nil, "dead: quiet")
+  Nock.db.profile.warnTrueshotGate = "dungeon"
+  ok(C.trueshot(tsa()) == nil and C.trueshot(tsa({ instanceKind = "party" })) ~= nil and C.trueshot(tsa({ instanceKind = "raid" })) ~= nil, "gate dungeon: dungeons and raids only")
+  Nock.db.profile.warnTrueshotGate = "raid"
+  ok(C.trueshot(tsa({ instanceKind = "party" })) == nil and C.trueshot(tsa({ instanceKind = "raid" })) ~= nil, "gate raid: raids only")
+  Nock.db.profile.warnTrueshotGate = nil
+  Nock.db.profile.warnTrueshotEnabled = false
+  ok(C.trueshot(tsa()) == nil, "disabled: quiet")
+  Nock.db.profile.warnTrueshotEnabled = nil
+  local cat = W.Catalog[11]
+  ok(cat and cat.key == "trueshot" and cat.category == "combat" and cat.severity == "amber" and cat.enabledKey == "warnTrueshotEnabled"
+     and cat.selects and cat.selects[1].key == "warnTrueshotGate" and cat.selects[1].default == "always" and cat.selects[1].order == W.GATES
+     and cat.thresholds and cat.thresholds[1].key == "warnTrueshotLead", "catalog: Trueshot entry with the Where gate and the lead")
+  -- Reads: the talent and the aura come from state (Forever/Auras.lua).
+  local st = { player = { inCombat = false, trueshotTalented = true, trueshot = false } }
+  local r = W:Reads(st)
+  ok(r.trueshotTalented == true and r.trueshotOn == false and r.trueshotRemaining == nil, "reads: talent and aura from state")
+  st.player.trueshot, st.player.trueshotExpires = true, now + 90
+  ok(W:Reads(st).trueshotRemaining == 90, "reads: the time left from the expiry")
+  st.player.trueshotExpires = now - 5
+  ok(W:Reads(st).trueshotRemaining == 0, "reads: never negative")
+  st.player.trueshotExpires = nil
+  st.player.trueshot = nil
+  ok(W:Reads(st).trueshotOn == nil, "reads: an unknown aura stays nil")
 end
 
 -- Call Pet knowledge falls back to the level.

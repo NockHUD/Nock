@@ -180,7 +180,22 @@ function Checks.wrongTracking(reads)
   return warn("wrongTracking", "amber", spellIcon(need) or 132328, "TRACK", nil)
 end
 
-Warnings.ORDER = { Checks.ammo, Checks.petDead, Checks.petMissing, Checks.petUnhappy, Checks.notAttacking, Checks.notInRange, Checks.petAttack, Checks.petGrowl, Checks.wrongTracking }
+-- Trueshot Aura talented and not up, or up with no more than the lead
+-- (warnTrueshotLead, seconds) left on its 30 minutes, wherever the gate
+-- allows. In and out of combat (it shows before the pull); an unknown talent
+-- or aura is quiet. Running low, the square carries the time left.
+function Checks.trueshot(reads)
+  if not isEnabled("warnTrueshotEnabled") then return nil end
+  if reads.trueshotTalented ~= true or reads.playerDead == true then return nil end
+  local rem = reads.trueshotRemaining
+  local lead = tonumber(threshold("warnTrueshotLead", 60)) or 60
+  local low = reads.trueshotOn == true and type(rem) == "number" and lead > 0 and rem <= lead
+  if reads.trueshotOn ~= false and not low then return nil end
+  if not Warnings.GateAllows(threshold("warnTrueshotGate", "always"), reads.instanceKind or "none") then return nil end
+  return warn("trueshot", "amber", spellIcon(Nock.Spells.TRUESHOT_AURA) or 132329, "TSA", low and rem or nil)
+end
+
+Warnings.ORDER = { Checks.ammo, Checks.petDead, Checks.petMissing, Checks.petUnhappy, Checks.notAttacking, Checks.notInRange, Checks.petAttack, Checks.petGrowl, Checks.wrongTracking, Checks.trueshot }
 
 -- The live reads, every one secret-guarded: a secret answer is a nil read
 -- and the check stays quiet.
@@ -224,6 +239,13 @@ function Warnings:Reads(state)
   r.trackNeeded = tr and tr.targetTrackId or nil
   r.trackKnown = (tr and r.trackNeeded and tr.known[r.trackNeeded] == true) or false
   r.trackActive = tr and tr.activeId or nil
+  -- Trueshot Aura (Forever/Auras.lua): talented, and up; nil = unknown.
+  local pl = state.player
+  r.trueshotTalented = pl and pl.trueshotTalented
+  r.trueshotOn = pl and pl.trueshot
+  local exp = pl and pl.trueshotExpires
+  r.trueshotRemaining = type(exp) == "number" and math.max(0, exp - GetTime()) or nil
+  r.playerDead = P(_G.UnitIsDeadOrGhost and UnitIsDeadOrGhost("player")) == true
   r.now = GetTime()
   return r
 end
@@ -497,6 +519,24 @@ Warnings.Catalog = {
     logic       = "Fires when:\n• You have points in Improved Tracking (the talent is what makes tracking damage)\n• Your target is alive and attackable\n• Its creature type has a Track spell you have learned\n• That tracking is not on (another one, or none)\n• That has held for 1 s\n\nThe square shows the Track spell to switch to. Quiet for creature types no tracking covers (mechanicals, critters), and wherever the gate below says so. The tracking wheel (Utilities) switches without a mouse trip to the minimap.\n\nInside dungeons and raids the game hides your target's creature type from addons, so there the flare is a word pill (BEASTS, UNDEAD, ...) the game itself draws; it needs an English client.",
     selects     = {
       { key = "warnTrackingGate", label = "Where", default = "always",
+        values = { always = "Always", dungeon = "Dungeons and raids", raid = "Raids only" },
+        order = Warnings.GATES },
+    },
+  },
+  {
+    key         = "trueshot",
+    category    = "combat",
+    name        = "Trueshot Aura missing",
+    severity    = "amber",
+    enabledKey  = "warnTrueshotEnabled",
+    iconFn      = function() return spellIcon(Nock.Spells.TRUESHOT_AURA) or 132329 end,
+    description = "You have Trueshot Aura talented and it is not on, or about to run out.",
+    logic       = "Fires when:\n• You have Trueshot Aura talented\n• The aura is not on you, or has no more time left than the setting below (the square then counts it down)\n• You are alive\n\nIn and out of combat, so it shows before the pull, and wherever the gate below says so. In combat the game hides your auras from addons, so there Nock goes by your own casts and the aura's 30 minutes: casting Trueshot Aura clears the square, and /cancelaura Trueshot Aura brings it back. A right-click on the buff in combat is only seen when combat ends.",
+    thresholds  = {
+      { key = "warnTrueshotLead", label = "Seconds left to warn at (0 = off)", min = 0, max = 300, step = 15 },
+    },
+    selects     = {
+      { key = "warnTrueshotGate", label = "Where", default = "always",
         values = { always = "Always", dungeon = "Dungeons and raids", raid = "Raids only" },
         order = Warnings.GATES },
     },

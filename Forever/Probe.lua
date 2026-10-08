@@ -1487,6 +1487,7 @@ local function awSample(list, out)
   out.inCombat = describe(InCombatLockdown and InCombatLockdown())
   local pa = Nock.state.player.aspect
   out.stateAspect = pa and tostring(pa.name) or "nil"
+  out.stateTrueshot = describe(Nock.state.player.trueshot)
   out.shapeshiftForm = awCall(_G.GetShapeshiftForm)
   for _, a in ipairs(list) do
     local k = a.name
@@ -1569,6 +1570,12 @@ end
 
 function Probe.AspectReport(s)
   local L = { ("Nock aspect probe  %d s  aspects: %d"):format(math.floor(GetTime() - s.t0), #s.list) }
+  -- Trueshot Aura: what the cancel match compares against.
+  local TSA = Nock.Spells.TRUESHOT_AURA
+  local ts = s.trueshot or {}
+  L[#L + 1] = ("  Trueshot Aura  id %s  name %s  SpellIcon %s  cache rec at arm: spellId %s auraInstanceID %s icon %s"):format(
+    tostring(TSA), describe(Nock.API.SpellName(TSA)), describe(Nock.API.SpellIcon(TSA)),
+    describe(ts.spellId), describe(ts.auraInstanceID), describe(ts.icon))
   for _, a in ipairs(s.list) do
     local slots = {}
     for i, v in ipairs(a.slots) do slots[i] = tostring(v) end
@@ -1596,6 +1603,14 @@ function Probe:AspectWatch(rest)
   awInstallHooks()
   awHookButtons()
   aw = { t0 = GetTime(), L = {}, list = awAspects(), last = {}, cur = {} }
+  -- The Trueshot aura as the cache sees it now (arm out of combat).
+  local AC, TSA = Nock.AuraCache, Nock.Spells.TRUESHOT_AURA
+  local rec = AC and AC.BySpell and AC.BySpell("player", TSA)
+  if not rec and AC and AC.ByName then
+    local n = Nock.Flavor.Plain(Nock.API.SpellName(TSA))
+    if type(n) == "string" then rec = AC.ByName("player", n) end
+  end
+  aw.trueshot = rec and { spellId = rec.spellId, auraInstanceID = rec.auraInstanceID, icon = rec.icon } or nil
   local s = aw
   local ticks = 0
   s.ticker = T.NewTicker(0.25, function()

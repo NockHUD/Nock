@@ -151,5 +151,72 @@ A.OnCancelBuff("player", 3, "HELPFUL", { btn(3, 120, 111) })
 ok(p.aspect ~= nil, "another icon is not the aspect")
 A.OnCancelBuff("player", 3, "HELPFUL", { btn(3, 121, 1000 + 13165) })
 ok(p.aspect == nil, "a cast aspect is matched by its icon")
+-- 13. Trueshot Aura (1299346), a 30-minute self buff on Forever: on/off and
+-- its expiry from the cache out of combat (by id, else by name); in combat a
+-- cast starts the timer (the duration last read, else 30 min), a /cancelaura
+-- takes it down and the timer running out takes it down. The right-click on
+-- the buff bar names no buff in combat (probe 2026-10-09: the button's aura
+-- id and icon are secret), so it is not read. The talent is read out of
+-- combat only, then held.
+local TSA = 1299346
+local rank = 1
+A.TrueshotRank = function() return rank end
+secretAuras = false
+cache = {}
+now = 2000
+A:Refresh()
+ok(p.trueshotTalented == true and p.trueshot == false and p.trueshotExpires == nil, "talented, no aura: off")
+cache = { ["player" .. TSA] = { spellId = TSA, auraInstanceID = 300, icon = 132329, expirationTime = 2900, duration = 1800 } }
+A:Refresh()
+ok(p.trueshot == true and p.trueshotExpires == 2900, "aura by id: on, with its expiry")
+cache = { ["playerspell" .. TSA] = { spellId = 77777, expirationTime = 3000, duration = 1800 } }
+A:Refresh()
+ok(p.trueshot == true and p.trueshotExpires == 3000, "aura by name: on")
+cache = { ["player" .. TSA] = { spellId = TSA, expirationTime = 0, duration = 0 } }
+A:Refresh()
+ok(p.trueshot == true and p.trueshotExpires == nil, "no duration on the aura: on, no expiry")
+cache = {}
+A:Refresh()
+ok(p.trueshot == false and p.trueshotExpires == nil, "aura gone out of combat: off")
+-- In combat: the cast starts the timer at the duration last read (1800).
+secretAuras = true
+now = 3100
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", TSA)
+ok(p.trueshot == true and p.trueshotExpires == 3100 + 1800, "cast in combat: on, timed at the duration last read")
+ok(p.aspect == nil or p.aspect.spellId ~= TSA, "the cast is not taken for an aspect")
+A.OnCancel("spell" .. TSA)
+ok(p.trueshot == false and p.trueshotExpires == nil, "/cancelaura Trueshot in combat: off")
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", TSA)
+now = 3100 + 1799
+A:Refresh()
+ok(p.trueshot == true, "a second before the timer runs out: still on")
+now = 3100 + 1800
+A:Refresh()
+ok(p.trueshot == false and p.trueshotExpires == nil, "the timer runs out in combat: off")
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 13165)
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", TSA)
+A.OnCancelBuff("player", 5, "HELPFUL", { btn(5, 302, 1000 + 13165) })
+ok(p.trueshot == true and p.aspect == nil, "cancelling the aspect leaves Trueshot up")
+rank = 0
+A:Refresh()
+ok(p.trueshotTalented == true, "talent is held while auras are secret")
+secretAuras = false
+now = 6000
+A:Refresh()
+ok(p.trueshotTalented == false, "untalented out of combat: re-read")
+rank = nil
+now = 6010
+A:Refresh()
+ok(p.trueshotTalented == nil, "no talent API: unknown")
+-- Never read a duration: a cast in combat falls back to 30 minutes.
+dofile("Forever/Auras.lua")
+A = module
+A:OnEnable()
+A.TrueshotRank = function() return 1 end
+p = Nock.state.player
+secretAuras = true
+now = 7000
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", TSA)
+ok(p.trueshotExpires == 7000 + 1800, "no duration ever read: 30 minutes")
 print(("forever_auras: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
