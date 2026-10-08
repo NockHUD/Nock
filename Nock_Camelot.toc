@@ -90,6 +90,7 @@ Forever\RangeCues.lua
 Forever\AspectRing.lua
 Forever\Tracking.lua
 Forever\TrackingWheel.lua
+Forever\EotbPulse.lua
 Modules\ProfileShare.lua
 Modules\QoL.lua
 Modules\AggroWarning.lua
@@ -110,4 +111,5 @@ UI\Frame_Warnings.lua
 UI\Frame_ConsumeBanner.lua
 UI\Frame_AspectRing.lua
 UI\Frame_TrackingWheel.lua
+UI\Frame_EotbPulse.lua
 UI\Frame_Onboarding.lua

@@ -25,41 +25,30 @@ function ReactCastBar:OnInitialize()
   -- border seam with the auto bar below (clamped, reference look).
   local cluster = Nock:GetModule("ReactCluster", true)
   local parent  = (cluster and cluster.frame) or Nock.parentFrame
+  -- Laid out in whole device pixels by Nock.UI.LayoutIconBarRow (ApplyLayout):
+  -- the panel welded on the cluster sharing one pixel row, the square icon
+  -- box and the bar sharing one pixel column, fills one pixel inside.
   local panel = CreateFrame("Frame", "NockReactCastPanel", parent)
-  panel:SetHeight(REACT.CAST_H)
-  panel:SetPoint("BOTTOMLEFT",  parent, "TOPLEFT",  0, -1)
-  panel:SetPoint("BOTTOMRIGHT", parent, "TOPRIGHT", 0, -1)
   panel:Hide()
 
-  -- Square icon box left, bar to its right, sharing their 1px borders.
   local iconF = CreateFrame("Frame", nil, panel, "BackdropTemplate")
-  iconF:SetSize(REACT.CAST_H, REACT.CAST_H)
-  iconF:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
   Nock.UI.ApplyBackdrop(iconF, REACT.BAR_BG, REACT.BORDER)
   local icon = iconF:CreateTexture(nil, "ARTWORK")
-  icon:SetPoint("TOPLEFT", iconF, "TOPLEFT", 1, -1)
-  icon:SetPoint("BOTTOMRIGHT", iconF, "BOTTOMRIGHT", -1, 1)
   icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
   local bar = CreateFrame("Frame", "NockReactCastBar", panel, "BackdropTemplate")
-  bar:SetPoint("TOPLEFT", iconF, "TOPRIGHT", -1, 0)
-  bar:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", 0, 0)
   Nock.UI.ApplyBackdrop(bar, REACT.BAR_BG, REACT.BORDER)
 
   -- Latency zone (reactCastLatency): pinned to the bar's right end, under the
   -- fill, which covers it as the cast runs -- Quartz's look.
   local lag = bar:CreateTexture(nil, "ARTWORK", nil, -1)
   lag:SetTexture(WHITE8X8)
-  lag:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -1, -1)
-  lag:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -1, 1)
   lag:Hide()
   bar.lag = lag
 
   local fill = bar:CreateTexture(nil, "ARTWORK")
   fill:SetTexture(WHITE8X8)
   fill:SetVertexColor(unpack(REACT.CAST_FILL))
-  fill:SetPoint("TOPLEFT", bar, "TOPLEFT", 1, -1)
-  fill:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 1, 1)
   fill:SetWidth(0.01)
   bar.fill = fill
 
@@ -80,12 +69,14 @@ function ReactCastBar:OnInitialize()
   self.bar = bar
   self.icon = icon
   self.iconF = iconF
+  self.parent = parent
   self._lastName = nil
   self._lastTime = nil
   self._lastIcon = nil
 
   self:ApplyLayout()
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "ApplyLayout")
+  self:RegisterMessage("NOCK_PIXEL_GRID_CHANGED", "ApplyLayout")   -- device-pixel seams
 end
 
 -- Skin overrides (React HUD tab): cast bar height (also the icon box edge)
@@ -95,8 +86,9 @@ function ReactCastBar:ApplyLayout()
   local p = (Nock.db and Nock.db.profile) or {}
   local h = tonumber(p.reactCastH)
   if not h or h <= 0 then h = REACT.CAST_H end
-  self.frame:SetHeight(h)
-  self.iconF:SetSize(h, h)
+  self._edge, self._dev = Nock.UI.LayoutIconBarRow(
+    { panel = self.frame, iconF = self.iconF, icon = self.icon, bar = self.bar, fill = self.bar.fill, lag = self.bar.lag },
+    self.parent, h)
   -- Fill colour is per source (cast vs Auto Shot wind-up): Refresh paints it
   -- through ApplyFillColor; clearing the cache here forces the repaint.
   self._fillKind = nil
@@ -182,8 +174,10 @@ function ReactCastBar:Refresh(state)
   else
     progress = math.max(0, math.min(1, elapsed / total))
   end
-  local maxW = (self.bar:GetWidth() or 2) - 2
-  self.bar.fill:SetWidth(math.max(0.01, progress * maxW))
+  local barW = self.bar:GetWidth() or 2
+  local e = self._edge or 1
+  local maxW = barW - 2 * e
+  self.bar.fill:SetWidth(Nock.UI.IconBarFillWidth(barW, progress, e, self._dev))
   self:PaintLatency(c, p, maxW, state)
 
   local name = c.name or "?"

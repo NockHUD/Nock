@@ -1857,6 +1857,52 @@ function Nock.UI.SeamSplit(totalPx, n, i)
   return l, r - l
 end
 
+-- A React cast-bar-shaped row (the cast bar, the EotB pulse row stacked on
+-- it) laid out in whole device pixels, so rows built by it stack and line up
+-- column for column at any UI scale. `r` = { panel, iconF, icon, bar, fill,
+-- lag (optional, right-pinned) }. The panel is `h` tall rounded to whole
+-- pixels and welded on `below`'s top sharing one device-px border; the square
+-- icon box and the bar share one device-px seam; icon, fill and lag sit one
+-- device px inside their borders. Returns that edge (units) and the pixel
+-- scale, for Nock.UI.IconBarFillWidth.
+function Nock.UI.LayoutIconBarRow(r, below, h)
+  local dev = Nock.UI.PixelScale(below) or Nock.UI.PixelScale(r.panel)
+  local e = Nock.UI.DeviceWidth(1, dev)
+  h = math.max(Nock.UI.DeviceRound(h, dev), 3 * e)
+  local panel = r.panel
+  panel:SetHeight(h)
+  panel:ClearAllPoints()
+  panel:SetPoint("BOTTOMLEFT",  below, "TOPLEFT",  0, -e)
+  panel:SetPoint("BOTTOMRIGHT", below, "TOPRIGHT", 0, -e)
+  r.iconF:SetSize(h, h)
+  r.iconF:ClearAllPoints()
+  r.iconF:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
+  r.icon:ClearAllPoints()
+  r.icon:SetPoint("TOPLEFT",     r.iconF, "TOPLEFT",     e, -e)
+  r.icon:SetPoint("BOTTOMRIGHT", r.iconF, "BOTTOMRIGHT", -e, e)
+  r.bar:ClearAllPoints()
+  r.bar:SetPoint("TOPLEFT", r.iconF, "TOPRIGHT", -e, 0)
+  r.bar:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", 0, 0)
+  r.fill:ClearAllPoints()
+  r.fill:SetPoint("TOPLEFT",    r.bar, "TOPLEFT",    e, -e)
+  r.fill:SetPoint("BOTTOMLEFT", r.bar, "BOTTOMLEFT", e, e)
+  if r.lag then
+    r.lag:ClearAllPoints()
+    r.lag:SetPoint("TOPRIGHT",    r.bar, "TOPRIGHT",    -e, -e)
+    r.lag:SetPoint("BOTTOMRIGHT", r.bar, "BOTTOMRIGHT", -e, e)
+  end
+  return e, dev
+end
+
+-- The fill width for `ratio` (0..1) of a LayoutIconBarRow bar `barW` wide:
+-- the inner width between the borders, in whole device pixels, so a full
+-- fill meets the right border exactly.
+function Nock.UI.IconBarFillWidth(barW, ratio, e, dev)
+  local inner = (tonumber(barW) or 0) - 2 * (e or 1)
+  if ratio < 0 then ratio = 0 elseif ratio > 1 then ratio = 1 end
+  return math.max(0.01, Nock.UI.DeviceRound(ratio * inner, dev))
+end
+
 -- Anchor `region` inside `frame` by exactly one device pixel (the PixelBackdrop
 -- edge) and remember it, so RefreshPixelBackdrops re-insets it when the UI
 -- scale moves the grid.

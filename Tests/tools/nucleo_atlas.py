@@ -87,6 +87,8 @@ WANT = [
     ("chevronup",  ["chevron-up"]),
     ("chevrondown",["chevron-down"]),
     ("xmark",      ["xmark", "cross"]),
+    # Alerts -> Eyes of the Beast pulse (2026-10-09).
+    ("eye",        ["eye", "eye-open"]),
 ]
 
 CELL = 32          # atlas cell (px); the 24-grid icon sits at scale 1 centred, 4 px margin

@@ -18,7 +18,8 @@ Settings.CARD_PAD, Settings.ROW_H = 24, 54
 local NAV_ROW_H, NAV_HEAD_H, NAV_PAD_L = 25, 24, 32
 local NAV_ICON = { general = "sliders", classic = "rows", react = "bolt", fluffy = "equalizer", warnings = "warn", helpers = "pill", sounds = "bell", aggro = "focus",
   buffTracker = "shield", debuffTracker = "skull", totemTracker = "signal", misdirect = "turn", qol = "gear", shopping = "cart", mailbox = "envelope",
-  weaveBind = "keyboard", weaving = "target", garment = "shirt", tonk = "wrench", practice = "target", experimental = "flask", profiles = "profiles" }
+  weaveBind = "keyboard", weaving = "target", garment = "shirt", tonk = "wrench", practice = "target", experimental = "flask", profiles = "profiles",
+  eotbPulse = "eye" }
 
 local function text(parent, role, size, color)
   local fs = parent:CreateFontString(nil, "OVERLAY")

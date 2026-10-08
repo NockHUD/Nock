@@ -445,6 +445,38 @@ function F.EatingPillPage(settings)
   return { type = "group", name = "Eating pill", order = 3, args = args }
 end
 
+-- Alerts -> Eyes of the Beast pulse (Forever/EotbPulse.lua, UI/Frame_EotbPulse.lua):
+-- a HUD row on the cast bar. Opt-in, not in the setup wizard.
+function F.EotbPulsePage()
+  local function p() return Nock.db.profile end
+  local function changed() Nock:SendMessage("NOCK_VISUALS_CHANGED") end
+  local function off() return p().eotbPulseEnabled ~= true end
+  local args = {
+    intro = {
+      type = "description", order = 1, fontSize = "medium",
+      name = "While you control your pet with Eyes of the Beast, it pulls nearby mobs on a fixed beat counted from the pull. This counts that beat down so you can time your moves between pulses, on a bar stacked on the HUD's cast bar. It runs in combat while Eyes of the Beast is channelled. Right-click the bar (or type /nock pulse) to resync it when the pet's pulse drifts.\n",
+    },
+    pulseHeader = { type = "header", name = "Pulse timer", desc = "The countdown, and how long the beat is.", order = 10 },
+    eotbPulseEnabled = {
+      type = "toggle", name = "Eyes of the Beast pulse", order = 11, width = "full",
+      desc = "Count down to the pet's next pulse while Eyes of the Beast is channelled in combat.",
+      get = function() return p().eotbPulseEnabled == true end,
+      set = function(_, v) p().eotbPulseEnabled = v and true or false; changed() end,
+    },
+    eotbPulsePeriod = {
+      type = "range", name = "Pulse interval", order = 12, width = "full",
+      desc = "Seconds between two pulses. 5.5 to 5.6 is what players measure; nudge it if the bar drifts from what you see.",
+      min = 1, max = 10, step = 0.05, bigStep = 0.1,
+      disabled = off,
+      get = function() return tonumber(p().eotbPulsePeriod) or 5.6 end,
+      set = function(_, v) p().eotbPulsePeriod = v end,
+    },
+  }
+  local W = Nock.OptionsWalk
+  if W and W.SetMeta then W.SetMeta(args.pulseHeader, "icon", { glyph = "eye" }) end
+  return { type = "group", name = "Eyes of the Beast pulse", order = 3.2, args = args }
+end
+
 -- Quickstarts -> Weaving (Forever/Quickstart.lua): the checklist page. Every
 -- row is a COPY of the option node on its home page: same get, set and
 -- profile key, so nothing is stored twice. The walker's metadata
@@ -533,6 +565,9 @@ function F.Apply(root)
   hs = type(hs) == "table" and hs.args and hs.args.tabSettings
   if type(hs) == "table" and type(hs.args) == "table" and not alerts.args.eating then
     alerts.args.eating = F.EatingPillPage(hs.args)
+  end
+  if type(alerts) == "table" and type(alerts.args) == "table" and not alerts.args.eotbPulse then
+    alerts.args.eotbPulse = F.EotbPulsePage()
   end
   -- Built once; the prune below keeps it (KEEP_PAGES), a re-Apply finds it.
   local util = root.args.utilities

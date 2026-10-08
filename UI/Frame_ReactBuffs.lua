@@ -317,6 +317,12 @@ function ReactBuffs:ApplyLayout()
       lift = math.max(18, castH + 4)
     else
       local castH = p and tonumber(p.reactCastH) or 16
+      -- The EotB pulse row (UI/Frame_EotbPulse.lua, Forever) stacks on the
+      -- cast bar at its height, sharing a seam: reserved while it is
+      -- enabled, so the row never jumps when the pulse bar appears.
+      if p and p.eotbPulseEnabled == true and Nock.Flavor and Nock.Flavor.forever then
+        castH = castH * 2 - 1
+      end
       lift = math.max(REACT.LIFT, castH + 4)
     end
     panel:SetPoint("BOTTOMLEFT",  parent, "TOPLEFT",  0, lift / s)

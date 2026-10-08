@@ -69,6 +69,7 @@ Nock.IconAtlas = {
     chevronup  = { 0.375000, 0.500000, 0.875000, 1.000000 },  -- chevron-up
     chevrondown = { 0.500000, 0.625000, 0.875000, 1.000000 },  -- chevron-down
     xmark      = { 0.625000, 0.750000, 0.875000, 1.000000 },  -- xmark
+    eye        = { 0.750000, 0.875000, 0.875000, 1.000000 },  -- eye
   },
   fileCell = 24,   -- the per-icon files are the bare 24-grid, no padding
   files = {
@@ -134,5 +135,6 @@ Nock.IconAtlas = {
     chevronup  = "Interface\\AddOns\\Nock\\Media\\Icons\\chevronup",
     chevrondown = "Interface\\AddOns\\Nock\\Media\\Icons\\chevrondown",
     xmark      = "Interface\\AddOns\\Nock\\Media\\Icons\\xmark",
+    eye        = "Interface\\AddOns\\Nock\\Media\\Icons\\eye",
   },
 }

@@ -137,5 +137,38 @@ slot._scale = 1
 UI.RefreshPixelBackdrops()
 ok(near(icon.pts.TOPLEFT.x, 1) and near(slot._bd.edgeSize, 1), "a scale change re-fits the inset with the edge")
 
+-- 7. LayoutIconBarRow / IconBarFillWidth (the React cast bar and the EotB
+--    pulse row stacked on it): every seam one device pixel at any scale, the
+--    height whole pixels, and a full fill meets the right border exactly.
+local function frame(scale)
+  local f = region()
+  function f:GetEffectiveScale() return scale end
+  function f:SetHeight(h) self.h = h end
+  function f:SetSize(w, h) self.w, self.h = w, h end
+  return f
+end
+for _, ds in ipairs(SCALES) do
+  local below = frame(ds)
+  local r = { panel = frame(ds), iconF = frame(ds), icon = region(), bar = frame(ds), fill = region(), lag = region() }
+  local e, dev = UI.LayoutIconBarRow(r, below, 16)
+  local px = function(v) return v * ds end
+  local whole = function(v) return math.abs(px(v) - math.floor(px(v) + 0.5)) < 1e-6 end
+  local good = near(e, 1 / ds) and dev == ds
+    and near(r.panel.pts.BOTTOMLEFT.y, -e) and near(r.panel.pts.BOTTOMRIGHT.y, -e)
+    and whole(r.panel.h) and near(r.iconF.w, r.panel.h) and near(r.iconF.h, r.panel.h)
+    and near(r.bar.pts.TOPLEFT.x, -e)
+    and near(r.icon.pts.TOPLEFT.x, e) and near(r.icon.pts.BOTTOMRIGHT.x, -e)
+    and near(r.fill.pts.TOPLEFT.x, e) and near(r.fill.pts.BOTTOMLEFT.y, e)
+    and near(r.lag.pts.TOPRIGHT.x, -e)
+  ok(good, ("icon-bar row: one-pixel seams and whole-pixel height at %.3f px/unit"):format(ds))
+  -- A bar 200 device px wide: the full fill is the 198 px between the borders.
+  local barW = 200 / ds
+  local full = UI.IconBarFillWidth(barW, 1, e, dev)
+  ok(math.abs(px(full) - 198) < 1e-6, ("full fill meets the right border at %.3f px/unit"):format(ds))
+  local half = UI.IconBarFillWidth(barW, 0.5, e, dev)
+  ok(whole(half) and math.abs(px(half) - 99) < 1e-6, ("half fill on a whole pixel at %.3f px/unit"):format(ds))
+end
+ok(UI.IconBarFillWidth(100, 0, 1, 1) == 0.01 and UI.IconBarFillWidth(100, 2, 1, 1) == 98, "fill clamps to empty and full")
+
 print(("pixel_seams_test: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

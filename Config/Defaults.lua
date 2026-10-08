@@ -1405,6 +1405,10 @@ if Nock.Flavor and Nock.Flavor.forever then
   -- The auto-switch (Forever/Tracking.lua AutoSwitch): off until asked for,
   -- it casts on the user's behalf.
   p.trackingAutoSwitch   = false
+  -- The Eyes of the Beast pulse timer (Forever/EotbPulse.lua): opt-in, and
+  -- not part of the setup wizard. A HUD row stacked on the cast bar.
+  p.eotbPulseEnabled     = false
+  p.eotbPulsePeriod      = 5.6
 end
 
 function Nock:GetDefaultPosition()

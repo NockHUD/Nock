@@ -19,6 +19,9 @@ local Spells = {
   ASPECT_CHEETAH = 5118, -- icon only (Quickstarts > Weaving, the One key recipe: the key runs you)
   -- Pet Growl (rank 1): its localized name finds the pet-bar slot.
   GROWL = 2649,
+  -- Eyes of the Beast (vanilla id): its channel drives the pulse timer
+  -- (Forever/EotbPulse.lua); a rank under another id is matched by name.
+  EYES_OF_THE_BEAST = 1002,
   -- The generic eating / drinking auras (vanilla ids, name source only: every
   -- food applies its own id under one of these names). Forever/Auras.lua
   -- falls back to "Food" / "Drink" while the client has not resolved them.
