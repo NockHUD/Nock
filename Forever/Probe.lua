@@ -1554,12 +1554,15 @@ local function awInstallHooks()
   f:RegisterUnitEvent("UNIT_AURA", "player")
   f:SetScript("OnEvent", function(_, _, _, info)
     if not aw then return end
-    if type(info) ~= "table" then awLog("UNIT_AURA info=%s", describe(info)); return end
-    local function n(t) return type(t) == "table" and describe(#t) or describe(t) end
+    if type(info) ~= "table" or describe(info) == "secret" then awLog("UNIT_AURA info=%s", describe(info)); return end
+    -- In combat the lists are SECRET tables (bugsack 2026-10-09: `#t` threw
+    -- and the line was never logged): name them, never measure or index them.
+    local function open(t) return type(t) == "table" and describe(t) ~= "secret" end
+    local function n(t) if open(t) then return describe(#t) end return describe(t) end
+    local removed = info.removedAuraInstanceIDs
     awLog("UNIT_AURA full=%s added=%s updated=%s removed=%s removed[1]=%s",
       describe(info.isFullUpdate), n(info.addedAuras), n(info.updatedAuraInstanceIDs),
-      n(info.removedAuraInstanceIDs),
-      describe(type(info.removedAuraInstanceIDs) == "table" and info.removedAuraInstanceIDs[1]))
+      n(removed), open(removed) and describe(removed[1]) or describe(removed))
   end)
   local c = CreateFrame("Frame")
   c:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
