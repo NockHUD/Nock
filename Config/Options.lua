@@ -7229,6 +7229,47 @@ local function buildOptionsTable()
       get = function() return Nock.db.profile.gridIconZoom or 8 end,
       set = function(_, v) visualsSet(_, "gridIconZoom", v) end,
     }
+    -- Tile size (UI/Frame_ReactCooldowns.lua RowSize): unset keys keep the
+    -- built-in row sizes, so the getters show those.
+    gridArgs.gridRow1Height = {
+      type = "range", name = "Top row height",
+      desc = "How tall the top row of tiles is. The HUD below moves down or up to make room.",
+      min = 16, max = 64, step = 1, order = 69.61, width = "full", disabled = notReact,
+      get = function() return Nock.db.profile.gridRow1Height or 32 end,
+      set = function(_, v) visualsSet(_, "gridRow1Height", v) end,
+    }
+    gridArgs.gridRow1Fill = {
+      type = "toggle", name = "Top row fills the width",
+      desc = "The top row's tiles share the whole HUD width between them. Off, they keep the tile width below and sit centred.",
+      order = 69.62, width = "full", disabled = notReact,
+      get = function() return Nock.db.profile.gridRow1Fill ~= false end,
+      set = function(_, v) visualsSet(_, "gridRow1Fill", v and true or false) end,
+    }
+    gridArgs.gridRow1Width = {
+      type = "range", name = "Top row tile width",
+      desc = "How wide each top-row tile is when the row does not fill the width. A width the HUD cannot fit fills it instead.",
+      min = 16, max = 96, step = 1, order = 69.63, width = "full",
+      disabled = function() return notReact() or Nock.db.profile.gridRow1Fill ~= false end,
+      get = function()
+        local p = Nock.db.profile
+        return p.gridRow1Width or math.floor((p.gridRow1Height or 32) * 1.3 + 0.5)
+      end,
+      set = function(_, v) visualsSet(_, "gridRow1Width", v) end,
+    }
+    gridArgs.gridRow2Height = {
+      type = "range", name = "Small rows height",
+      desc = "How tall the tiles in the rows under the top row are.",
+      min = 16, max = 64, step = 1, order = 69.64, width = "full", disabled = notReact,
+      get = function() return Nock.db.profile.gridRow2Height or 24 end,
+      set = function(_, v) visualsSet(_, "gridRow2Height", v) end,
+    }
+    gridArgs.gridRow2Width = {
+      type = "range", name = "Small rows tile width",
+      desc = "How wide each tile in the rows under the top row is. A width the HUD cannot fit fills it instead.",
+      min = 16, max = 96, step = 1, order = 69.65, width = "full", disabled = notReact,
+      get = function() return Nock.db.profile.gridRow2Width or 32 end,
+      set = function(_, v) visualsSet(_, "gridRow2Width", v) end,
+    }
     gridArgs.reactManaTint = {
       type = "toggle",
       name = "No mana: blue",
@@ -8141,6 +8182,14 @@ local function buildOptionsTable()
       disabled = notFluffy,
       get = function() return Nock.db.profile.gridIconZoom or 8 end,
       set = function(_, v) visualsSet(_, "gridIconZoom", v) end,
+    }
+    fGridArgs.fluffyGridHeight = {
+      type = "range", name = "Row height", order = 24.55, width = "full",
+      desc = "How tall the cooldown row's tiles are; they always share the full HUD width.",
+      min = 16, max = 64, step = 1,
+      disabled = notFluffy,
+      get = function() return Nock.db.profile.fluffyGridHeight or 32 end,
+      set = function(_, v) visualsSet(_, "fluffyGridHeight", v) end,
     }
     fGridArgs.reactManaTint = {
       type = "toggle", name = "No-mana tint", order = 24, width = "full",

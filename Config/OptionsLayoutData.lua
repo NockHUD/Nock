@@ -149,7 +149,7 @@ L.TABS = {
     cards = {
       { key = "gridCard", name = "Grid", icon = { spell = C.KILL_COMMAND }, actions = { "fcd_reset" }, rows = { "fluffyShowGrid", "fcd_add", "reactKcProcGlow", "reactRaptorGoGlow", "gridGcdSwipe", "fcd_reset" } },
       { key = "tintsCard", name = "Tints", icon = { glyph = "palette" }, advanced = true, rows = { "reactRangeTint", "reactTileDim", "reactManaTint" } },
-      { key = "iconsCard", name = "Icons", icon = { glyph = "expand" }, advanced = true, desc = "How the spell art sits in each tile.", rows = { "gridIconZoom" } },
+      { key = "iconsCard", name = "Icons", icon = { glyph = "expand" }, advanced = true, desc = "Tile size, and how the spell art sits in each tile.", rows = { "gridIconZoom", "fluffyGridHeight" } },
       { key = "activeHighlightCard", name = "Active highlight", icon = { glyph = "sparkle" }, rows = { "fluffyActiveStyle", "fluffyActiveColor", "fluffyActiveSize", "fluffyActiveFit", "activePreview" } },
       { key = "addAnEntryCard", name = "Add an entry", icon = { glyph = "plus" }, desc = "A spell or item ID; the label is optional.", form = { "addType", "addId", "addProc", "addLabel", "addBtn" }, rows = { "addType", "addId", "addProc", "addLabel", "addBtn" } },
     },
@@ -267,7 +267,7 @@ L.TABS = {
       { key = "cooldownBoardCard", name = "Cooldown grid", forever = true, board = "cooldowns", icon = { glyph = "stack" }, desc = "Drag tiles to reorder, click the catalog to add, or type a spell name or ID.", actions = { "cdBoardReset" }, rows = { "cdBoardReset" } },
       { key = "gridCard", name = "Grid", icon = { spell = C.KILL_COMMAND }, rows = { "reactConsumablesAlways", "reactKcProcGlow", "reactRaptorGoGlow", "kcActionBarGlow", "gridGcdSwipe" } },
       { key = "tintsCard", name = "Tints", icon = { glyph = "palette" }, advanced = true, rows = { "reactRangeTint", "reactTileDim", "reactManaTint" } },
-      { key = "iconsCard", name = "Icons", icon = { glyph = "expand" }, advanced = true, desc = "How the spell art sits in each tile.", rows = { "gridIconZoom" } },
+      { key = "iconsCard", name = "Icons", icon = { glyph = "expand" }, advanced = true, desc = "Tile size, and how the spell art sits in each tile.", rows = { "gridIconZoom", "gridRow1Height", "gridRow1Fill", "gridRow1Width", "gridRow2Height", "gridRow2Width" } },
       { key = "activeHighlightCard", name = "Active highlight", icon = { glyph = "sparkle" }, rows = { "reactActiveStyle", "reactActiveColor", "reactActiveSize", "reactActiveFit", "activePreview" } },
       { key = "rowsCard", name = "Rows", icon = { glyph = "stack" }, tbc = true, desc = "What each grid row shows, in order: untick to hide, arrows to move, X to remove, + to add.", rows = { "rcd_*" } },
       { key = "customEntriesCard", name = "Custom entries", icon = { glyph = "stack" }, tbc = true, desc = "Your own spells, shared by every HUD's grid; place them in a row with its +.", rows = { "rcust_*" } },

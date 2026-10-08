@@ -57,6 +57,26 @@ local function rowKeys(p, rowIndex, def)
   return def.keys
 end
 
+-- A row's size from the profile (Grid tab -> Icons): the top row reads the
+-- gridRow1* keys, every row after it the gridRow2* keys; anything unset is
+-- the row def's own size. Returns height, tile width (nil = 1.3 x height)
+-- and whether the row fills the HUD width (only a stretch row can).
+local SIZE_MIN, SIZE_MAX = 16, 64
+local WIDTH_MAX = 96
+local function sizeKey(v, fallback, hi)
+  v = tonumber(v)
+  if not v then return fallback end
+  return math.max(SIZE_MIN, math.min(hi, v))
+end
+
+function ReactCooldownsView.RowSize(def, rowIndex, p)
+  local pre = rowIndex == 1 and "gridRow1" or "gridRow2"
+  local h = sizeKey(p[pre .. "Height"], def.h, SIZE_MAX)
+  local w = sizeKey(p[pre .. "Width"], def.w, WIDTH_MAX)
+  local fill = def.stretch == true and not (rowIndex == 1 and p.gridRow1Fill == false)
+  return h, w, fill
+end
+
 function ReactCooldownsView:OnInitialize()
   local container = CreateFrame("Frame", "NockReactCooldowns", Nock.parentFrame)
   self.frame = container
@@ -183,16 +203,20 @@ function ReactCooldownsView:RowsGeometry()
     -- is invisible (no backdrop in React mode). A row with NO enabled
     -- members at all still collapses fully.
     if n > 0 or (def.whenActive and members > 0) then
-      local hPx = Nock.UI.SeamPx(def.h, ds)
-      local stretch = (def.stretch and n > 0) and true or false
+      local rh, rw, fill = ReactCooldownsView.RowSize(def, rowIndex, p)
+      local hPx = Nock.UI.SeamPx(rh, ds)
+      local stretch = (fill and n > 0) and true or false
       local tilePx
+      if not stretch then
+        -- Fixed tiles (the row's width, fallback ~1.3:1), centered by Rebuild.
+        tilePx = Nock.UI.SeamPx(rw or math.floor(rh * 1.3 + 0.5), ds)
+        -- A fixed width that would spill past the HUD fills it instead.
+        if n > 0 and n * tilePx - (n - 1) > wPx then stretch = true end
+      end
       if stretch then
         -- Fill the full React width: n tiles overlapping (n-1) 1px seams,
         -- split by Nock.UI.SeamSplit (widths differ by at most a pixel).
         tilePx = (wPx + (n - 1)) / n
-      else
-        -- Fixed tiles (def.w, fallback ~1.3:1), centered by Rebuild.
-        tilePx = Nock.UI.SeamPx(def.w or math.floor(def.h * 1.3 + 0.5), ds)
       end
       if totalPx > 0 then totalPx = totalPx - 1 end   -- the shared seam
       rows[#rows + 1] = { entries = entries, stretch = stretch, tilePx = tilePx,

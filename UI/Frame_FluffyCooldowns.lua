@@ -21,6 +21,13 @@ end
 -- 1px borders so adjacent icons share a single black seam: one DEVICE pixel,
 -- laid out in whole pixels (Nock.UI.SeamPx).
 local ROW_H = 32
+-- The row height the user picked (FluffyHUD -> Grid -> Icons, fluffyGridHeight),
+-- clamped like the React rows; unset is ROW_H.
+local function rowHeight(p)
+  local v = tonumber(p.fluffyGridHeight)
+  if not v then return ROW_H end
+  return math.max(16, math.min(64, v))
+end
 local SLOT_BG = { 0.08, 0.08, 0.08, 0.90 }
 
 local function applyFixedSlotSkin(slot)
@@ -89,7 +96,7 @@ function FluffyCooldownsView:RowsGeometry()
   local dev = Nock.UI.PixelScale(self.frame)
   local ds = (dev and dev > 0) and dev or 1
   local wPx = Nock.UI.SeamPx(tonumber(p.fluffyWidth) or 320, ds)
-  local hPx = Nock.UI.SeamPx(ROW_H, ds)
+  local hPx = Nock.UI.SeamPx(rowHeight(p), ds)
   local disabled = p.fluffyCooldownDisabled or {}
   local mod = Nock:GetModule("Cooldowns", true)
 
