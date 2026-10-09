@@ -17,6 +17,7 @@ Q.WEAVE = {
       { "hud.react.tabSize.reactShowMeleeBar" },
       { "hud.react.tabSize.reactMeleeStageCue" },
       { "hud.react.tabSize.reactShowWeaveStrip" },
+      { "hud.react.tabSize.weaveStripRangeText" },
       { "hud.react.tabSize.weaveLegsReset" },
       { "hud.react.tabSize.weaveStartWindow" },
       { "hud.react.tabSize.weaveLegSeed" },
@@ -104,7 +105,9 @@ function Q.WeaveStatus(p, env)
     if #pr > 0 then out.hud = attention(pr)
     else
       local parts = { p.reactMeleeStageCue == true and "Words on the melee bar" or "Small words on the melee bar" }
-      if p.reactShowWeaveStrip ~= false then parts[#parts + 1] = "weave strip" end
+      if p.reactShowWeaveStrip ~= false then
+        parts[#parts + 1] = p.weaveStripRangeText == true and "weave strip with the range text" or "weave strip"
+      end
       out.hud = card("ready", "READY", table.concat(parts, ", "))
     end
   end

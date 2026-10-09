@@ -746,6 +746,7 @@ Nock.Defaults = {
     -- exist on TBC unused.
     weaveHelperEnabled   = false,
     reactShowWeaveStrip  = true,        -- the strip row (the words on the melee bar stay)
+    weaveStripRangeText  = false,       -- the strip's bar carries the range text and the Range Finder hides (opt-in)
     weaveLegSeed         = 1.1,         -- seconds per leg before the first crossing is learned
     weaveStartWindow     = 0.75,        -- seconds after a shot in which GO IN is offered (directly or after a WAIT)
     reactWeaveH          = 18,          -- strip height px (icons square at it)

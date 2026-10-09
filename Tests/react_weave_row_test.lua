@@ -50,6 +50,14 @@ g = RC:Geometry()
 ok(g.showWeave == false, "the strip's own switch hides the row too")
 profile.reactShowWeaveStrip = nil
 
+profile.weaveStripRangeText = true
+g = RC:Geometry()
+ok(g.showWeave == true and g.showLadder == false and g.total == 14 + 8 + 18 + 12 - 3, "range text on the strip hides the ladder and the stack closes up")
+profile.reactShowWeaveStrip = false
+g = RC:Geometry()
+ok(g.showWeave == false and g.showLadder == true, "no strip to carry it: the ladder stays")
+profile.reactShowWeaveStrip, profile.weaveStripRangeText = nil, nil
+
 profile.reactBarOrder = { "weave", "auto", "melee", "range", "mana" }
 g = RC:Geometry()
 ok(g.yWeave == 0 and g.yAuto == 18 - 1, "the order editor can move the row")

@@ -6355,6 +6355,14 @@ local function buildOptionsTable()
       get = function() return Nock.db.profile.reactShowWeaveStrip ~= false end,
       set = function(_, v) visualsSet(_, "reactShowWeaveStrip", v and true or false) end,
     }
+    sizeArgs.weaveStripRangeText = {
+      type = "toggle", name = "Range text on the strip", order = 22.315, width = "full",
+      desc = "Hides the Range Finder and puts its text on the weave strip's bar instead.\nOut of range the bar reads OUT OF RANGE, in range it names your bracket (8-20, 20-25, ...), and the weave words (dead zone, melee, sweet spot, the stages) take over as soon as a weave starts.",
+      hidden = notForever,
+      disabled = function() return notReact() or Nock.db.profile.weaveHelperEnabled == false or Nock.db.profile.reactShowWeaveStrip == false end,
+      get = function() return Nock.db.profile.weaveStripRangeText == true end,
+      set = function(_, v) visualsSet(_, "weaveStripRangeText", v and true or false) end,
+    }
     sizeArgs.weaveLegSeed = {
       type = "range", name = "Leg seed", order = 22.32, min = 0.5, max = 3.0, step = 0.05,
       desc = "Run time until Nock has measured yours.\nSeconds one run from your resting spot to melee takes, used for the countdown and the glide until Nock has timed your own runs. Each leg (in, out) is replaced by its first real run on this character, then refined by every run after it. Forget learned legs starts over from this value.",

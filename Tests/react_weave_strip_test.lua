@@ -90,6 +90,30 @@ ok(L.label == "RANGED", "backing toward the target while turned away: hidden")
 mv.weave.radial, mv.weave.face = 0, 1
 L = WS.Look(mv, 0, out)
 ok(L.label == "SWEET SPOT", "standing: sweet spot")
+-- Range text (weaveStripRangeText): the ladder's brackets until a weave takes over.
+local fine = { ["8_20"] = { label = "8-20" }, ["20_25"] = { label = "20-25" }, OOR = { label = "OUT OF RANGE" } }
+local function R(zone, key, stage, rest)
+  local st = S(zone, stage); st.target.ladderKey = key; st.target.ladderRest = rest
+  return st
+end
+L = WS.Look(R("LONG", "OOR"), 0, out, fine)
+ok(L.label == "OUT OF RANGE", "range text: too far reads OUT OF RANGE")
+L = WS.Look(R("LONG", "35_40"), 0, out, fine)
+ok(L.label == "OUT OF RANGE", "range text: a bracket Auto Shot cannot reach is out of range too")
+L = WS.Look(R("SWEET", "20_25"), 0, out, fine)
+ok(L.label == "20-25" and L.fillKey == "ranged", "range text: in range with no weave names the bracket")
+L = WS.Look(R("SWEET", "8_20", "OUT"), 0, out, fine)
+ok(L.label == "RANGED", "range text: a stage hands the bar to the weave words")
+L = WS.Look(R("SWEET", "8_20", nil, true), 0, out, fine)
+ok(L.label == "SWEET SPOT", "range text: the rest band is the weave's")
+L = WS.Look(R("CLOSE", "DEAD"), 0, out, fine)
+ok(L.label == "DEAD ZONE", "range text: the dead zone is the weave's")
+L = WS.Look(R("MELEE", "MELEE"), 0, out, fine)
+ok(L.label == "MELEE", "range text: melee is the weave's")
+L = WS.Look(R("SWEET", "unknown"), 0, out, fine)
+ok(L.label == "RANGED", "range text: an unknown bracket falls back to RANGED")
+L = WS.Look(R("SWEET", "20_25"), 0, out)
+ok(L.label == "RANGED", "range text off: unchanged")
 L = WS.Look({ target = { exists = false }, weave = {} }, 0, out)
 ok(L.shown == false and L.label == "" and L.fillKey == "off", "no target: hidden look")
 L = WS.Look({ target = { exists = true, alive = true, friendly = true, rangeState = "SWEET" }, weave = {} }, 0, out)

@@ -23,7 +23,7 @@ WS.COLORS = {
   border  = { 0.00, 0.00, 0.00, 1 },
   glow    = { 0.20, 0.90, 0.30, 1 },   -- the icon that wants pressing
 }
-WS.LABELS = { MELEE = "MELEE", CLOSE = "DEAD ZONE", SWEET = "RANGED", LONG = "", REST = "SWEET SPOT" }
+WS.LABELS = { MELEE = "MELEE", CLOSE = "DEAD ZONE", SWEET = "RANGED", LONG = "", REST = "SWEET SPOT", OUT = "OUT OF RANGE" }
 WS.FLASH_SEC = 0.4
 local STAGE_BORDER = { GO = "go", IN = "go", WAIT = "wait", STRIKE = "strike", OUT = "out", RELEASE = "release" }
 
@@ -35,7 +35,12 @@ local STAGE_BORDER = { GO = "go", IN = "go", WAIT = "wait", STRIKE = "strike", O
 --   label      the zone's word inside the bar
 --   asGlow / rsGlow   the icon that wants pressing
 --   flash      0..1 RELEASE brightness
-function WS.Look(state, now, out)
+-- `fine` (the ladder layout's bracket table) turns on range text: the bar
+-- stands in for the hidden Range Finder until a weave takes over -- OUT OF
+-- RANGE where Auto Shot cannot reach, the bracket while shooting with no
+-- stage, the weave words from the first stage, the rest band or the dead
+-- zone in.
+function WS.Look(state, now, out, fine)
   out = out or {}
   local t, w = state and state.target, state and state.weave
   local live = t and t.exists == true and t.alive == true and t.friendly ~= true and t.rangeState ~= nil
@@ -59,6 +64,13 @@ function WS.Look(state, now, out)
   elseif zone == "SWEET" then out.fillKey = "ranged"
   else out.fillKey = "dead" end
   out.label = rest and WS.LABELS.REST or (WS.LABELS[zone] or "")
+  if fine and not rest then
+    if zone == "LONG" then out.label = WS.LABELS.OUT
+    elseif zone == "SWEET" and not (w and w.stage) then
+      local seg = t.ladderKey and fine[t.ladderKey]
+      if seg and seg.label then out.label = seg.label end
+    end
+  end
   if w and w.legStale then out.borderKey = "stale"
   elseif w and w.overshot then out.borderKey = "overshot"
   else out.borderKey = STAGE_BORDER[stage] or "border" end

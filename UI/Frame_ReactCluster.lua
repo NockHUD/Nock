@@ -394,15 +394,18 @@ function ReactCluster:Geometry()
   -- segment labelled inside itself (reactRangeLabels), and neither the fill
   -- bar nor the strip is drawn.
   local forever = Nock.Flavor and Nock.Flavor.forever
+  -- The weave strip: Forever, the helper on (its own switch and the strip's).
+  local WH = forever and Nock:GetModule("WeaveHelper", true) or nil
+  local showWeave = (self.weave ~= nil and WH ~= nil and WH.Enabled(p) and p.reactShowWeaveStrip ~= false) and true or false
+  -- Range text on the strip: its bar stands in for the Range Finder, which
+  -- leaves the stack (only while the strip is there to carry it).
+  if showWeave and p.weaveStripRangeText == true then show.range = false end
   local showStrip = show.range and not forever and p.reactRangeStrip == true
   local hStrip = showStrip and math.max(2, math.min(14, tonumber(p.reactRangeStripH) or REACT.STRIP_H)) or 0
   local showLadder = (show.range and forever and self.ladder ~= nil) and true or false
   local ladderLabels = p.reactRangeLabels ~= false
   local hLadder = showLadder and h.range or 0
   local showRangeBar = show.range and not forever
-  -- The weave strip: Forever, the helper on (its own switch and the strip's).
-  local WH = forever and Nock:GetModule("WeaveHelper", true) or nil
-  local showWeave = (self.weave ~= nil and WH ~= nil and WH.Enabled(p) and p.reactShowWeaveStrip ~= false) and true or false
   show.weave = showWeave
   h.weave = skinNum("reactWeaveH", REACT.WEAVE_H)
 
@@ -1411,7 +1414,16 @@ end
 
 -- Forever weave strip: the pure look from state, painted diffed.
 function ReactCluster:RefreshWeave(state)
-  local look = Nock.UI.WeaveStrip.Look(state, GetTime(), self._weaveLook)
+  local fine
+  if profile().weaveStripRangeText == true then
+    local layout = state.target and state.target.ladderLayout
+    if not layout then
+      self._ladderDefault = self._ladderDefault or Nock.RangeLadder.Layout()
+      layout = self._ladderDefault
+    end
+    fine = layout.fine
+  end
+  local look = Nock.UI.WeaveStrip.Look(state, GetTime(), self._weaveLook, fine)
   Nock.UI.WeaveStrip.Paint(self.weave, look, state)
 end
 

@@ -654,7 +654,7 @@ onlyKeys(ra, { "intro", "hudMode", "useLook", "tabSize", "tabBars", "tabRange", 
   "react root")
 onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "elementsNote",
   "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview",
-  "weaveHelperEnabled", "reactShowWeaveStrip", "weaveLegSeed", "weaveStartWindow", "reactWeaveH", "weaveLegsReset",
+  "weaveHelperEnabled", "reactShowWeaveStrip", "weaveStripRangeText", "weaveLegSeed", "weaveStartWindow", "reactWeaveH", "weaveLegsReset",
   "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
   "reactShowCastBar", "reactShowAutoShotCast", "reactCastLatency", "hideBlizzardCastBar", "reactShowGrid", "reactShowPetRow", "reactPetRowW", "reactShowAspectIcon", "reactShowMarkIcon",
   "reactCornerStyle", "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY",
