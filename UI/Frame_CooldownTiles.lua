@@ -307,8 +307,9 @@ function T:AddFromFlyout(it)
   -- first left a stray, never-placed custom entry behind. Only a NEW custom
   -- key (it.id, no it.key yet) needs the guard -- an already-catalogued item
   -- never calls AddCustomSpell.
-  if not it.key and InCombatLockdown and InCombatLockdown() then return end
-  local key = it.key or Nock.CooldownRows.AddCustomSpell(it.id)
+  if (not it.key or it.petEntry) and InCombatLockdown and InCombatLockdown() then return end
+  local key = Nock.CooldownBoard.KeyFor(it)
+  if not key then return end
   local rows = Nock.CooldownRows.Get()
   if not Nock.CooldownEditor.Find(rows, key) then
     Nock.CooldownRows.Set(Nock.CooldownEditor.Add(rows, self.fly.row, key))
@@ -351,8 +352,10 @@ function T:PaintFlyout()
       local l = line(n)
       l.item = it
       l.head:Hide(); l.icon:Show(); l:SetHeight(ROW_H)
-      l.icon:SetTexture(it.key and T:DragIcon(it.key) or Nock.API.SpellIcon(it.id))
+      l.icon:SetTexture((it.key and not it.petEntry) and T:DragIcon(it.key) or Nock.API.SpellIcon(it.id))
       if l.icon.SetDesaturated then l.icon:SetDesaturated(it.known == false) end
+      l.icon:SetAlpha(it.known == false and 0.45 or 1)
+      Skin.Text(l.name, it.known == false and "ink3" or "ink")
       l.name:SetText(it.name); l.meta:SetText(Nock.CooldownPicker.Meta(it))
       l:ClearAllPoints(); l:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -y); l:SetPoint("RIGHT", f, "RIGHT", -12, 0); l:Show()
       y = y + ROW_H + 2

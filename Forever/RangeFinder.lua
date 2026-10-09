@@ -77,7 +77,7 @@ local function scanSpellOut(so, meleeIn)
   for key, s in pairs(Nock.state.cooldowns) do
     local id = s.spellId
     local v = nil
-    if not s.melee then
+    if not s.melee and not s.pet then
       local ids = s.rangeIds
       if ids then
         for i = 1, #ids do

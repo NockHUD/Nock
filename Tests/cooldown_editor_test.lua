@@ -146,11 +146,19 @@ ok(not S.IsValidKey("c_spell_1234"), "the deleted key is no longer valid")
 ok(S.DeleteCustom("c_spell_1234") == false, "DeleteCustom refuses an already-removed key")
 ok(rebuilt == 2, "DeleteCustom rebuilds the tracked lists")
 
+-- Pet abilities (Forever/PetAbilities.lua catalog entries)
+ok(S.IsValidKey("p17253"), "a pet ability key is valid on sight")
+local before = rebuilt
+ok(S.AddPetAbility({ key = "p17253", name = "Bite", ids = { 17253, 17256 }, cd = 10 }) == "p17253", "AddPetAbility returns the key")
+local rec = p.petCdAbilities and p.petCdAbilities.p17253
+ok(rec and rec.name == "Bite" and #rec.ids == 2 and rec.cd == 10 and rebuilt == before + 1, "AddPetAbility stores the record and rebuilds")
+ok(S.AddPetAbility({ key = "s1", name = "x" }) == nil and S.AddPetAbility(nil) == nil, "AddPetAbility refuses a non-pet entry")
+
 S.ApplyPack("minimal")
 ok(S.CanUndo(), "undo armed before delete")
 ok(S.DeleteCustom("c_spell_55") == true, "DeleteCustom removes the legacy custom record")
 ok(not S.CanUndo(), "DeleteCustom clears undo")
-ok(rebuilt == 3, "DeleteCustom rebuilds the tracked lists again")
+ok(rebuilt == 4, "DeleteCustom rebuilds the tracked lists again")
 
 print(("cooldown_editor: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

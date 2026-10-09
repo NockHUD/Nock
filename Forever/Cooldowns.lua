@@ -185,6 +185,32 @@ function Cooldowns:RebuildLists()
       end
     end
   end
+  -- Pet abilities (Forever/PetAbilities.lua, profile.petCdAbilities): tracked
+  -- from their record whatever pet is out, read from the pet bar, never on
+  -- the player's ledger. `title` names the tile (ranks are its ids).
+  local petKeys = {}
+  for key, rec in pairs(profile().petCdAbilities or {}) do
+    if type(key) == "string" and key:match("^p%d+$") and type(rec) == "table" and type(rec.ids) == "table"
+       and #rec.ids > 0 and type(rec.name) == "string" and not self._byKey[key] then
+      petKeys[#petKeys + 1] = key
+    end
+  end
+  table.sort(petKeys)
+  for _, key in ipairs(petKeys) do
+    local rec = profile().petCdAbilities[key]
+    -- `ids` are its ranks, not a pair: `texture` makes the grid draw one
+    -- picture instead of the split left/right halves of a pair tile.
+    local icon = Nock.API.SpellIcon(rec.ids[1])
+    local e = { key = key, type = "spell", ids = rec.ids, title = rec.name, label = rec.name,
+                petName = rec.name, cd = rec.cd, pet = true, texture = icon }
+    self._tracked[#self._tracked + 1] = e
+    self._byKey[key] = e
+    ensureStateSlot(key)
+    local s = Nock.state.cooldowns[key]
+    s.pet, s.rangeIds, s.melee = true, nil, nil
+    s.spellId = s.spellId or rec.ids[1]
+    s.icon, s.icon2 = icon, nil
+  end
   for _, ids in pairs(groups) do Engine.Link(self.ledger, ids) end
   -- One cached key list per tracked entry (the shared group's member list for
   -- a shared entry, else a dedicated one-key list): groupKeysOf reads this
@@ -283,6 +309,7 @@ local function entryKnown(e, names)
 end
 
 function Cooldowns:UpdateKnown()
+  self:UpdatePetKnown()
   -- A discovery crash (an unnamed row D.Rows/D.Build could not filter, say)
   -- must not break every future rescan: fall back to the current catalog and
   -- carry on rather than spam chat with an error.
@@ -310,7 +337,7 @@ function Cooldowns:UpdateKnown()
     -- A custom entry (a pet ability, a proc/item spell) is never in the
     -- player's own spellbook by design; leave it unset rather than false so
     -- consumers read it as "known" (grid tiles greyed unlearned on false).
-    if not e.custom then
+    if not e.custom and not e.pet then
       known[e.key] = entryKnown(e, names)
     end
   end
@@ -344,10 +371,88 @@ local function isRacial(self, key)
   return false
 end
 
+-- A pet ability shows while the summoned pet knows it (by name: ranks are
+-- separate spells), hidden with no pet or another pet out.
+local function petKnows(self, e)
+  return (self._petKnown and self._petKnown[e.petName]) == true
+end
+
 function Cooldowns:IsEntryAvailable(key)
+  local e = self._byKey and self._byKey[key]
+  if e and e.pet then return petKnows(self, e) end
   if not isRacial(self, key) then return true end
   local known = self._known
   return (known and known[key] == true) or false
+end
+
+-- What the editors list: everything the HUD can show, plus pet abilities whose
+-- pet is not out (placed, arranged and removed without summoning it).
+function Cooldowns:IsEntryEditable(key)
+  local e = self._byKey and self._byKey[key]
+  if e and e.pet then return true end
+  return self:IsEntryAvailable(key)
+end
+
+-- The summoned pet's known ability names, re-read on a pet change (UNIT_PET,
+-- PET_BAR_UPDATE, SPELLS_CHANGED). A change re-lays the grid.
+function Cooldowns:UpdatePetKnown()
+  local PA = Nock.PetAbilities
+  if not PA then return end
+  local known = PA.KnownNames(PA.ClientBook())
+  local sig = PA.Signature(known)
+  self._petKnown = known
+  if sig ~= self._petSig then
+    self._petSig = sig
+    self:SendMessage("NOCK_VISUALS_CHANGED")
+  end
+end
+
+-- `/nock petcd`: the pet spellbook raw (type, known), the known names, the
+-- catalog and every placed pet tile with its availability and bar read.
+function Cooldowns:PetReport()
+  local PA, SB, E = Nock.PetAbilities, _G.C_SpellBook, _G.Enum
+  local P = Nock.Flavor.Plain
+  local L = { "Nock pet cooldowns  pet: " .. tostring(PA and PA.SummonedName()) }
+  local bank = E and E.SpellBookSpellBank and E.SpellBookSpellBank.Pet
+  L[#L + 1] = "spellbook (i name id type known passive):"
+  if SB and SB.HasPetSpells and bank then
+    local okn, n = pcall(SB.HasPetSpells)
+    for i = 1, (okn and tonumber(P(n))) or 0 do
+      local oki, t = pcall(SB.GetSpellBookItemInfo, i, bank)
+      if oki and type(t) == "table" then
+        local id = P(t.spellID)
+        local okk, known = false, nil
+        if type(id) == "number" and SB.IsSpellKnown then okk, known = pcall(SB.IsSpellKnown, id, bank) end
+        L[#L + 1] = ("  %d %s id=%s type=%s known=%s passive=%s"):format(i, tostring(P(t.name)), tostring(id),
+          tostring(P(t.itemType)), okk and tostring(P(known)) or "-", tostring(P(t.isPassive)))
+      end
+    end
+  end
+  local names = {}
+  for n in pairs(self._petKnown or {}) do names[#names + 1] = n end
+  table.sort(names)
+  L[#L + 1] = "known names: " .. table.concat(names, ", ")
+  if PA and Nock.CooldownBoard and Nock.CooldownBoard.PetCatalog then
+    local cat = {}
+    for _, e in ipairs(Nock.CooldownBoard.PetCatalog()) do cat[#cat + 1] = e.name .. "(" .. tostring(e.cd) .. ")" end
+    L[#L + 1] = "catalog: " .. table.concat(cat, ", ")
+  end
+  L[#L + 1] = "placed pet tiles (key name available bar-slot bar-cd):"
+  local bar = PA and PA.ClientBar({}) or {}
+  for _, e in ipairs(self._tracked or EMPTY) do
+    if e.pet then
+      local slot = PA and PA.BarSlot(bar, e.ids, e.petName)
+      local st, du
+      if slot then st, du = PA.ClientBarCooldown(slot) end
+      L[#L + 1] = ("  %s %s available=%s slot=%s cd=%s,%s"):format(e.key, e.petName, tostring(self:IsEntryAvailable(e.key)),
+        tostring(slot), tostring(st), tostring(du))
+    end
+  end
+  return table.concat(L, "\n")
+end
+
+function Cooldowns:UNIT_PET(event, unit)
+  if unit == "player" then self:UpdatePetKnown() end
 end
 
 -- true / false, or nil when the spellbook cannot be read yet.
@@ -603,6 +708,7 @@ end
 
 function Cooldowns:OnWatchDone(w)
   if not w.armed then return end
+  if w.e.pet then disarm(self, w); return end
   local learn, clear = Cooldowns.DoneVerdict(GetTime() - w.castAt, REAL[w.id] == true)
   disarm(self, w)
   if learn then learnAll(self.ledger, w.e, learn) end
@@ -672,6 +778,10 @@ function Cooldowns:OnEnable()
   self:RegisterEvent("PLAYER_STARTED_MOVING", "OnMoveOrSwing")
   self:RegisterEvent("PLAYER_SWING", "OnMoveOrSwing")
   self:RegisterEvent("PLAYER_DEAD", "OnPlayerDead")
+  -- pet abilities: which pet is out, and its bar's cooldown edges
+  pcall(self.RegisterEvent, self, "UNIT_PET")
+  pcall(self.RegisterEvent, self, "PET_BAR_UPDATE", "UpdatePetKnown")
+  pcall(self.RegisterEvent, self, "PET_BAR_UPDATE_COOLDOWN", "OnPetBarCooldown")
   -- usability (dim while unavailable, the no-mana tint, reactive spells);
   -- AceEvent hard-errors on an event the client lacks
   pcall(self.RegisterEvent, self, "SPELL_UPDATE_USABLE", "ScanUsable")
@@ -702,7 +812,7 @@ function Cooldowns:ScanUsable()
   if not (API and API.SpellUsable and API.IsReactiveSpell) then return end
   for _, e in ipairs(self._tracked or {}) do
     local s = Nock.state.cooldowns[e.key]
-    local id = s and s.spellId
+    local id = s and not e.pet and s.spellId
     if id then
       s.usable, s.noMana = Cooldowns.UsableRead(API.SpellUsable(id))
       if s._reactiveFor ~= id then
@@ -740,7 +850,38 @@ end
 
 -- Own casts stamp the ledger (plain on Forever). While cooldowns are readable
 -- the next SPELL_UPDATE_COOLDOWN learns the real duration for that spell.
+-- A pet cast arms the client-cooldown watch for its ability while the pet
+-- bar's own read is hidden (secret): the tile then counts the client's
+-- duration object down. With a plain bar read the watch is not needed.
+function Cooldowns:OnPetCast(spellID)
+  spellID = Nock.Flavor.Plain(spellID)
+  if type(spellID) ~= "number" then return end
+  local n = nameOf(spellID)
+  for _, e in ipairs(self._tracked or EMPTY) do
+    if e.pet then
+      local hit = n ~= nil and n == e.petName
+      for i = 1, #e.ids do if e.ids[i] == spellID then hit = true end end
+      if hit then
+        local s = Nock.state.cooldowns[e.key]
+        if s then s.spellId = spellID end
+        if e.petPlain ~= true then self:ArmWatch(e, spellID, spellID, GetTime()) end
+        return
+      end
+    end
+  end
+end
+
+-- Re-feed a pet watch on its bar's cooldown edge (GCD -> the real cooldown).
+function Cooldowns:OnPetBarCooldown()
+  if not self._watch then return end
+  local now = GetTime()
+  for _, w in pairs(self._watch) do
+    if w.armed and w.e.pet and now - w.castAt <= FEED_WINDOW then feedWatch(self, w) end
+  end
+end
+
 function Cooldowns:UNIT_SPELLCAST_SUCCEEDED(event, unit, castGUID, spellID)
+  if unit == "pet" then self:OnPetCast(spellID); return end
   if unit ~= "player" or type(spellID) ~= "number" then return end
   local e, id = self:Resolve(spellID)
   self:BreakHeld(e and e.key)
@@ -786,12 +927,14 @@ end
 function Cooldowns:Seed()
   if Nock.Restricted("cooldowns") then return end
   for _, e in ipairs(self._tracked) do
-    local id = ledgerId(e)
-    local start, duration = Nock.API.SpellCooldown(id)
-    start = Nock.Flavor.Plain(start); duration = Nock.Flavor.Plain(duration)
-    if type(duration) == "number" and duration > GCD_TOLERANCE then
-      learnAll(self.ledger, e, duration)
-      Engine.Seed(self.ledger, id, start, duration)
+    if not e.pet then
+      local id = ledgerId(e)
+      local start, duration = Nock.API.SpellCooldown(id)
+      start = Nock.Flavor.Plain(start); duration = Nock.Flavor.Plain(duration)
+      if type(duration) == "number" and duration > GCD_TOLERANCE then
+        learnAll(self.ledger, e, duration)
+        Engine.Seed(self.ledger, id, start, duration)
+      end
     end
   end
 end
@@ -813,7 +956,7 @@ function Cooldowns:Rescan()
   local reads = {}
   local groupRunning = {}
   for _, e in ipairs(self._tracked) do
-    if self:IsEntryKnown(e.key) ~= false then
+    if not e.pet and self:IsEntryKnown(e.key) ~= false then
       local id = ledgerId(e)
       local start, duration = Nock.API.SpellCooldown(id)
       start = Nock.Flavor.Plain(start); duration = Nock.Flavor.Plain(duration)
@@ -848,17 +991,48 @@ end
 
 -- Slow-lane refresh: ledger -> state (plain numbers; the tick derives
 -- remaining/ready exactly as on TBC).
+-- A pet ability's cooldown from the pet bar: plain numbers (open world, in
+-- combat too) are published as they are; a hidden read publishes nothing and
+-- leaves the tile to the watch a pet cast armed (OnPetCast). petPlain keeps
+-- the last answer for a pet off the bar.
+local function refreshPet(e, s, bar)
+  local PA = Nock.PetAbilities
+  local slot, id = PA.BarSlot(bar, e.ids, e.petName)
+  if id then s.spellId = id end
+  local start, dur
+  if slot then start, dur = PA.ClientBarCooldown(slot) end
+  if start then
+    e.petPlain = true
+    if dur > GCD_TOLERANCE then s.startTime, s.duration = start, dur
+    else s.startTime, s.duration = 0, 0 end
+  else
+    if slot then e.petPlain = false end
+    s.startTime, s.duration = 0, 0
+  end
+end
+
 function Cooldowns:Refresh()
   local now = GetTime()
+  local bar
   for _, e in ipairs(self._tracked) do
     local s = Nock.state.cooldowns[e.key]
-    -- buff first: a break seen here stamps the cooldown read below
-    if hasBuff(e) then
-      readBuffTruth(self, e, now)
-      publishBuff(self, e, s, now)
+    if e.pet then
+      if petKnows(self, e) and Nock.PetAbilities then
+        bar = bar or Nock.PetAbilities.ClientBar(self._petBar)
+        self._petBar = bar
+        refreshPet(e, s, bar)
+      else
+        s.startTime, s.duration = 0, 0
+      end
+    else
+      -- buff first: a break seen here stamps the cooldown read below
+      if hasBuff(e) then
+        readBuffTruth(self, e, now)
+        publishBuff(self, e, s, now)
+      end
+      local start, duration = Engine.Cooldown(self.ledger, ledgerId(e), now)
+      s.startTime, s.duration = start, duration
     end
-    local start, duration = Engine.Cooldown(self.ledger, ledgerId(e), now)
-    s.startTime, s.duration = start, duration
     local w = self._watch and self._watch[e.key]
     if w and w.armed and now - w.castAt > WATCH_MAX then disarm(self, w) end
   end

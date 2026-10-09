@@ -7027,6 +7027,7 @@ local function buildOptionsTable()
       local CDMOD = Nock:GetModule("Cooldowns", true)
       if not CDMOD then return true end
       if not CDMOD:GetEntry(key) then return false end
+      if CDMOD.IsEntryEditable then return CDMOD:IsEntryEditable(key) end
       if CDMOD.IsEntryAvailable and not CDMOD:IsEntryAvailable(key) then return false end
       return true
     end

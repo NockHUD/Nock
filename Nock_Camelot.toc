@@ -29,6 +29,7 @@ Rotations\Profiles.lua
 Forever\Spells.lua
 Forever\CooldownCatalog.lua
 Forever\CooldownDiscovery.lua
+Forever\PetAbilities.lua
 Core\CooldownEditor.lua
 Core\CooldownPicker.lua
 Forever\Spellbook.lua

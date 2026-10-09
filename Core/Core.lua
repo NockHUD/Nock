@@ -769,6 +769,12 @@ function Nock:HandleSlashCommand(input)
     else
       self:Print("Helpers module not loaded.")
     end
+  elseif input == "petcd" then
+    -- Forever pet ability tiles: what the pet's spellbook, the catalog and the
+    -- grid each say, for a paste-back.
+    local cd = self:GetModule("Cooldowns", true)
+    if cd and cd.PetReport and self.UI and self.UI.ShowCopyBox then self.UI.ShowCopyBox(cd:PetReport())
+    else self:Print("Pet cooldown tiles are only available on WoW Forever.") end
   elseif input == "diag" then
     -- Media-dropdown provider report. The bug this exists for is silent: an
     -- error while AceConfigDialog builds a control aborts its whole option
@@ -1007,6 +1013,6 @@ function Nock:HandleSlashCommand(input)
     self:Print(("Minimap icon %s."):format(shown and "shown" or "hidden"))
     self:NotifyOptions()
   else
-    self:Print(("unknown subcommand: '%s' — try /nock for the config panel, or setup/lock/unlock/reset/minimap/autoshot/arrows/binds/trinkets/shopping/totemsim/range/profile/helpers/fonts/diag/v3/react/weavelog/shirt/pettrain/mail/practice/version"):format(input))
+    self:Print(("unknown subcommand: '%s' — try /nock for the config panel, or setup/lock/unlock/reset/minimap/autoshot/arrows/binds/trinkets/shopping/totemsim/range/profile/helpers/fonts/diag/petcd/v3/react/weavelog/shirt/pettrain/mail/practice/version"):format(input))
   end
 end

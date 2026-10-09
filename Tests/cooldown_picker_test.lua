@@ -68,7 +68,28 @@ ok(P.Meta({ custom = true }) == "custom", "meta: custom")
 
 -- Custom spells
 ok(P.TABS[1] == "All" and P.TABS[2] == "Class" and P.TABS[3] == "Talent" and P.TABS[4] == "Racial"
-   and P.TABS[5] == "Custom" and P.TABS[6] == "Recent", "TABS order")
+   and P.TABS[5] == "Pet" and P.TABS[6] == "Custom" and P.TABS[7] == "Recent", "TABS order")
+
+-- Pet abilities (ctx.pets: Forever/PetAbilities.lua catalog entries)
+ctx.pets = {
+  { key = "p17253", name = "Bite", ids = { 17253, 17256 }, cd = 10, pets = { "FroggoSmoll", "Bear" } },
+  { key = "p1264494", name = "Swipe", ids = { 1264494 }, cd = 5, pets = { "Bear" } },
+}
+ctx.petKnows = function(n) return n == "Bite" end
+local pets = P.TrayItems(ctx, "Pet", "")
+ok(#pets == 2 and pets[1].key == "p17253" and pets[1].pet and pets[1].petEntry == ctx.pets[1], "Pet tab: one item per ability, carrying its entry")
+ok(pets[1].known == true and pets[2].known == false, "Pet tab: known = the summoned pet has it")
+ok(#P.TrayItems(ctx, "Pet", "swi") == 1, "Pet tab filters by name")
+local inAll = false
+for _, it in ipairs(P.TrayItems(ctx, "All", "")) do if it.key == "p1264494" then inAll = true end end
+ok(inAll, "pet abilities are found from All too")
+ok(P.Meta(pets[1]) == "CD 10s · FroggoSmoll, Bear", "meta: pet ability names its pets")
+ok(P.Meta(pets[2]) == "CD 5s · not learned · Bear", "meta: an ability the summoned pet lacks says so")
+ctx.rows = { { "Arc", "p17253" }, {} }
+ok(P.TrayItems(ctx, "Pet", "")[1].placedRow == 1, "a placed pet ability reports its row")
+ctx.rows = { { "Arc" }, {} }
+ctx.pets, ctx.petKnows = nil, nil
+ok(#P.TrayItems(ctx, "Pet", "") == 0, "no pets: empty tab")
 
 ctx.customs = {
   { key = "Cust1", id = 9001, name = "Custom One" },

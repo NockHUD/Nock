@@ -118,6 +118,9 @@ function S.IsValidKey(key)
   -- valid on sight even before this session's own discovery ran, so a saved
   -- row naming one survives Sanitize/MigrateOnce instead of being dropped.
   if type(key) == "string" and key:match("^s%d+$") then return true end
+  -- A pet ability's key ("p<lowest rank id>", Forever/PetAbilities.lua):
+  -- valid on sight too, its record may be read after the rows.
+  if type(key) == "string" and key:match("^p%d+$") then return true end
   for _, rec in ipairs(profile().cooldownCustom or {}) do
     if customKey(rec) == key then return true end
   end
@@ -216,6 +219,21 @@ function S.DeleteCustom(key)
   local mod = Nock:GetModule("Cooldowns", true)
   if mod and mod.RebuildLists then mod:RebuildLists() end
   return true
+end
+
+-- A pet ability (a Forever/PetAbilities.lua catalog entry) as a record the
+-- grid tracks while the hunter has no pet that knows it: name and rank ids
+-- are kept, so the tile comes back with any pet that learns it.
+function S.AddPetAbility(entry)
+  if type(entry) ~= "table" or type(entry.key) ~= "string" or not entry.key:match("^p%d+$") then return nil end
+  local p = profile()
+  p.petCdAbilities = p.petCdAbilities or {}
+  local ids = {}
+  for i, id in ipairs(entry.ids or {}) do ids[i] = id end
+  p.petCdAbilities[entry.key] = { name = entry.name, ids = ids, cd = entry.cd }
+  local mod = Nock:GetModule("Cooldowns", true)
+  if mod and mod.RebuildLists then mod:RebuildLists() end
+  return entry.key
 end
 
 function S.AddCustomSpell(id)

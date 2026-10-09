@@ -4,7 +4,7 @@
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 local P = {}
 Nock.CooldownPicker = P
-P.TABS = { "All", "Class", "Talent", "Racial", "Custom", "Recent" }
+P.TABS = { "All", "Class", "Talent", "Racial", "Pet", "Custom", "Recent" }
 local CAP = 6
 
 local function matches(name, q)
@@ -36,6 +36,20 @@ local function customItems(ctx, query)
   return out
 end
 
+-- A pet ability (ctx.pets: Forever/PetAbilities.lua catalog entries). Known
+-- = the summoned pet has it; `petEntry` is what adding it writes.
+local function petItems(ctx, query)
+  local out = {}
+  for _, e in ipairs(ctx.pets or {}) do
+    if matches(e.name, query) then
+      out[#out + 1] = { key = e.key, id = e.ids[1], name = e.name, cat = "Pet", pet = true, petEntry = e, pets = e.pets, cd = e.cd,
+                        placedRow = Nock.CooldownEditor.Find(ctx.rows, e.key),
+                        known = (ctx.petKnows and ctx.petKnows(e.name)) or false }
+    end
+  end
+  return out
+end
+
 local function recentItems(ctx, query)
   local out = {}
   for _, id in ipairs(ctx.recent or {}) do
@@ -54,6 +68,7 @@ end
 function P.TrayItems(ctx, tab, query)
   if tab == "Recent" then return recentItems(ctx, query) end
   if tab == "Custom" then return customItems(ctx, query) end
+  if tab == "Pet" then return petItems(ctx, query) end
   local out = {}
   for _, e in ipairs(ctx.entries) do
     if (tab == "All" or e.cat == tab) and ctx.available(e.key) then
@@ -62,6 +77,7 @@ function P.TrayItems(ctx, tab, query)
     end
   end
   if tab == "All" then
+    for _, it in ipairs(petItems(ctx, query)) do out[#out + 1] = it end
     for _, it in ipairs(customItems(ctx, query)) do out[#out + 1] = it end
   end
   return out
@@ -129,6 +145,11 @@ function P.Meta(it)
   if it.id and not it.key then return "cast recently" end
   local parts = {}
   if it.cd then parts[#parts + 1] = "CD " .. dur(it.cd) end
+  if it.pet then
+    if it.known == false then parts[#parts + 1] = "not learned" end
+    if it.pets and #it.pets > 0 then parts[#parts + 1] = table.concat(it.pets, ", ") end
+    return table.concat(parts, " · ")
+  end
   if it.cat == "Racial" then parts[#parts + 1] = "your racial"
   elseif it.known == false then parts[#parts + 1] = it.talent and "talent" or (it.lv and ("Lv " .. it.lv) or "not trained") end
   return table.concat(parts, " · ")

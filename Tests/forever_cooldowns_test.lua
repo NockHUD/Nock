@@ -600,5 +600,58 @@ do
   ok(st.cooldowns.Hawk.count == nil and st.cooldowns.ArcHawk.count == nil, "dying clears the tally")
 end
 
+-- Pet abilities (Forever/PetAbilities.lua): tracked from their record, shown
+-- while the summoned pet knows them, timed from the pet bar, the watch as the
+-- fallback when that read is hidden, never on the player's ledger.
+do
+  secretCds = false
+  dofile("Forever/PetAbilities.lua")
+  local PA = Nock.PetAbilities
+  local book, barCd = {}, { 300, 10 }
+  PA.ClientBook = function() return book end
+  PA.ClientBar = function() return { [5] = { id = 17256, name = "Bite" } } end
+  PA.ClientBarCooldown = function() if barCd then return barCd[1], barCd[2] end return nil end
+  Nock.db.profile.petCdAbilities = { p17253 = { name = "Bite", ids = { 17253, 17256 }, cd = 10 } }
+  CD:RebuildLists()
+  local e = CD:GetEntry("p17253")
+  local s = st.cooldowns.p17253
+  ok(e and e.pet and e.title == "Bite" and s and s.pet == true, "a placed pet ability is a tracked pet entry")
+  ok(e.texture == s.icon and s.icon ~= nil and s.icon2 == nil, "one picture, not a split pair tile (its ids are ranks)")
+  CD:UpdatePetKnown()
+  ok(CD:IsEntryAvailable("p17253") == false and CD:IsEntryEditable("p17253") == true,
+    "no pet that knows it: hidden on the HUD, still editable")
+  book = { { id = 17256, name = "Bite" } }
+  fire("UNIT_PET", "player")
+  ok(CD:IsEntryAvailable("p17253") == true, "the summoned pet knows it: shown")
+  ok(CD:IsEntryAvailable("Raptor") == true and CD:IsEntryEditable("Raptor") == true, "player entries unaffected")
+  now = 400
+  CD:Refresh()
+  ok(s.startTime == 300 and s.duration == 10 and s.spellId == 17256, "plain pet bar cooldown published, learned rank as spellId")
+  barCd = { 399, 1.5 }
+  CD:Refresh()
+  ok(s.startTime == 0 and s.duration == 0, "a pet GCD is not a cooldown")
+  fire("UNIT_SPELLCAST_SUCCEEDED", "pet", "guid", 17256)
+  ok(not (CD._watch and CD._watch.p17253 and CD._watch.p17253.armed), "a plain bar read needs no watch")
+  -- Hidden read (an instance): the pet cast arms the client watch instead.
+  barCd = nil
+  CD:Refresh()
+  ok(e.petPlain == false and s.startTime == 0, "hidden bar read: nothing published")
+  fire("UNIT_SPELLCAST_SUCCEEDED", "pet", "guid", 17256)
+  local w = CD._watch and CD._watch.p17253
+  ok(w and w.armed and s.clientRunning == true, "hidden bar read: the pet cast arms the client watch")
+  now = 410
+  w.cd.scripts.OnCooldownDone()
+  ok(not w.armed and not s.clientRunning and CD.ledger.learned[17256] == nil, "its end disarms, nothing learned on the ledger")
+  ok(CD:Resolve(17256) == nil, "a pet spell never resolves as a player cast")
+  book = {}
+  fire("PET_BAR_UPDATE")
+  ok(CD:IsEntryAvailable("p17253") == false, "pet swapped to one without it: hidden again")
+  barCd = { 500, 10 }
+  CD:Refresh()
+  ok(s.startTime == 0, "a hidden pet ability publishes nothing")
+  Nock.db.profile.petCdAbilities = nil
+  CD:RebuildLists()
+end
+
 print(("forever_cooldowns: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

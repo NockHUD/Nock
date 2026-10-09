@@ -33,6 +33,25 @@ local function customsOf()
   return out
 end
 
+-- Every pet's cooldown abilities (Forever/PetAbilities.lua), from the stable
+-- lists and the summoned pet's spellbook.
+function Board.PetCatalog()
+  local PA = Nock.PetAbilities
+  if not PA then return {} end
+  local P = Nock.Flavor.Plain
+  return PA.Catalog(PA.ClientPets(), PA.ClientBook(), PA.SummonedName(), {
+    nameOf = function(id) local n = P(Nock.API.SpellName(id)); return type(n) == "string" and n or nil end,
+    baseCd = Nock.API.SpellBaseCooldown,
+  })
+end
+
+-- The record an item adds: a pet ability writes its own, a spell outside the
+-- catalog a custom one.
+function Board.KeyFor(it)
+  if it.petEntry then return Nock.CooldownRows.AddPetAbility(it.petEntry) end
+  return it.key or Nock.CooldownRows.AddCustomSpell(it.id)
+end
+
 function Board.PickerCtx()
   local m = mod()
   local Cat = Nock.CooldownCatalog
@@ -43,6 +62,8 @@ function Board.PickerCtx()
     known = function(k) return m and m.IsEntryKnown and m:IsEntryKnown(k) end,
     available = function(k) return not (m and m.IsEntryAvailable) or m:IsEntryAvailable(k) end,
     recent = Nock.state.cdRecent,
+    pets = Board.PetCatalog(),
+    petKnows = function(name) return (m and m._petKnown and m._petKnown[name]) == true end,
     nameOf = function(x)
       if type(x) == "table" then
         -- A tile with a name of its own (the unified sting tile).
@@ -78,14 +99,16 @@ function Board.PickerCtx()
   }
 end
 
--- The keys the grid actually draws: available (own racials only) and tracked.
+-- The keys the board shows: tracked and available (own racials only), plus
+-- pet abilities whose pet is not out (dimmed, still arrangeable).
 function Board.Visible(rows)
   local m = mod()
   local out = {}
   for r = 1, #rows do
     out[r] = {}
     for _, k in ipairs(rows[r]) do
-      if m and m:GetEntry(k) and m:IsEntryAvailable(k) then out[r][#out[r] + 1] = k end
+      local show = m and m:GetEntry(k) and (m.IsEntryEditable and m:IsEntryEditable(k) or m:IsEntryAvailable(k))
+      if show then out[r][#out[r] + 1] = k end
     end
   end
   return out
@@ -211,7 +234,7 @@ function Board:Create(parent)
   end)
   f.tabs = {}
   for i, t in ipairs(Nock.CooldownPicker.TABS) do
-    local b = Skin.Button(f, t == "Recent" and "Recently cast" or t, "ghost", t == "Recent" and 104 or 72, 24)
+    local b = Skin.Button(f, t == "Recent" and "Recently cast" or t, "ghost", t == "Recent" and 104 or t == "Pet" and 56 or 72, 24)
     b:SetScript("OnClick", function()
       Board.tab = t
       Board.feedback, Board.feedbackKind = nil, nil
@@ -356,7 +379,8 @@ function Board:AddItem(it)
   if InCombatLockdown() then return end
   local name = nameFor(it)
   local rows = Nock.CooldownRows.Get()
-  local key = it.key or Nock.CooldownRows.AddCustomSpell(it.id)
+  local key = Board.KeyFor(it)
+  if not key then return end
   local placed = Nock.CooldownEditor.Find(rows, key)
   if placed then
     Board.sel = key
@@ -439,6 +463,9 @@ function Board:PaintStatus()
   if Board.feedback then
     f.status:SetText(Board.feedback)
     Skin.Text(f.status, FEEDBACK_COLOR[Board.feedbackKind] or "ink2")
+  elseif Board.tab == "Pet" and #(Board.PetCatalog()) == 0 then
+    f.status:SetText("No pets yet: tame one and its abilities appear here.")
+    Skin.Text(f.status, "ink3")
   else
     f.status:SetText("Adding to " .. (Board.target == 1 and "Row 1 · large" or "Row 2 · small"))
     Skin.Text(f.status, "ink3")
@@ -512,10 +539,14 @@ function Board:PaintChips()
     c:ClearAllPoints()
     c:SetPoint("TOPLEFT", f.chipTop, "BOTTOMLEFT", col * (colW + 6), -line * (CHIP_H + 6))
     c:SetWidth(colW)
-    c.icon:SetTexture(it.key and iconOf(it.key) or Nock.API.SpellIcon(it.id))
+    -- a pet chip names its own spell: its tile does not exist until it is added
+    c.icon:SetTexture((it.key and not it.petEntry) and iconOf(it.key) or Nock.API.SpellIcon(it.id))
+    -- not learned (a pet ability the summoned pet lacks, an untrained
+    -- spell): grey icon and dim name, still addable
     if c.icon.SetDesaturated then c.icon:SetDesaturated(it.known == false) end
+    c.icon:SetAlpha(it.known == false and 0.45 or 1)
     c.name:SetText(it.name)
-    Skin.Text(c.name, it.addCustom and "accent" or "ink")
+    Skin.Text(c.name, it.addCustom and "accent" or (it.known == false and "ink3" or "ink"))
     c.meta:SetText(it.addCustom and it.meta or Nock.CooldownPicker.Meta(it))
     c.state:SetText(it.placedRow and ("Row " .. it.placedRow) or "")
     Skin.Paint(c.bg, it.placedRow and "surface" or "surface2", 1)
@@ -562,7 +593,9 @@ function Board:Paint()
       t.key = key
       t:ClearAllPoints(); t:SetPoint("TOPLEFT", f, "TOPLEFT", tx, -top)
       t.icon:SetTexture(iconOf(key))
-      local unknown = m and m.IsEntryKnown and m:IsEntryKnown(key) == false
+      -- unlearned, or a pet ability whose pet is not out
+      local unknown = (m and m.IsEntryKnown and m:IsEntryKnown(key) == false)
+                      or (m and m.IsEntryAvailable and not m:IsEntryAvailable(key)) or false
       if t.icon.SetDesaturated then t.icon:SetDesaturated(unknown) end
       t.icon:SetAlpha(unknown and 0.4 or 1)
       t.ring:SetShown(Board.sel == key)
