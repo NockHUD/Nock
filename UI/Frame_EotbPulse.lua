@@ -12,7 +12,8 @@ local C = Nock.Constants
 -- so it moves and scales with the HUD and has no position of its own. With
 -- the cast bar switched off it takes the cast bar's place. It shows in
 -- combat while Eyes of the Beast is channelled (state.eotbPulse,
--- Forever/EotbPulse.lua), and as a preview while the HUD is unlocked.
+-- Forever/EotbPulse.lua), out of combat too with eotbPulseOutOfCombat, and
+-- as a preview while the HUD is unlocked.
 local WHITE8X8 = "Interface\\Buttons\\WHITE8X8"
 local REACT = {
   CAST_H = 16,   -- Frame_ReactCastBar's default height
@@ -122,7 +123,7 @@ function View:Refresh(state)
   end
   local e = state.eotbPulse
   local rem, per
-  if e and e.active and e.remaining then
+  if e and e.active and e.remaining and (e.combat or p.eotbPulseOutOfCombat == true) then
     rem, per = e.remaining, e.period
   elseif Nock.EditPreview("eotbPulse") then
     -- Edit preview: a beat running on the clock (never real).

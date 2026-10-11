@@ -599,9 +599,10 @@ function Nock:HandleSlashCommand(input)
     local CF = self:GetModule("CameraFlip", true)
     local rest = input:match("^camera%s+(.*)$") or ""
     if CF and CF.Command then CF:Command(rest) else self:Print("The camera flip is only available on WoW Forever.") end
-  elseif input == "pulse" then
+  elseif input == "pulse" or input:match("^pulse%s") then
     local EP = self:GetModule("EotbPulse", true)
-    if EP and EP.Command then EP:Command() else self:Print("The Eyes of the Beast pulse timer is only available on WoW Forever.") end
+    local rest = input:match("^pulse%s+(.*)$") or ""
+    if EP and EP.Command then EP:Command(rest) else self:Print("The Eyes of the Beast pulse timer is only available on WoW Forever.") end
   elseif input == "weavekey" or input:match("^weavekey%s") then
     local WK = self:GetModule("WeaveKey", true)
     local rest = input:match("^weavekey%s+(.*)$") or ""

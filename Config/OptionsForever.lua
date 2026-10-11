@@ -454,7 +454,7 @@ function F.EotbPulsePage()
   local args = {
     intro = {
       type = "description", order = 1, fontSize = "medium",
-      name = "While you control your pet with Eyes of the Beast, it pulls nearby mobs on a fixed beat counted from the pull. This counts that beat down so you can time your moves between pulses, on a bar stacked on the HUD's cast bar. It runs in combat while Eyes of the Beast is channelled. Right-click the bar (or type /nock pulse) to resync it when the pet's pulse drifts.\n",
+      name = "While you control your pet with Eyes of the Beast, it pulls nearby mobs on a fixed beat. This counts that beat down so you can time your moves between pulses, on a bar stacked on the HUD's cast bar. It runs in combat while Eyes of the Beast is channelled, and out of combat too if you switch that on. Right-click the bar (or type /nock pulse) to resync it when the pet's pulse drifts; /nock pulse log shows what the timer saw.\n",
     },
     pulseHeader = { type = "header", name = "Pulse timer", desc = "The countdown, and how long the beat is.", order = 10 },
     eotbPulseEnabled = {
@@ -463,8 +463,22 @@ function F.EotbPulsePage()
       get = function() return p().eotbPulseEnabled == true end,
       set = function(_, v) p().eotbPulseEnabled = v and true or false; changed() end,
     },
+    eotbPulseOutOfCombat = {
+      type = "toggle", name = "Also out of combat", order = 12, width = "full",
+      desc = "Show the countdown while Eyes of the Beast is channelled out of combat too. The beat counts from the start of the channel until you resync it.",
+      disabled = off,
+      get = function() return p().eotbPulseOutOfCombat == true end,
+      set = function(_, v) p().eotbPulseOutOfCombat = v and true or false; changed() end,
+    },
+    eotbPulseResetOnPull = {
+      type = "toggle", name = "Restart at the pull", order = 13, width = "full",
+      desc = "Restart the countdown when combat starts. Off, the beat keeps running from the start of the channel through the pull, which is what Nock measured; switch it on if your bar falls out of step right after a pull.",
+      disabled = off,
+      get = function() return p().eotbPulseResetOnPull == true end,
+      set = function(_, v) p().eotbPulseResetOnPull = v and true or false end,
+    },
     eotbPulsePeriod = {
-      type = "range", name = "Pulse interval", order = 12, width = "full",
+      type = "range", name = "Pulse interval", order = 14, width = "full",
       desc = "Seconds between two pulses. 5.5 to 5.6 is what players measure; nudge it if the bar drifts from what you see.",
       min = 1, max = 10, step = 0.05, bigStep = 0.1,
       disabled = off,

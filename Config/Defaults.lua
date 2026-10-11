@@ -1415,6 +1415,8 @@ if Nock.Flavor and Nock.Flavor.forever then
   -- not part of the setup wizard. A HUD row stacked on the cast bar.
   p.eotbPulseEnabled     = false
   p.eotbPulsePeriod      = 5.6
+  p.eotbPulseOutOfCombat = false   -- also count the beat out of combat (opt-in)
+  p.eotbPulseResetOnPull = false   -- restart the beat at the pull (the WeakAura's model)
 end
 
 function Nock:GetDefaultPosition()
