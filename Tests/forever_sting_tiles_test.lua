@@ -12,7 +12,7 @@ local Nock = {
   UI = {
     IconCoords = function(w, h, zoom) return w, h, zoom or -1, 0 end,
     ApplyReactTextLook = function(fs) looked[#looked + 1] = fs end,
-    RegisterFontString = function(fs, key, style, react) registered[#registered + 1] = { fs, react } end,
+    RegisterClientFontString = function(fs, key, style, react) registered[#registered + 1] = { fs, react, "client" } end,
   },
   ForeverAuraRow = {
     IdTable = function(list) local t = {}; for _, id in ipairs(list) do t[id] = true end; return t end,
@@ -110,7 +110,7 @@ ok(b.iconSet and b.swipe and b.durationText, "a button is handed an icon, a swip
 ok(b.w == 44 and b.h == 32 and b.iconSet.coords[1] == 44 and b.iconSet.coords[3] == 8, "sized to the tile, the icon cropped at the grid's zoom")
 ok(b.durationOptions and b.durationOptions.textFormat == "bare", "the countdown is the bare number")
 ok(b.durationText.jh == "CENTER" and b.durationText.jv == "MIDDLE", "the countdown is centred in the tile")
-ok(looked[1] == b.durationText and registered[1][1] == b.durationText and registered[1][2] == true, "the countdown takes the grid's text look, now and on a media change")
+ok(looked[1] == b.durationText and registered[1][1] == b.durationText and registered[1][2] == true and registered[1][3] == "client", "the countdown takes the grid's text look, now and (as a client-owned string) on a media change")
 ok(b.mouse == false, "the button takes no mouse (no tooltip over the HUD)")
 ok(#tile.buttons == 1, "the tile remembers its buttons")
 local icon = b.iconSet

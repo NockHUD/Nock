@@ -107,7 +107,7 @@ function ST.Style(b, tile)
   time:SetAllPoints(layer)
   time:SetJustifyH("CENTER")
   time:SetJustifyV("MIDDLE")
-  Nock.UI.RegisterFontString(time, "SIZE_OVERLAY", "OUTLINE", true)
+  Nock.UI.RegisterClientFontString(time, "SIZE_OVERLAY", "OUTLINE", true)
   Nock.UI.ApplyReactTextLook(time)
   local fmt = Nock.ForeverAuraRow.DurationFormat()
   if not (fmt and pcall(b.SetDurationText, b, time, fmt)) then b:SetDurationText(time) end

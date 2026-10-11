@@ -458,12 +458,23 @@ end
 -- The tile's bottom-right count is drawn a little smaller than its timer.
 local COUNT_SCALE = 0.8
 
-function Nock.UI.RegisterFontString(fs, sizeKey, style, reactScoped, scale)
+function Nock.UI.RegisterFontString(fs, sizeKey, style, reactScoped, scale, clientOwned)
   fontStrings[#fontStrings + 1] = {
     fs = fs, sizeKey = sizeKey or "SIZE_OVERLAY", style = style or "OUTLINE",
     react = reactScoped and true or nil,
     scale = scale,   -- a fraction of the size (the tile's count corner)
+    clientOwned = clientOwned and true or nil,
   }
+end
+
+-- Forever: a string handed to an aura button (SetDurationText) belongs to
+-- the client from then on. Once it has shown a target's secret countdown it
+-- is a forbidden object to tainted code, and SetFont on it throws (left
+-- Eyes of the Beast after a kill: the pet's return re-laid the grid and the
+-- media refresh hit a sting tile's countdown, 2026-10-11). Its look is set
+-- when the button is built; a later refresh tries and accepts a refusal.
+function Nock.UI.RegisterClientFontString(fs, sizeKey, style, reactScoped, scale)
+  Nock.UI.RegisterFontString(fs, sizeKey, style, reactScoped, scale, true)
 end
 
 -- Force a relayout pass after SetFont. WoW's FontString doesn't always
@@ -586,7 +597,11 @@ function Nock.UI.RefreshMedia()
   end
   local fontPath = Nock.UI.GetFont()
   for _, e in ipairs(fontStrings) do
-    if e.react then
+    if e.clientOwned then
+      if not (e.fs.IsForbidden and e.fs:IsForbidden()) then
+        pcall(Nock.UI.ApplyReactTextLook, e.fs, e.scale)
+      end
+    elseif e.react then
       Nock.UI.ApplyReactTextLook(e.fs, e.scale)
     else
       safeSetFont(e.fs, fontPath, math.floor((C.FONT[e.sizeKey] or C.FONT.SIZE_OVERLAY) * (e.scale or 1) + 0.5), e.style)
