@@ -1,6 +1,11 @@
-## 2.1.1
+## 2.1.2
+
+### Both clients
+
+- **OmniCC GODMODE**: Nock's own timer digits now stand down when OmniCC GODMODE is loaded, as they already did for OmniCC, tullaCC and ncCooldown, so you no longer get two countdowns on the same icon.
 
 ### WoW Forever (beta)
 
-- **Pet abilities in the cooldown grid**: a new Pet tab on the cooldown board lists the abilities of all your pets, active and stabled: Bite, Claw, Dash, Prowl, Growl, Swipe and the rest, one chip per ability whatever its rank, with its cooldown and which of your pets have it. Abilities the pet you have out has not learned yet are greyed and marked "not learned", but can still be placed. A placed pet tile shows on the HUD only while your summoned pet knows that ability: swap to a pet without it, or dismiss your pet, and the tile hides and the row closes up; call it back and the tile returns. Timers work in combat, in the open world and in dungeons. /nock petcd shows what Nock reads from your pet, for bug reports.
-- **Range text on the weave strip**: a new option, Range text on the strip (Nock HUD → Size & Elements, and the Weaving quickstart), hides the Range Finder and puts its text on the weave strip's bar instead. Out of range it reads OUT OF RANGE, in range it names your bracket (8-20, 20-25, ...), and the weave words (dead zone, melee, sweet spot, the stages) take over as soon as a weave starts. Off by default.
+- **Eyes of the Beast pulse, out of combat**: a new option, Also out of combat (Alerts → Eyes of the Beast pulse, off by default), shows the pulse bar while you channel Eyes of the Beast outside combat too.
+- **Eyes of the Beast pulse follows the pet's beat**: the countdown now starts when you begin the channel and keeps running through the pull and after combat ends, which is what in-game measurements showed. If your bar falls out of step right after a pull, the new Restart at the pull option brings back the old behaviour. A /reload mid-fight no longer leaves the bar empty until a resync, and /nock pulse log shows what the timer saw for bug reports.
+- **Fix: Lua error after leaving Eyes of the Beast**: with a sting timer on the cooldown grid, exiting Eyes of the Beast after a kill could throw "calling 'SetFont' on bad self". The sting countdown is now left alone once the game has taken it over.
