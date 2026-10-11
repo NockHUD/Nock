@@ -8,7 +8,7 @@ local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 local BuffTrackerView = Nock:NewModule("BuffTrackerView", "AceEvent-3.0")
 local C = Nock.Constants
 
-local EXTERNAL_CD_ADDONS = { "OmniCC", "tullaCC", "ncCooldown" }
+local EXTERNAL_CD_ADDONS = { "OmniCC", "OmniCC_GODMODE", "tullaCC", "ncCooldown" }
 local MAX_SLOTS = 40
 -- Overlap adjacent cells by 1px so their black borders merge into a single
 -- shared grid line (tight, contiguous — matches the reference WA).

@@ -15,7 +15,7 @@ local FEED_PET_EFFECT_SPELL = 1539  -- the 10s buff applied during the channel
 -- Cooldown-text addons we'll defer to (mirrors the lists in Frame_Cooldowns
 -- and Frame_Rotation). When any of these is loaded we hide our own countdown
 -- text on the slots and let the external addon paint instead.
-local EXTERNAL_CD_ADDONS = { "OmniCC", "tullaCC", "ncCooldown" }
+local EXTERNAL_CD_ADDONS = { "OmniCC", "OmniCC_GODMODE", "tullaCC", "ncCooldown" }
 
 -- Blizzard's PetPaperDollFrame happiness face texture + per-state texcoords.
 local HAPPINESS_TEX = "Interface\\PetPaperDollFrame\\UI-PetHappiness"

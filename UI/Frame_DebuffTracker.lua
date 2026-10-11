@@ -17,7 +17,7 @@ local SOLID_TEX    = "Interface\\Buttons\\WHITE8X8"
 -- one loaded the grid paints no digits of its own (same list as the buff grid
 -- and the cooldown rows; addons load alphabetically, so the check waits for
 -- login).
-local EXTERNAL_CD_ADDONS = { "OmniCC", "tullaCC", "ncCooldown" }
+local EXTERNAL_CD_ADDONS = { "OmniCC", "OmniCC_GODMODE", "tullaCC", "ncCooldown" }
 
 local function profileGet(key, fallback)
   local p = Nock.db and Nock.db.profile

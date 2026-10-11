@@ -137,9 +137,9 @@ ok(not d1.cdText:IsShown(), "debuff: cdText hidden with OmniCC")
 ok(d1.cdText:GetText() == "", "debuff: no digits of ours with OmniCC (got '" .. d1.cdText:GetText() .. "')")
 ok(d1.cooldown.noCooldownCount == nil, "debuff: OmniCC may paint the Cooldown frame")
 
--- 3. The other two known cooldown-text addons gate the same way ------------------
+-- 3. The other known cooldown-text addons gate the same way ------------------
 loaded.OmniCC = nil
-for _, name in ipairs({ "tullaCC", "ncCooldown" }) do
+for _, name in ipairs({ "OmniCC_GODMODE", "tullaCC", "ncCooldown" }) do
   loaded[name] = true
   BT, DT = fresh()
   BT:Refresh(state); DT:Refresh(state)

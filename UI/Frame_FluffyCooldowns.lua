@@ -10,7 +10,7 @@ local C = Nock.Constants
 -- Same external cooldown-text integration as both other grids: defer the CD
 -- numbers to OmniCC & co. when present (detection must wait until login —
 -- addons load alphabetically, so OmniCC loads after Nock).
-local EXTERNAL_CD_ADDONS = { "OmniCC", "tullaCC", "ncCooldown" }
+local EXTERNAL_CD_ADDONS = { "OmniCC", "OmniCC_GODMODE", "tullaCC", "ncCooldown" }
 
 local function profile()
   return (Nock.db and Nock.db.profile) or {}

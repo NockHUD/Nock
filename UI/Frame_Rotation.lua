@@ -10,7 +10,7 @@ local C = Nock.Constants
 
 -- Cooldown-timer addons we'll defer to instead of painting our own cdText on
 -- ability slots. Mirrors Frame_Cooldowns' list — keep them in sync.
-local EXTERNAL_CD_ADDONS = { "OmniCC", "tullaCC", "ncCooldown" }
+local EXTERNAL_CD_ADDONS = { "OmniCC", "OmniCC_GODMODE", "tullaCC", "ncCooldown" }
 
 local function getSpellIcon(spellID)
   if not spellID then return nil end

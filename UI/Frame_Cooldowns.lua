@@ -8,7 +8,7 @@ local C = Nock.Constants
 -- Cooldown-timer addons we'll defer to instead of painting our own cdText.
 -- First match wins. Addons load alphabetically, so OmniCC ("O") loads after
 -- Nock ("N") — detection has to wait until PLAYER_LOGIN.
-local EXTERNAL_CD_ADDONS = { "OmniCC", "tullaCC", "ncCooldown" }
+local EXTERNAL_CD_ADDONS = { "OmniCC", "OmniCC_GODMODE", "tullaCC", "ncCooldown" }
 
 ----------------------------------------------------------------------------
 -- Drums "players in range" badge (top-left of the Drums icon).

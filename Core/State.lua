@@ -1035,7 +1035,7 @@ function Nock.TonkCancelDelay()
 end
 
 -- Cooldown / aura timer digits for an icon slot's own text layer, used where
--- no cooldown-text addon (OmniCC, tullaCC, ncCooldown) is there to paint the
+-- no cooldown-text addon (OmniCC, OmniCC GODMODE, tullaCC, ncCooldown) is there to paint the
 -- Cooldown frame: tenths under ten seconds, whole seconds to 90, minutes past
 -- that, nothing at zero. The buff and debuff grids read this; the cooldown
 -- rows carry the same rule locally.
