@@ -1,7 +1,8 @@
 -- Tests/forever_castbar_test.lua
 -- Forever/CastBar.lua: player casts and channels -> state.player.casting from
--- UnitCastingInfo/UnitChannelInfo; STOP/INTERRUPTED clear; Auto Shot never
--- enters. Run from the repo root: luajit Tests/forever_castbar_test.lua
+-- UnitCastingInfo/UnitChannelInfo; STOP/INTERRUPTED clear; Auto Shot goes to
+-- state.player.autoShotCast (the wind-up), never into casting.
+-- Run from the repo root: luajit Tests/forever_castbar_test.lua
 
 local pass, fail = 0, 0
 local function ok(cond, name)
@@ -62,10 +63,46 @@ casting = { "Fireball", "", 1, 100000, 103000, false, "c2", false, 133 }
 fire("UNIT_SPELLCAST_START", "target", "c2", 133)
 ok(st.casting == nil, "target casts ignored")
 
--- Auto Shot never enters casting even if the client reports it.
+-- Auto Shot never enters casting even if the client reports it: the wind-up
+-- (client build of 2026-10) is its own record, drawn as the free queue window.
 casting = { "Auto Shot", "", 132222, 100000, 100500, false, "c3", false, 75 }
 fire("UNIT_SPELLCAST_START", "player", "c3", 75)
-ok(st.casting == nil and st.autoShotCast == nil, "Auto Shot excluded")
+ok(st.casting == nil, "Auto Shot never enters casting")
+ok(st.autoShotCast and st.autoShotCast.auto == true and st.autoShotCast.spellId == 75, "the wind-up record is published")
+ok(st.autoShotCast.startTime == 100 and st.autoShotCast.endTime == 100.5, "the client's own window is used when it reports one")
+ok(st.autoShotCast.name == "Auto Shot" and st.autoShotCast.icon == 132222, "name and icon from the client")
+casting = nil
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c3", 75)
+ok(st.autoShotCast == nil, "SUCCEEDED(75) is the release: cleared")
+
+-- Without a client window the end is the predicted release (Nock.AutoShotWindupEnd).
+Nock.state.ranged.swingStart, Nock.state.ranged.swingDuration = 98.4, 2.0
+Nock.state.ranged.windup, Nock.state.ranged.windupMeasured = 0.4, true
+now = 100.0
+fire("UNIT_SPELLCAST_START", "player", "c3b", 75)
+ok(st.autoShotCast and math.abs(st.autoShotCast.endTime - 100.4) < 1e-9, "no client window: ends at the predicted release")
+fire("UNIT_SPELLCAST_STOP", "player", "c3b", 75)
+ok(st.autoShotCast == nil, "STOP(75) clears")
+fire("UNIT_SPELLCAST_START", "player", "c3c", 75)
+fire("UNIT_SPELLCAST_FAILED", "player", "c3d", 75)
+ok(st.autoShotCast ~= nil, "FAILED(75) is a refused re-press: the wind-up stands")
+fire("UNIT_SPELLCAST_INTERRUPTED", "player", "c3c", 75)
+ok(st.autoShotCast == nil, "INTERRUPTED(75) clears")
+
+-- Refresh: the stale net (a cancelled shot with no event) and the live-release pin.
+now = 100.0
+fire("UNIT_SPELLCAST_START", "player", "c3e", 75)
+ok(st.autoShotCast ~= nil, "wind-up up")
+module:Refresh(Nock.state)
+ok(st.autoShotCast ~= nil, "fresh: kept")
+Nock.state.ranged.swingStart = 98.6     -- the grid moved under the bar
+module:Refresh(Nock.state)
+ok(math.abs(st.autoShotCast.endTime - 100.6) < 1e-9, "pinned to the live release")
+now = 101.2
+module:Refresh(Nock.state)
+ok(st.autoShotCast == nil, "stale past end + 0.5: dropped")
+Nock.state.ranged.swingStart, Nock.state.ranged.swingDuration = 0, 3.0
+now = 100
 
 -- Channel: name, text, texture, startMs, endMs, isTradeSkill, notInterruptible, spellId
 casting = nil
@@ -92,6 +129,7 @@ ok(st.casting == nil, "interrupted clears")
 Nock.API = { SpellInfo = function(id)
   if id == 2643 then return "Multi-Shot", 132330, 500 end
   if id == 999 then return "Instant", 1, 0 end
+  if id == 75 then return "Auto Shot", 132222, 0 end
 end }
 casting = nil
 now = 400
@@ -159,6 +197,80 @@ fire("UNIT_SPELLCAST_START", "player", "a-1", 19434)
 ok(st.casting and st.casting.spellId == 19434, "real cast takes over")
 now = 701; runTimers()
 ok(st.casting and st.casting.spellId == 19434, "stale expiry leaves the real cast alone")
+
+-- The MODELLED wind-up (no client event on build 70425): from the stop-gated
+-- measurement, standing still it runs (due - W) -> due; after a stop inside
+-- that window it runs stop -> stop + W; nothing while moving, nothing until
+-- W is measured, nothing once the swing is not live.
+do
+  casting, channel = nil, nil
+  local S = Nock.state
+  local r, c = S.ranged, S.context
+  S.player.inCombat = true
+  S.player.casting, S.player.autoShotCast = nil, nil
+  r.swingStart, r.swingDuration, r.repeating, r.targetInRange = 200, 2.0, true, nil
+  r.windup, r.windupMeasured = 0.75, true
+  c.moving, c.stoppedAt = false, nil
+  local function tick(t) now = t; r.swingRemaining = math.max(0, r.swingStart + r.swingDuration - t); module:Refresh(S) end
+
+  tick(200.5)
+  ok(st.autoShotCast == nil, "model: early in the cycle nothing is drawn")
+  tick(201.3)
+  ok(st.autoShotCast and st.autoShotCast.auto == true and st.autoShotCast.spellId == 75, "model: inside the last W the wind-up is published")
+  ok(math.abs(st.autoShotCast.startTime - 201.25) < 1e-9 and math.abs(st.autoShotCast.endTime - 202.0) < 1e-9, "model: standing still it runs due - W -> due")
+  ok(st.autoShotCast.name == "Auto Shot" and st.autoShotCast.icon == 132222, "model: name and icon from spell data")
+  ok(st.casting == nil, "model: never enters casting")
+
+  -- Moving inside the window: withdrawn.
+  c.moving = true
+  tick(201.5)
+  ok(st.autoShotCast == nil, "model: nothing while moving")
+  -- Stopped past the due mark: runs from the stop for W.
+  c.moving, c.stoppedAt = false, 202.3
+  tick(202.4)
+  ok(st.autoShotCast and math.abs(st.autoShotCast.startTime - 202.3) < 1e-9 and math.abs(st.autoShotCast.endTime - 203.05) < 1e-9, "model: after a late stop it runs stop -> stop + W")
+  -- The shot: the next cycle begins, the record goes.
+  r.swingStart = 203.05
+  tick(203.06)
+  ok(st.autoShotCast == nil, "model: the shot ends it")
+  -- A stop from BEFORE this cycle's shot does not move the start.
+  c.stoppedAt = 202.3
+  tick(204.4)
+  ok(st.autoShotCast and math.abs(st.autoShotCast.startTime - 204.3) < 1e-9, "model: an old stop is ignored")
+  -- Stale: half a second past the end with no shot, withdrawn.
+  tick(205.6)
+  ok(st.autoShotCast == nil, "model: dropped half a second past its end")
+  -- Not live (swing expired, auto off, out of combat): nothing. A swing still
+  -- in flight is live whatever the flags (Nock.AutoSwingLive).
+  r.swingStart = 300; r.repeating = false; S.player.inCombat = false
+  tick(302.3)
+  ok(st.autoShotCast == nil, "model: expired swing, auto off, out of combat -> nothing")
+  S.player.inCombat = true; r.repeating = true
+  tick(302.3)
+  ok(st.autoShotCast ~= nil and math.abs(st.autoShotCast.endTime - 302.0) < 1e-9, "model: held shot in combat -> the wind-up stays drawn to its end")
+  -- Unmeasured W: nothing (the queue window is not a wind-up).
+  r.windupMeasured = false
+  tick(301.6)
+  ok(st.autoShotCast == nil, "model: nothing until W is measured")
+  r.windupMeasured = true
+  -- Another producer owning the field is left alone.
+  local other = { name = "sim" }
+  st.autoShotCast = other
+  tick(301.7)
+  ok(st.autoShotCast == other, "model: never overwrites another producer's record")
+  st.autoShotCast = nil
+  -- A real cast event record takes precedence and gets the TBC safety net.
+  r.swingStart, r.swingDuration = 400, 2.0
+  tick(400.1)
+  fire("UNIT_SPELLCAST_START", "player", "ev", 75)
+  ok(st.autoShotCast and math.abs(st.autoShotCast.endTime - 402.0) < 1e-9, "event record: ends at the predicted release")
+  tick(400.2)
+  ok(st.autoShotCast and st.autoShotCast.startTime == 400.1, "event record: the model does not replace it")
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "ev", 75)
+  ok(st.autoShotCast == nil, "event record: cleared on the release")
+  tick(401.3)
+  ok(st.autoShotCast and math.abs(st.autoShotCast.startTime - 401.25) < 1e-9, "...and the model resumes")
+end
 
 print(("forever_castbar: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

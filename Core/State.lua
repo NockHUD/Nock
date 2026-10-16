@@ -135,6 +135,17 @@ Nock.state = {
     -- is only the TBC seed there; views read Nock.AutoShotWindup(), which
     -- falls back to queueWindow.
     windupMeasured = false,
+    -- Forever: which feed set windupRatio ("interrupt" = the client's own
+    -- INTERRUPTED(75) on a move inside the wind-up, the edge itself;
+    -- "stop" = stop-gated shots, a fallback that reads long; "cast" = a
+    -- client cast window, never seen so far). nil while unmeasured.
+    windupSource   = nil,
+    -- Forever: the conservative "stop by" edge as a ratio of the swing, the
+    -- upper median of the stop-gated reads (raw, bar time): stop moving this
+    -- long before the due mark and the shot is on time. Longer than the
+    -- wind-up itself (the server picks the wind-up up on a tick after a
+    -- stop). nil until a stop read exists.
+    stopByRatio    = nil,
   },
   melee = {
     swingStart     = 0,
@@ -217,6 +228,11 @@ Nock.state = {
   },
   context = {
     moving       = false,
+    -- Forever: the client's own movement edges (PLAYER_STARTED/STOPPED_MOVING,
+    -- Forever/SwingTimer), GetTime() of the last of each; nil until seen. The
+    -- tick's speed read is secret in combat there, so these own `moving` too.
+    movingSince  = nil,
+    stoppedAt    = nil,
     conserveMana = false,
     controlLost  = false,
   },

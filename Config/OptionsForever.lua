@@ -42,13 +42,15 @@ F.DROP = {
   -- finding-ladder style, which has no feed on Forever (the three-zone
   -- finder needs no setting); the range bar's own rows live in Size & Skin.
   "hud.react.tabBuff", "hud.react.tabRange",
-  -- Size & Elements: Auto Shot wind-up (no feed). The corners and the range
-  -- bar came back with M3a; the melee-bar takeover and its preview with the
-  -- weave helper (spec 2026-09-28).
-  "hud.react.tabSize.reactShowAutoShotCast",
+  -- Size & Elements: the Auto Shot wind-up row is back. The client grew a
+  -- wind-up (2026-10) but raises no cast edge for it (probe 2026-10-16: no
+  -- START, UnitCastingInfo nil); Forever/CastBar MODELS the record from the
+  -- stop-gated measurement (Forever/SwingTimer) once W is known. The corners
+  -- and the range bar came back with M3a; the melee-bar takeover and its
+  -- preview with the weave helper (spec 2026-09-28).
   -- Skin: the Steady/Multi clip ticks (no clip model, and neither spell is
   -- in the game yet), brackets and the GCD divider go; the wind-up pair
-  -- stays as the spell-queue mark (renamed below).
+  -- stays (reworded below: on Forever it is the stop-by edge).
   "hud.react.tabSkin.reactBracketWidth", "hud.react.tabSkin.reactColorBracket",
   "hud.react.tabSkin.reactColorGcdDivider", "hud.react.tabSkin.reactGcdDividerWidth",
   "hud.react.tabSkin.reactTickSteadyWidth", "hud.react.tabSkin.reactColorTickSteady",
@@ -70,21 +72,21 @@ F.RENAME = {
   -- The family intro is a description node; only the QoL page survives.
   ["utilities.intro"] = { name = "Quality-of-life helpers (what happens at a vendor, the full-screen glow, the camera and world switches the game hides), the aspect ring and the tracking wheel." },
   ["hud.react.tabBars.showWindupMark"] = {
-    name = "Spell-queue mark",
-    desc = "The neutral mark on the Auto Shot bar where the client's spell-queue window opens before the next shot (SpellQueueWindow, 400 ms by default). Past it a press is queued behind the shot and comes out right after it; before it, a cast started now would push the shot back.",
+    name = "Wind-up mark",
+    desc = "The mark on the Auto Shot bar where the shot's wind-up begins. Be standing still by then: the bow cannot wind up on the move, and a stop made past the mark holds the shot until one wind-up after you stand. Measured from your own shots (every late shot after a stop is a read); until the first read the client's spell-queue window stands in.",
   },
-  ["hud.react.tabSkin.autoMarksHeader"] = "Spell-queue mark",
+  ["hud.react.tabSkin.autoMarksHeader"] = "Wind-up mark",
   ["hud.react.tabSize.reactShowRangeBar"] = {
     name = "Range Finder",
     desc = "The range ladder: every distance bracket from melee to out of range, the target's bracket lit.",
   },
   ["hud.react.tabSkin.reactTickWindupWidth"] = {
-    name = "Spell-queue mark width",
-    desc = "Width of the spell-queue mark on the Auto Shot bar, in real screen pixels (independent of your UI scale).",
+    name = "Wind-up mark width",
+    desc = "Width of the wind-up mark on the Auto Shot bar, in real screen pixels (independent of your UI scale).",
   },
   ["hud.react.tabSkin.reactColorTickWindup"] = {
-    name = "Spell-queue mark",
-    desc = "The mark showing where the client's spell-queue window opens before the next Auto Shot (SpellQueueWindow, 400 ms by default): past it a press is queued behind the shot instead of pushing it back.",
+    name = "Wind-up mark",
+    desc = "The mark where the next Auto Shot's wind-up begins: stop moving before it, or the shot waits one wind-up after you stand still.",
   },
 }
 
@@ -97,7 +99,6 @@ F.SIMPLE = { "hud.react.tabBars.showWindupMark" }
 -- them; per card, old line label -> new. Lines whose options were dropped
 -- vanish on their own (Core/OptionsWalk skips a line with no cell).
 F.TABLE_LINES = {
-  ["hud.react.tabSkin.autoShotColoursCard"] = { ["Wind-up mark"] = "Spell-queue mark" },
 }
 
 local function nodeAt(root, path)

@@ -159,7 +159,6 @@ ok(nodeAt(opts, "hud.react.tabGrid.addId") == nil, "hud.react.tabGrid.addId gone
 for _, p in ipairs({
   "hud.react.tabBars.reactShowBrackets", "hud.react.tabBars.reactShowClipTicks",
   "hud.react.tabBars.reactShowGcdDivider", "hud.react.tabBars.reactShowNotation",
-  "hud.react.tabSize.reactShowAutoShotCast",
   "hud.react.tabSkin.reactColorTickSteady", "hud.react.tabSkin.reactTickSteadyWidth", "hud.react.tabSkin.reactTickMultiWidth",
   "hud.react.tabSkin.reactColorTickMulti", "hud.react.tabSkin.reactColorBracket", "hud.react.tabSkin.reactGcdDividerWidth",
   "general.grpCastBar", "general.grpSetup", "general.grpLook", "general.perfPanel",
@@ -167,6 +166,8 @@ for _, p in ipairs({
   ok(nodeAt(opts, p) == nil, p .. " gone")
 end
 for _, p in ipairs({
+  -- the Auto Shot wind-up as a cast: modelled from the stop-gated measurement (2026-10)
+  "hud.react.tabSize.reactShowAutoShotCast",
   -- the weave helper (spec 2026-09-28) gives the takeover and the preview a feed
   "hud.react.tabSize.reactMeleeStageCue", "hud.react.tabSize.stagePreview",
   "hud.react.tabSize.weaveHelperEnabled", "hud.react.tabSize.weaveLegSeed", "hud.react.tabSize.weaveStartWindow", "hud.react.tabSize.reactShowWeaveStrip",
@@ -229,27 +230,28 @@ ok(readAll("Nock.toc"):find("OptionsForever", 1, true) == nil, "TBC toc does not
 -- The spell-queue mark keeps the wind-up pair's width and colour, renamed.
 local qw = nodeAt(opts, "hud.react.tabSkin.reactTickWindupWidth")
 local qc = nodeAt(opts, "hud.react.tabSkin.reactColorTickWindup")
-ok(qw and qw.name == "Spell-queue mark width" and (qw.desc or ""):find("spell%-queue"), "queue mark width kept and renamed")
-ok(qc and qc.name == "Spell-queue mark" and (qc.desc or ""):find("SpellQueueWindow"), "queue mark colour kept and renamed")
-ok((nodeAt(opts, "hud.react.tabSkin.autoMarksHeader") or {}).name == "Spell-queue mark", "marks header renamed")
+ok(qw and qw.name == "Wind-up mark width" and (qw.desc or ""):find("wind%-up mark"), "wind-up mark width kept and reworded")
+ok(qc and qc.name == "Wind-up mark" and (qc.desc or ""):find("stop moving"), "wind-up mark colour kept and reworded (the stop-by edge)")
+ok((nodeAt(opts, "hud.react.tabSkin.autoMarksHeader") or {}).name == "Wind-up mark", "marks header")
 local qt = nodeAt(opts, "hud.react.tabBars.showWindupMark")
-ok(qt and qt.type == "toggle" and qt.name == "Spell-queue mark" and (qt.desc or ""):find("SpellQueueWindow"), "queue mark toggle on the Bars tab, renamed")
+ok(qt and qt.type == "toggle" and qt.name == "Wind-up mark" and (qt.desc or ""):find("standing still") and (qt.desc or ""):find("spell%-queue window stands in"), "wind-up mark toggle on the Bars tab: stop-by meaning, queue-window fallback named")
 -- The one feature switch the auto bar has on Forever is reachable in Simple.
 ok(qt and not W.IsAdvanced(qt), "queue mark toggle is Simple on Forever")
 -- The Skin card's table: the dropped Steady/Multi/bracket/GCD lines are gone
--- (no empty labelled rows) and the wind-up line reads as the queue mark.
+-- (no empty labelled rows) and the wind-up line keeps its own label (the
+-- "Spell-queue mark" relabel went when the wind-up got a Forever feed).
 local card = nodeAt(opts, "hud.react.tabSkin.autoShotColoursCard")
 local spec = card and W.Meta(card) and W.Meta(card).table
 local labels = {}
 for _, rs in ipairs(spec and spec.rows or {}) do labels[#labels + 1] = rs[1] end
-ok(spec and table.concat(labels, ","):find("Spell%-queue mark") and not table.concat(labels, ","):find("Wind%-up"), "Forever skin table line relabelled, got " .. table.concat(labels, ","))
+ok(spec and table.concat(labels, ","):find("Wind%-up mark") and not table.concat(labels, ","):find("Spell%-queue"), "Forever skin table line is the wind-up mark, got " .. table.concat(labels, ","))
 W.SetMode("advanced")
 local skinCards = W.Cards({ key = "tabSkin", name = "Skin", node = nodeAt(opts, "hud.react.tabSkin"), path = { "hud", "react", "tabSkin" } }, "Nock")
 local drawn
 for _, c in ipairs(skinCards) do if c.tableRows and c.name == "Auto Shot colours" then drawn = c.tableRows end end
 local dl = {}
 for _, r in ipairs(drawn and drawn.rows or {}) do dl[#dl + 1] = r.label .. "(" .. #r.cells[1] .. "," .. #r.cells[2] .. ")" end
-ok(drawn and #drawn.rows == 1 and drawn.rows[1].label == "Spell-queue mark" and #drawn.rows[1].cells[1] == 1 and #drawn.rows[1].cells[2] == 1, "drawn skin table: one line, colour + width; got " .. table.concat(dl, ",") .. " cards=" .. #skinCards)
+ok(drawn and #drawn.rows == 1 and drawn.rows[1].label == "Wind-up mark" and #drawn.rows[1].cells[1] == 1 and #drawn.rows[1].cells[2] == 1, "drawn skin table: one line, colour + width; got " .. table.concat(dl, ",") .. " cards=" .. #skinCards)
 ok(drawn and not drawn.one, "drawn skin table: the surviving line is drawn WITH its label (2026-09-23: it drew colour + width and nothing to say what for)")
 
 ok(nodeAt(opts, "general.runWizard") and nodeAt(opts, "general.runWizardGuided"), "Forever keeps both wizard buttons")

@@ -80,7 +80,14 @@ end
 function Probe:OnCast(event, unit, castGUID, spellID, castBarID)
   if unit ~= "player" then return end
   local C = self._casts
-  C[#C + 1] = { t = GetTime(), ev = event, spellID = spellID, castBarID = castBarID }
+  local s = { t = GetTime(), ev = event, spellID = spellID, castBarID = castBarID }
+  -- What the client's own cast record says at a START (the wind-up question,
+  -- 2026-10-16: a wind-up cast under another spell id would show here).
+  if (event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_DELAYED") and _G.UnitCastingInfo then
+    local okc, name, _, _, startMs, endMs, _, _, _, id = pcall(UnitCastingInfo, "player")
+    if okc and name then s.ci = { name = name, id = id, startMs = startMs, endMs = endMs } end
+  end
+  C[#C + 1] = s
   if #C > CAST_MAX then table.remove(C, 1) end
   if event == "UNIT_SPELLCAST_SUCCEEDED" and self._sting then self:OnStingCast(spellID) end
 end
@@ -204,6 +211,470 @@ function Probe:Report()
     end)(),
     casts = self:Casts(),
   })
+end
+
+-- `/nock probe windup`: what the client changed for the Auto Shot wind-up
+-- (2026-10, no devkit yet). Pure: d = { build, state = { windupRatio, windup,
+-- windupMeasured, queueWindow, swingDuration }, api = { names }, enum = {
+-- {name, value} }, globals = { names }, castingInfo, windups (SwingTimer:
+-- WindupSamples()), swings (SwingTimer:Samples()) }. The timeline merges the
+-- spell-75 edges with the ranged PLAYER_SWINGs; the summary says where in the
+-- cycle the wind-up begins, which decides whether PLAYER_SWING still marks
+-- the release (TBC model, bar anchored on it) or now fires at the wind-up
+-- start (re-anchor needed).
+function Probe.WindupReport(d)
+  local L = {}
+  local st = d.state or {}
+  L[#L + 1] = ("Auto Shot wind-up probe  build %s  forever %s"):format(tostring(d.build), tostring(d.forever))
+  L[#L + 1] = ("state: windupRatio %.4f  windup %.3f s  measured %s  queueWindow %.2f s  swingDuration %.3f s"):format(
+    st.windupRatio or 0, st.windup or 0, tostring(st.windupMeasured), st.queueWindow or 0, st.swingDuration or 0)
+  L[#L + 1] = "C_SwingTimer: " .. ((d.api and #d.api > 0) and table.concat(d.api, ", ") or "nil")
+  local parts = {}
+  for _, e in ipairs(d.enum or {}) do parts[#parts + 1] = e[1] .. "=" .. tostring(e[2]) end
+  L[#L + 1] = "Enum.PlayerSwingType: " .. (#parts > 0 and table.concat(parts, "  ") or "nil")
+  L[#L + 1] = "globals matching Swing/Windup/AutoShot: " .. ((d.globals and #d.globals > 0) and table.concat(d.globals, ", ") or "none")
+  L[#L + 1] = "UnitCastingInfo now: " .. tostring(d.castingInfo)
+  L[#L + 1] = ""
+  -- Merge the two rings on time.
+  local rows = {}
+  for _, w in ipairs(d.windups or {}) do rows[#rows + 1] = { t = w.t, w = w } end
+  local RANGED = 2
+  for _, s in ipairs(d.swings or {}) do
+    if s.swingType == RANGED then rows[#rows + 1] = { t = s.t, s = s } end
+  end
+  -- Every player cast edge the probe saw (any spell id), so a wind-up cast
+  -- under another id than 75 shows. Runs of the same FAILED are folded.
+  local casts = d.casts or {}
+  local i = 1
+  while i <= #casts do
+    local c = casts[i]
+    local n = 1
+    while casts[i + n] and casts[i + n].ev == c.ev and c.ev:find("FAILED") and tostring(casts[i + n].spellID) == tostring(c.spellID)
+          and casts[i + n].t - casts[i + n - 1].t < 0.2 do n = n + 1 end
+    rows[#rows + 1] = { t = c.t, c = c, n = n }
+    i = i + n
+  end
+  table.sort(rows, function(a, b) return a.t < b.t end)
+  L[#L + 1] = "timeline (t since first row, gap since previous row):"
+  local t0, prev = rows[1] and rows[1].t or 0, nil
+  local starts, windows, winSum, reads, readSum, sampledCast, sampledRel = 0, 0, 0, 0, 0, 0, 0
+  local stops, stopSum, stopRaw, sampledStop, stopMin, stopMax = 0, 0, 0, 0, nil, nil
+  local movingShots, movingOnTime, movingLate = 0, {}, {}
+  local restarts, restartSum, moves, intMax, freeMin, sampledInt = 0, 0, 0, nil, nil, 0
+  local phaseSum, phaseN, lastSwing = 0, 0, nil
+  for _, r in ipairs(rows) do
+    local gap = prev and (r.t - prev) or 0
+    local what
+    if r.c then
+      local c = r.c
+      local ci = ""
+      if c.ci then
+        ci = ("  UnitCastingInfo: %s id=%s %s..%s ms"):format(tostring(c.ci.name), tostring(c.ci.id), tostring(c.ci.startMs), tostring(c.ci.endMs))
+      end
+      what = ("cast %s  spell %s%s%s%s"):format((c.ev or "?"):gsub("^UNIT_SPELLCAST_", ""), tostring(c.spellID),
+        c.castBarID and ("  castBar " .. tostring(c.castBarID)) or "", ci, r.n > 1 and (("  x%d"):format(r.n)) or "")
+    elseif r.s then
+      local s = r.s
+      local extra = ""
+      if s.extra then
+        local e = {}
+        for i = 1, #s.extra do e[#e + 1] = tostring(s.extra[i]) end
+        extra = "  extra=[" .. table.concat(e, ", ") .. "]"
+      end
+      local still = s.moving and (s.movingFor and ("  MOVING for %.3f"):format(s.movingFor) or "  MOVING")
+                    or (s.stillFor and ("  still %.3f"):format(s.stillFor) or "")
+      local lateTxt = ""
+      if lastSwing and tonumber(lastSwing.duration) and lastSwing.duration > 0 then
+        local late = (s.t - lastSwing.t) - lastSwing.duration
+        lateTxt = ("  %+.3f vs cycle"):format(late)
+        if s.moving then
+          movingShots = movingShots + 1
+          local row = { movingFor = s.movingFor or 0, late = late }
+          if late > 0.1 then movingLate[#movingLate + 1] = row else movingOnTime[#movingOnTime + 1] = row end
+        end
+      end
+      what = ("PLAYER_SWING Ranged  dur %.3f%s%s%s"):format(tonumber(s.duration) or -1, still, lateTxt, extra)
+      lastSwing = s
+    else
+      local w = r.w
+      if w.ev == "UNIT_SPELLCAST_START" then
+        starts = starts + 1
+        if w.castStart and w.castEnd then
+          windows = windows + 1; winSum = winSum + (w.castEnd - w.castStart)
+          what = ("START(75)  client cast %.3f -> %.3f (%.3f s)  bar rem %.3f%s"):format(
+            w.castStart - t0, w.castEnd - t0, w.castEnd - w.castStart, w.swingRemaining or 0,
+            w.sampled and ("  SAMPLED " .. w.sampled) or "")
+        else
+          what = ("START(75)  no client window  bar rem %.3f"):format(w.swingRemaining or 0)
+        end
+        if lastSwing and tonumber(lastSwing.duration) and lastSwing.duration > 0 then
+          phaseSum = phaseSum + (w.t - lastSwing.t) / lastSwing.duration; phaseN = phaseN + 1
+        end
+      elseif w.ev == "STOP->SHOT" and w.restart then
+        restarts = restarts + 1; restartSum = restartSum + (w.raw or 0)
+        what = ("RESTART->SHOT  (wind-up interrupted this cycle)  shot %.3f late  %.3f after the stop  (penalty, not sampled)"):format(
+          w.late or 0, w.raw or 0)
+      elseif w.ev == "STOP->SHOT" then
+        stops = stops + 1; stopSum = stopSum + (w.measured or 0); stopRaw = stopRaw + (w.raw or 0)
+        local m = w.measured or 0
+        if not stopMin or m < stopMin then stopMin = m end
+        if not stopMax or m > stopMax then stopMax = m end
+        what = ("STOP->SHOT  stopped %+.3f vs due  shot %.3f late  %.3f after the stop (less rtt %.3f = %.3f)%s"):format(
+          (w.stoppedAt or 0) - (w.due or 0), w.late or 0, w.raw or 0, w.latency or 0, w.lessRtt or (m - (w.latency or 0)),
+          w.sampled and ("  SAMPLED " .. w.sampled) or "  (dropped)")
+      elseif w.ev == "MOVE" then
+        -- Paired with an INTERRUPTED(75) inside 0.4 s (it lands ~0.21 s after
+        -- the move: a round trip and the server's turn): the wind-up was running.
+        local hit, lag = false, 0
+        for _, o in ipairs(d.windups or {}) do
+          if o.ev == "UNIT_SPELLCAST_INTERRUPTED" and o.t >= w.t and o.t - w.t <= 0.4 then hit, lag = true, o.t - w.t break end
+        end
+        local rem = w.swingRemaining or 0
+        if hit then
+          if not intMax or rem > intMax then intMax = rem end
+          what = ("MOVE  %.3f before the shot was due: INTERRUPTED the wind-up (+%.3f s)"):format(rem, lag)
+        else
+          if not freeMin or rem < freeMin then freeMin = rem end
+          what = ("MOVE  %.3f before the shot was due: free (no interrupt)"):format(rem)
+        end
+        moves = moves + 1
+      elseif w.ev == "RELEASE" then
+        reads = reads + 1; readSum = readSum + (w.measured or 0)
+        what = ("RELEASE  start->swing %.3f s  dur %.3f  delay %.3f%s%s"):format(
+          w.measured or 0, w.duration or 0, w.autoDelay or 0,
+          w.fromCast and "  (cast-sampled shot)" or "", w.sampled and ("  SAMPLED " .. w.sampled) or "")
+      else
+        what = ("feed %s(75)  bar rem %.3f%s"):format((w.ev or "?"):gsub("^UNIT_SPELLCAST_", ""), w.swingRemaining or 0,
+          w.sampled == "interrupt" and ("  SAMPLED interrupt (move at rem %.3f)"):format(w.pairedMoveRem or 0) or "")
+      end
+      if w.sampled == "cast" then sampledCast = sampledCast + 1 elseif w.sampled == "release" then sampledRel = sampledRel + 1
+      elseif w.sampled == "stop" then sampledStop = sampledStop + 1 elseif w.sampled == "interrupt" then sampledInt = sampledInt + 1 end
+    end
+    L[#L + 1] = ("  %8.3f  %+6.3f  %s"):format(r.t - t0, gap, what)
+    prev = r.t
+  end
+  if #rows == 0 then L[#L + 1] = "  (nothing yet: shoot a dummy for a few cycles, then run this again)" end
+  L[#L + 1] = ""
+  L[#L + 1] = ("summary: %d START(75), %d client windows (mean %.3f s), %d release reads (mean %.3f s), sampled cast=%d release=%d stop=%d interrupt=%d"):format(
+    starts, windows, windows > 0 and winSum / windows or 0, reads, reads > 0 and readSum / reads or 0, sampledCast, sampledRel, sampledStop, sampledInt)
+  L[#L + 1] = ("band in use: %.3f s from %s; stop-by edge %s"):format(st.windup or 0, tostring(st.windupSource or "the seed"),
+    st.stopBy and ("%.3f s"):format(st.stopBy) or "none yet")
+  if stops > 0 then
+    local m = stopSum / stops
+    local verdict
+    if m >= 0.15 then verdict = ("a wind-up gates the shot after a stop; in bar time stop ~%.3f s before the shot is due (model in use: %.3f s)"):format(m, st.windup or 0)
+    elseif m < 0.08 then verdict = "the shot follows the stop at once: no wind-up on this server"
+    else verdict = "unclear: more stops needed" end
+    L[#L + 1] = ("stop-gated shots: %d, raw (bar time) min %.3f mean %.3f max %.3f s: %s"):format(
+      stops, stopMin or 0, m, stopMax or 0, verdict)
+  elseif restarts == 0 then
+    L[#L + 1] = "stop-gated shots: none yet (run with the bar full, stop, let the shot come: each such stop is a read)"
+  else
+    L[#L + 1] = "stop-gated shots: only restarts after an interrupt so far (below); a stop made before the wind-up began would be a clean read"
+  end
+  if restarts > 0 then
+    L[#L + 1] = ("restarts after an interrupted wind-up: %d, shot %.3f s after the stop on average (the penalty; kept out of the band)"):format(restarts, restartSum / restarts)
+  end
+  if moves > 0 then
+    local verdict
+    if intMax and freeMin and freeMin > intMax then
+      verdict = ("the wind-up begins between %.3f and %.3f s before the shot"):format(intMax, freeMin)
+    elseif intMax and not freeMin then
+      verdict = ("every move interrupted: the wind-up begins more than %.3f s before the shot; move earlier to find the edge"):format(intMax)
+    elseif freeMin and not intMax then
+      verdict = ("no move interrupted down to %.3f s: the wind-up begins later than that; move later to find the edge"):format(freeMin)
+    else
+      verdict = ("overlap (interrupted at %.3f, free at %.3f): the edge jitters or a move was not what ended it"):format(intMax, freeMin)
+    end
+    L[#L + 1] = ("moves inside a running swing: %d: %s"):format(moves, verdict)
+  end
+  -- Shots made on the move: if those on time all began their move inside the
+  -- last W, the wind-up needs stillness only at its START (move freely once
+  -- it runs); if some began earlier and were still on time, moving does not
+  -- gate the shot at all and the stop reads mean something else.
+  if movingShots > 0 then
+    local function span(list)
+      local lo, hi
+      for _, e in ipairs(list) do
+        if not lo or e.movingFor < lo then lo = e.movingFor end
+        if not hi or e.movingFor > hi then hi = e.movingFor end
+      end
+      return lo and ("moved for %.2f-%.2f s"):format(lo, hi) or "-"
+    end
+    L[#L + 1] = ("shots on the move: %d, on time %d (%s), late %d (%s): a move begun inside the running wind-up is free if the on-time ones all moved for less than W"):format(
+      movingShots, #movingOnTime, span(movingOnTime), #movingLate, span(movingLate))
+  end
+  if phaseN > 0 then
+    local ph = phaseSum / phaseN
+    local verdict
+    if ph < 0.1 then verdict = "PLAYER_SWING fires at the wind-up START: the bar must be re-anchored by the wind-up"
+    elseif ph > 0.6 then verdict = "the wind-up sits at the end of the cycle and PLAYER_SWING is the release (TBC model, no re-anchor)"
+    else verdict = "unclear: check the rows" end
+    L[#L + 1] = ("wind-up starts %.1f%% into the cycle after the previous ranged swing (%d reads): %s"):format(ph * 100, phaseN, verdict)
+  else
+    L[#L + 1] = "wind-up phase: no START after a ranged swing yet"
+  end
+  return table.concat(L, "\n")
+end
+
+-- Blizzard's own swing timer (Blizzard_SwingTimer: SwingTimerManagerFrame,
+-- SwingTimerRangedFrame). The first `/nock probe windup` run (2026-10-16,
+-- build 70425) showed the client reports NO cast for Auto Shot: no
+-- UNIT_SPELLCAST_START(75), UnitCastingInfo nil, SUCCEEDED(75) in the same
+-- frame as PLAYER_SWING. So the 0.5 s timer the player sees is drawn by that
+-- frame from something else, and this half of the probe reads the frame
+-- itself: its methods, fields, regions, which events it registered, console
+-- commands matching swing/windup, and (once hooked) every method call and
+-- event it receives, with arguments. Pure report below, data gatherer after.
+local BZ_RING = 80
+
+function Probe.BlizzSwingReport(d)
+  local L = {}
+  L[#L + 1] = "Blizzard swing timer (Blizzard_SwingTimer):"
+  L[#L + 1] = "  SwingTimerMixin methods: " .. ((d.mixinMethods and #d.mixinMethods > 0) and table.concat(d.mixinMethods, ", ") or "nil")
+  L[#L + 1] = "  SwingTimerManagerMixin methods: " .. ((d.managerMethods and #d.managerMethods > 0) and table.concat(d.managerMethods, ", ") or "nil")
+  L[#L + 1] = "  SwingTimerRangedFrame own methods: " .. ((d.frameMethods and #d.frameMethods > 0) and table.concat(d.frameMethods, ", ") or "nil")
+  L[#L + 1] = "  SwingTimerRangedFrame fields: " .. ((d.fields and #d.fields > 0) and table.concat(d.fields, "  ") or "none")
+  L[#L + 1] = "  SwingTimerRangedFrame regions/children: " .. ((d.regions and #d.regions > 0) and table.concat(d.regions, ", ") or "none")
+  L[#L + 1] = "  registered events (of the candidates asked): " .. ((d.registered and #d.registered > 0) and table.concat(d.registered, ", ") or "none")
+  L[#L + 1] = "  console commands matching swing/windup/autoshot: " .. ((d.console and #d.console > 0) and table.concat(d.console, ", ") or "none")
+  L[#L + 1] = "  shown: " .. tostring(d.shown) .. "  hooked: " .. tostring(d.hooked)
+  L[#L + 1] = ""
+  L[#L + 1] = "Blizzard player cast bar (PlayerCastingBarFrame / CastingBarFrame):"
+  L[#L + 1] = "  own methods: " .. ((d.castBarMethods and #d.castBarMethods > 0) and table.concat(d.castBarMethods, ", ") or "nil")
+  L[#L + 1] = "  fields: " .. ((d.castBarFields and #d.castBarFields > 0) and table.concat(d.castBarFields, "  ") or "none")
+  L[#L + 1] = "  regions/children: " .. ((d.castBarRegions and #d.castBarRegions > 0) and table.concat(d.castBarRegions, ", ") or "none")
+  L[#L + 1] = ""
+  L[#L + 1] = "  hook log (t, what; the ranged frame's method calls and events, with arguments):"
+  local log = d.log or {}
+  if #log == 0 then
+    L[#L + 1] = d.hooked and "    (nothing yet: shoot a few cycles with Blizzard's swing timer shown, then run this again)"
+                          or "    (hooks not installed: SwingTimerRangedFrame missing, or hooksecurefunc unavailable)"
+  end
+  local t0 = log[1] and log[1].t or 0
+  for _, e in ipairs(log) do
+    L[#L + 1] = ("    %8.3f  %s%s"):format(e.t - t0, e.what, (e.n and e.n > 1) and ("  x" .. e.n) or "")
+  end
+  return table.concat(L, "\n")
+end
+
+local function bzFields(t)
+  local out = {}
+  for k, v in pairs(t) do
+    if type(k) == "string" then
+      local tv = type(v)
+      if tv == "table" then
+        out[#out + 1] = k .. "={table}"
+      elseif tv ~= "function" and tv ~= "userdata" then
+        out[#out + 1] = k .. "=" .. describe(v)
+      end
+    end
+  end
+  table.sort(out)
+  return out
+end
+
+local function bzMethods(t)
+  local out = {}
+  if type(t) == "table" then
+    for k, v in pairs(t) do if type(k) == "string" and type(v) == "function" then out[#out + 1] = k end end
+  end
+  table.sort(out)
+  return out
+end
+
+local function bzKeyOf(parent, child)
+  for k, v in pairs(parent) do if v == child and type(k) == "string" then return k end end
+  return nil
+end
+
+local function bzRegions(f, prefix, depth, out)
+  if not (f and f.GetRegions) then return out end
+  local function add(child, kind)
+    local key = bzKeyOf(f, child) or (child.GetName and child:GetName()) or "?"
+    local shown = child.IsShown and (child:IsShown() and "" or " hidden") or ""
+    out[#out + 1] = ("%s%s:%s%s"):format(prefix, key, kind or (child.GetObjectType and child:GetObjectType()) or "?", shown)
+    if depth > 0 and child.GetRegions then bzRegions(child, prefix .. key .. ".", depth - 1, out) end
+  end
+  for _, r in ipairs({ f:GetRegions() }) do add(r) end
+  if f.GetChildren then for _, c in ipairs({ f:GetChildren() }) do add(c) end end
+  return out
+end
+
+local BZ_EVENTS = {
+  "PLAYER_SWING", "PLAYER_SWING_RANGE_UPDATE", "START_AUTOREPEAT_SPELL", "STOP_AUTOREPEAT_SPELL",
+  "PLAYER_ENTER_COMBAT", "PLAYER_LEAVE_COMBAT", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
+  "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_SENT",
+  "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_DELAYED",
+  "UNIT_ATTACK_SPEED", "UNIT_RANGEDDAMAGE", "UNIT_RANGED_ATTACK_POWER", "PLAYER_EQUIPMENT_CHANGED",
+  "PLAYER_ENTERING_WORLD", "PLAYER_TARGET_CHANGED", "CVAR_UPDATE", "UNIT_INVENTORY_CHANGED",
+  "PLAYER_STARTED_MOVING", "PLAYER_STOPPED_MOVING", "CURRENT_SPELL_CAST_CHANGED", "SPELL_UPDATE_COOLDOWN",
+}
+
+local function bzArgs(...)
+  local n = select("#", ...)
+  local out = {}
+  for i = 1, n do out[i] = describe((select(i, ...))) end
+  return table.concat(out, ", ")
+end
+
+function Probe:BlizzLog(what)
+  local R = self._bz
+  local last = R[#R]
+  if last and last.what == what then last.n = (last.n or 1) + 1; return end
+  R[#R + 1] = { t = GetTime(), what = what }
+  if #R > BZ_RING then table.remove(R, 1) end
+end
+
+-- Post-hooks on the ranged frame's own methods (the mixin's functions are
+-- COPIED onto the frame, so the frame table is what must be hooked), on the
+-- manager's, and HookScript on OnEvent. Read-only; installed once.
+function Probe:BlizzHook()
+  if self._bzHooked then return true end
+  local F, M = _G.SwingTimerRangedFrame, _G.SwingTimerManagerFrame
+  if not _G.hooksecurefunc then return false end
+  if not F then
+    -- No swing-timer frame: still hook the cast bar below.
+    F = { }
+  end
+  self._bz = self._bz or {}
+  self._bzHooked = true
+  local probe = self
+  -- Getters and predicates run every frame from the frames' own OnUpdate
+  -- (the first log was 80 rows of GetStatusBar in 0.16 s): only the methods
+  -- that DO something are hooked.
+  local function noisy(name)
+    return name == "OnUpdate" or name:find("^On%u%l+Update$") or name:find("^Get") or name:find("^Has")
+      or name:find("^Is") or name:find("^Should") or name:find("^Can") or name:find("^Does") or name:find("^Any")
+  end
+  local function hookAll(frame, tag)
+    for _, name in ipairs(bzMethods(frame)) do
+      if not noisy(name) then
+        hooksecurefunc(frame, name, function(_, ...)
+          probe:BlizzLog(("%s:%s(%s)"):format(tag, name, bzArgs(...)))
+        end)
+      end
+    end
+    if frame.HookScript then
+      frame:HookScript("OnEvent", function(_, event, ...)
+        probe:BlizzLog(("%s <- %s(%s)"):format(tag, tostring(event), bzArgs(...)))
+      end)
+    end
+  end
+  hookAll(F, "Ranged")
+  if M then hookAll(M, "Manager") end
+  -- Blizzard's player cast bar: the user sees the 0.5 s timer THERE (2026-10-16).
+  local CB = _G.PlayerCastingBarFrame or _G.CastingBarFrame
+  if CB then
+    hookAll(CB, "CastBar")
+    if CB.HookScript then
+      local lastCb = 0
+      CB:HookScript("OnUpdate", function(f)
+        local now = GetTime()
+        if now - lastCb < 0.5 then return end
+        lastCb = now
+        local lo, hi, v = "-", "-", "-"
+        if f.GetMinMaxValues then lo, hi = f:GetMinMaxValues(); v = f:GetValue() end
+        probe:BlizzLog(("CastBar running: min %s max %s value %s  casting=%s channeling=%s spellID=%s spellName=%s"):format(
+          describe(lo), describe(hi), describe(v), describe(f.casting), describe(f.channeling), describe(f.spellID), describe(f.spellName)))
+      end)
+    end
+  end
+  -- The frame's OnUpdate (if any) is the likely place for a hardcoded wind-up:
+  -- sample its fields once a second while it runs, so a changing number shows.
+  if F.HookScript then
+    local last = 0
+    F:HookScript("OnUpdate", function(f)
+      local now = GetTime()
+      if now - last < 1 then return end
+      last = now
+      probe:BlizzLog("Ranged fields: " .. table.concat(bzFields(f), "  "))
+      local sb = f.StatusBar
+      if sb and sb.GetMinMaxValues then
+        local lo, hi = sb:GetMinMaxValues()
+        probe:BlizzLog(("Ranged StatusBar min %s max %s value %s"):format(describe(lo), describe(hi), describe(sb:GetValue())))
+      end
+    end)
+  end
+  return true
+end
+
+function Probe:BlizzSwingData()
+  local F, M = _G.SwingTimerRangedFrame, _G.SwingTimerManagerFrame
+  local registered = {}
+  if F and F.IsEventRegistered then
+    for _, ev in ipairs(BZ_EVENTS) do
+      local okr, r = pcall(F.IsEventRegistered, F, ev)
+      if okr and r then registered[#registered + 1] = ev end
+      if M and M.IsEventRegistered then
+        local okm, rm = pcall(M.IsEventRegistered, M, ev)
+        if okm and rm then registered[#registered + 1] = "Manager:" .. ev end
+      end
+    end
+  end
+  local console = {}
+  if _G.C_Console and _G.C_Console.GetAllCommands then
+    local okc, list = pcall(_G.C_Console.GetAllCommands)
+    if okc and type(list) == "table" then
+      for _, c in ipairs(list) do
+        local name = type(c) == "table" and c.command or nil
+        if type(name) == "string" and (name:lower():find("swing") or name:lower():find("windup") or name:lower():find("autoshot")) then
+          console[#console + 1] = name
+        end
+      end
+      table.sort(console)
+    end
+  end
+  local CB = _G.PlayerCastingBarFrame or _G.CastingBarFrame
+  return {
+    castBarMethods = CB and bzMethods(CB) or {}, castBarFields = CB and bzFields(CB) or {},
+    castBarRegions = CB and bzRegions(CB, "", 1, {}) or {},
+    mixinMethods = bzMethods(_G.SwingTimerMixin), managerMethods = bzMethods(_G.SwingTimerManagerMixin),
+    frameMethods = F and bzMethods(F) or {}, fields = F and bzFields(F) or {},
+    regions = F and bzRegions(F, "", 1, {}) or {}, registered = registered, console = console,
+    shown = F and F.IsShown and F:IsShown() or nil, hooked = self._bzHooked == true,
+    log = self._bz or {},
+  }
+end
+
+-- The live data for WindupReport (API-touching half).
+function Probe:WindupData()
+  local version, build = GetBuildInfo()
+  local ST = Nock:GetModule("SwingTimer", true)
+  local r = Nock.state.ranged
+  local api = {}
+  if _G.C_SwingTimer then
+    for k in pairs(_G.C_SwingTimer) do api[#api + 1] = tostring(k) end
+    table.sort(api)
+  end
+  local enum = {}
+  local E = _G.Enum and _G.Enum.PlayerSwingType
+  if E then
+    for k, v in pairs(E) do enum[#enum + 1] = { tostring(k), v } end
+    table.sort(enum, function(a, b) return tostring(a[2]) < tostring(b[2]) end)
+  end
+  local globals = {}
+  for k in pairs(_G) do
+    if type(k) == "string" and (k:find("Swing") or k:find("Windup") or k:find("WindUp") or k:find("AutoShot")) and not k:find("^Nock") then
+      globals[#globals + 1] = k
+    end
+  end
+  table.sort(globals)
+  local castingInfo = "n/a"
+  if _G.UnitCastingInfo then
+    local okc, name, _, _, startMs, endMs, _, _, _, spellID = pcall(UnitCastingInfo, "player")
+    castingInfo = okc and (name and ("%s id=%s %s..%s"):format(describe(name), describe(spellID), describe(startMs), describe(endMs)) or "nil") or "err"
+  end
+  return {
+    build = ("%s (%s)"):format(tostring(version), tostring(build)), forever = Nock.Flavor.forever,
+    state = { windupRatio = r.windupRatio, windup = r.windup, windupMeasured = r.windupMeasured,
+              windupSource = r.windupSource, stopBy = r.stopByRatio and (r.stopByRatio * r.swingDuration) or nil,
+              queueWindow = r.queueWindow, swingDuration = r.swingDuration },
+    api = api, enum = enum, globals = globals, castingInfo = castingInfo,
+    windups = (ST and ST.WindupSamples) and ST:WindupSamples() or {},
+    swings = (ST and ST.Samples) and ST:Samples() or {},
+    casts = self:Casts(),
+  }
 end
 
 -- Spellbook dump: every player spell with ID, name and rank text, so
@@ -1632,6 +2103,23 @@ end
 function Probe:Show(which, rest)
   local text
   if which == "aspect" then self:AspectWatch(rest); return end
+  -- `/nock probe windup`: the Auto Shot wind-up as the client now serves it,
+  -- plus Blizzard's own swing-timer frame. The first run installs read-only
+  -- hooks on that frame; shoot a few cycles and run it again for the log.
+  if which == "windup" and rest == "reset" then
+    local ST = Nock:GetModule("SwingTimer", true)
+    if ST and ST.ResetWindupReads then ST:ResetWindupReads() end
+    Nock:Print("Auto Shot wind-up reads cleared (this session and saved): the bar is unmeasured until the next stop-gated shots.")
+    return
+  end
+  if which == "windup" then
+    local fresh = not self._bzHooked
+    local hooked = self:BlizzHook()
+    local text = Probe.WindupReport(self:WindupData()) .. "\n\n" .. Probe.BlizzSwingReport(self:BlizzSwingData())
+    if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(text) else Nock:Print(text) end
+    if fresh and hooked then Nock:Print("Blizzard swing-timer hooks installed: shoot a few cycles (its timer shown), then /nock probe windup again.") end
+    return
+  end
   if which == "range" then self:RangeRecord(rest); return end
   if which == "keys" then self:KeysRecord(rest); return end
   if which == "camera" then

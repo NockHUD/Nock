@@ -341,5 +341,133 @@ ok(cat:find("| Arc$", 1) or cat:find("| Arc\n", 1, true), "the tracked catalog k
 ok(cat:find("spells: 5  active: 4  active with a cooldown signal: 2", 1, true), "summary counts (BW by base cd, Hawk by tooltip)")
 ok(Probe.CdCatalogReport({ inCombat = true }):find("IN COMBAT", 1, true), "in-combat warning")
 
+-- WindupReport: the spell-75 edges merged with the ranged swings, and the
+-- phase verdict that decides the bar's anchor.
+do
+  local rep = Probe.WindupReport({
+    build = "1.15.0 (70300)", forever = true,
+    state = { windupRatio = 0.175, windup = 0.35, windupMeasured = true, queueWindow = 0.4, swingDuration = 2.0 },
+    api = { "EnableRangeCheck", "GetWindupDuration", "IsTargetWithinSwingRange" },
+    enum = { { "MainHand", 0 }, { "OffHand", 1 }, { "Ranged", 2 } },
+    globals = { "PlayerSwingTimerMixin" },
+    castingInfo = "nil",
+    swings = {
+      { t = 100.0, swingType = 2, duration = 2.0 },
+      { t = 102.0, swingType = 2, duration = 2.0, extra = { 0.35 } },
+      { t = 102.3, swingType = 0, duration = 2.6 },
+    },
+    windups = {
+      { t = 101.65, ev = "UNIT_SPELLCAST_START", castStart = 101.65, castEnd = 102.0, swingRemaining = 0.35, sampled = "cast" },
+      { t = 102.0, ev = "UNIT_SPELLCAST_SUCCEEDED", swingRemaining = 0 },
+      { t = 102.0, ev = "RELEASE", measured = 0.35, duration = 2.0, autoDelay = 0, fromCast = true },
+    },
+  })
+  ok(rep:find("windupRatio 0.1750", 1, true) and rep:find("measured true", 1, true), "state line")
+  ok(rep:find("C_SwingTimer: EnableRangeCheck, GetWindupDuration, IsTargetWithinSwingRange", 1, true), "API names listed")
+  ok(rep:find("Ranged=2", 1, true) and rep:find("PlayerSwingTimerMixin", 1, true), "enum and globals")
+  ok(rep:find("START(75)  client cast 1.650 -> 2.000 (0.350 s)  bar rem 0.350  SAMPLED cast", 1, true), "START row with the client window")
+  ok(rep:find("PLAYER_SWING Ranged  dur 2.000  +0.000 vs cycle  extra=[0.35]", 1, true), "extra PLAYER_SWING payload shown")
+  ok(rep:find("RELEASE  start->swing 0.350 s  dur 2.000  delay 0.000  (cast-sampled shot)", 1, true), "release row")
+  ok(rep:find("feed SUCCEEDED(75)", 1, true), "other feed edges stripped of their prefix")
+  ok(not rep:find("MainHand", 1, true) or rep:find("MainHand=0", 1, true), "melee swings stay out of the timeline")
+  ok(rep:find("1 START(75), 1 client windows (mean 0.350 s), 1 release reads (mean 0.350 s), sampled cast=1 release=0", 1, true), "summary counts")
+  ok(rep:find("82.5% into the cycle", 1, true) and rep:find("TBC model", 1, true), "phase verdict: end of cycle")
+
+  local early = Probe.WindupReport({ swings = { { t = 10, swingType = 2, duration = 2.0 } },
+    windups = { { t = 10.01, ev = "UNIT_SPELLCAST_START" } } })
+  ok(early:find("0.5% into the cycle", 1, true) and early:find("re-anchored", 1, true), "phase verdict: swing fires at the wind-up start")
+  ok(early:find("no client window", 1, true), "START without a client window says so")
+  ok(Probe.WindupReport({}):find("nothing yet", 1, true), "empty rings: instructions")
+
+  -- Stop-gated reads: the row, the still stamp on the swing, the verdict.
+  local stop = Probe.WindupReport({
+    swings = { { t = 10, swingType = 2, duration = 2.0 }, { t = 12.71, swingType = 2, duration = 2.0, stillFor = 0.41 } },
+    state = { windup = 0.41 },
+    windups = { { t = 12.71, ev = "STOP->SHOT", stoppedAt = 12.3, due = 12.0, late = 0.71, raw = 0.41, latency = 0.06, lessRtt = 0.35, measured = 0.41, duration = 2.0, sampled = "stop" } },
+  })
+  ok(stop:find("PLAYER_SWING Ranged  dur 2.000  still 0.410", 1, true), "the swing row carries the still time")
+  ok(stop:find("STOP->SHOT  stopped +0.300 vs due  shot 0.710 late  0.410 after the stop (less rtt 0.060 = 0.350)  SAMPLED stop", 1, true), "the stop row")
+  ok(stop:find("stop-gated shots: 1, raw (bar time) min 0.410 mean 0.410 max 0.410 s: a wind-up gates the shot after a stop; in bar time stop ~0.410 s before the shot is due (model in use: 0.410 s)", 1, true), "verdict: wind-up")
+  ok(stop:find("stop=1", 1, true), "sampled stop count")
+  ok(stop:find("still 0.410  +0.710 vs cycle", 1, true), "a ranged swing row says how late it was against the previous cycle")
+
+  -- Shots on the move: on time with a short move -> stillness needed only at the start.
+  local mv = Probe.WindupReport({ swings = {
+    { t = 10, swingType = 2, duration = 2.0 },
+    { t = 12.0, swingType = 2, duration = 2.0, moving = true, movingFor = 0.3 },
+    { t = 14.02, swingType = 2, duration = 2.0, moving = true, movingFor = 0.45 },
+    { t = 16.6, swingType = 2, duration = 2.0, moving = true, movingFor = 1.2 },
+  } })
+  ok(mv:find("MOVING for 0.300  +0.000 vs cycle", 1, true), "moving row with the move length")
+  ok(mv:find("shots on the move: 3, on time 2 (moved for 0.30-0.45 s), late 1 (moved for 1.20-1.20 s)", 1, true), "moving summary splits on-time and late")
+
+  -- Moves paired with interrupts: where the wind-up begins.
+  local im = Probe.WindupReport({ state = { windup = 0.58, windupSource = "interrupt", stopBy = 0.95 }, windups = {
+    { t = 10.0, ev = "MOVE", swingRemaining = 0.9 },
+    { t = 12.5, ev = "MOVE", swingRemaining = 0.45 },
+    { t = 12.71, ev = "UNIT_SPELLCAST_INTERRUPTED", swingRemaining = 0.24, sampled = "interrupt", pairedMoveRem = 0.45 },
+    { t = 15.0, ev = "MOVE", swingRemaining = 0.3 },
+    { t = 15.21, ev = "UNIT_SPELLCAST_INTERRUPTED", swingRemaining = 0.09 },
+    { t = 17.0, ev = "STOP->SHOT", restart = true, late = 0.7, raw = 0.95 },
+  } })
+  ok(im:find("MOVE  0.900 before the shot was due: free (no interrupt)", 1, true), "a free move row")
+  ok(im:find("MOVE  0.450 before the shot was due: INTERRUPTED the wind-up (+0.210 s)", 1, true), "an interrupting move row, with the lag (0.21 s is inside the 0.4 s window)")
+  ok(im:find("feed INTERRUPTED(75)  bar rem 0.240  SAMPLED interrupt (move at rem 0.450)", 1, true), "the interrupt row names its move")
+  ok(im:find("band in use: 0.580 s from interrupt; stop-by edge 0.950 s", 1, true), "band and stop-by line")
+  ok(im:find("interrupt=1", 1, true), "sampled interrupt count")
+  ok(im:find("moves inside a running swing: 3: the wind-up begins between 0.450 and 0.900 s before the shot", 1, true), "the edge is bracketed")
+  ok(im:find("RESTART->SHOT  (wind-up interrupted this cycle)  shot 0.700 late  0.950 after the stop  (penalty, not sampled)", 1, true), "restart row")
+  ok(im:find("restarts after an interrupted wind-up: 1, shot 0.950 s after the stop on average", 1, true), "restart summary")
+  local allInt = Probe.WindupReport({ windups = { { t = 1, ev = "MOVE", swingRemaining = 0.3 }, { t = 1.3, ev = "UNIT_SPELLCAST_INTERRUPTED" } } })
+  ok(allInt:find("every move interrupted: the wind-up begins more than 0.300 s before the shot", 1, true), "all interrupted: asks for earlier moves")
+  local none = Probe.WindupReport({ windups = { { t = 1, ev = "STOP->SHOT", stoppedAt = 0.9, due = 0.8, raw = 0.03, latency = 0.03, lessRtt = 0.0, measured = 0.03 } } })
+  ok(none:find("no wind-up on this server", 1, true) and none:find("(dropped)", 1, true), "verdict: shot at once")
+
+  -- Every player cast edge is in the timeline (any spell id), with what
+  -- UnitCastingInfo said at a START; runs of the same FAILED fold into one row.
+  local all = Probe.WindupReport({
+    swings = { { t = 50.0, swingType = 2, duration = 2.0 } },
+    casts = {
+      { t = 51.6, ev = "UNIT_SPELLCAST_START", spellID = 1234567, castBarID = 9,
+        ci = { name = "Auto Shot", id = 1234567, startMs = 51600, endMs = 52000 } },
+      { t = 51.7, ev = "UNIT_SPELLCAST_FAILED", spellID = 75 },
+      { t = 51.71, ev = "UNIT_SPELLCAST_FAILED", spellID = 75 },
+      { t = 51.72, ev = "UNIT_SPELLCAST_FAILED", spellID = 75 },
+      { t = 52.0, ev = "UNIT_SPELLCAST_SUCCEEDED", spellID = 1234567 },
+    },
+  })
+  ok(all:find("cast START  spell 1234567  castBar 9  UnitCastingInfo: Auto Shot id=1234567 51600..52000 ms", 1, true), "a START under another id shows with the client's record")
+  ok(all:find("cast FAILED  spell 75  x3", 1, true), "a FAILED run folds with its count")
+  ok(all:find("cast SUCCEEDED  spell 1234567", 1, true), "the SUCCEEDED row")
+end
+
+-- BlizzSwingReport: the live-frame introspection half of the wind-up probe.
+do
+  local rep = Probe.BlizzSwingReport({
+    mixinMethods = { "OnEvent", "OnLoad", "SetWindupDuration", "UpdateShownState" },
+    managerMethods = { "OnEvent", "UpdateSwingTimers" },
+    frameMethods = { "OnEvent", "SetWindupDuration" },
+    fields = { "swingType=2", "windupDuration=0.5" },
+    regions = { "StatusBar:StatusBar", "StatusBar.Pip:Texture", "Windup:Texture hidden" },
+    registered = { "PLAYER_SWING", "Manager:PLAYER_SWING" },
+    console = { "showSwingTimer" },
+    shown = true, hooked = true,
+    log = { { t = 10, what = "Ranged:SetWindupDuration(0.5)" }, { t = 10.5, what = "Ranged <- PLAYER_SWING(2.232, 2)" } },
+  })
+  ok(rep:find("SwingTimerMixin methods: OnEvent, OnLoad, SetWindupDuration, UpdateShownState", 1, true), "mixin methods listed")
+  ok(rep:find("fields: swingType=2  windupDuration=0.5", 1, true), "frame fields listed")
+  ok(rep:find("Windup:Texture hidden", 1, true), "regions with their shown state")
+  ok(rep:find("registered events (of the candidates asked): PLAYER_SWING, Manager:PLAYER_SWING", 1, true), "registered events")
+  ok(rep:find("console commands matching swing/windup/autoshot: showSwingTimer", 1, true), "console commands")
+  ok(rep:find("0.000  Ranged:SetWindupDuration(0.5)", 1, true) and rep:find("0.500  Ranged <- PLAYER_SWING(2.232, 2)", 1, true), "hook log rows")
+  ok(Probe.BlizzSwingReport({ hooked = true, log = { { t = 1, what = "Ranged:ClearSwingTimer()", n = 7 } } }):find("ClearSwingTimer()  x7", 1, true), "folded duplicates show a count")
+  ok(Probe.BlizzSwingReport({ hooked = true }):find("nothing yet", 1, true), "hooked, no log: instructions")
+  ok(Probe.BlizzSwingReport({ hooked = false }):find("hooks not installed", 1, true), "not hooked: says so")
+  local cb = Probe.BlizzSwingReport({ castBarMethods = { "OnEvent", "PlayFinishAnim" }, castBarFields = { "casting=true", "spellID=75" },
+                                     castBarRegions = { "Text:FontString", "Icon:Texture" } })
+  ok(cb:find("Blizzard player cast bar", 1, true) and cb:find("own methods: OnEvent, PlayFinishAnim", 1, true), "cast bar methods")
+  ok(cb:find("fields: casting=true  spellID=75", 1, true) and cb:find("Text:FontString, Icon:Texture", 1, true), "cast bar fields and regions")
+end
+
 print(("forever_probe: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
