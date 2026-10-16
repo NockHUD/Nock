@@ -784,6 +784,7 @@ Nock.Defaults = {
     -- less cramped lower (suggested by Shekza, 2026-09-26).
     gridIconZoom           = 8,
     gridGcdSwipe           = false,     -- a light GCD swipe on tiles whose spell is on the GCD (Blizzard's bar look)
+    reactHideUnlearned     = false,     -- Forever: a class spell not yet trained is left out of the grid (off: shown greyed)
     reactTileDim           = false,     -- a tile on cooldown or not usable: desaturated at 60% (the WA's condition 1)
     reactManaTint          = false,     -- a tile whose spell lacks mana: blue + desaturated (the WA's condition 4)
     -- Active-state highlight on the React grid (KC keeps its own

@@ -380,17 +380,26 @@ end
 function Cooldowns:IsEntryAvailable(key)
   local e = self._byKey and self._byKey[key]
   if e and e.pet then return petKnows(self, e) end
-  if not isRacial(self, key) then return true end
   local known = self._known
-  return (known and known[key] == true) or false
+  if isRacial(self, key) then return (known and known[key] == true) or false end
+  -- Learned spells only (reactHideUnlearned, user request 2026-10-16): a
+  -- class spell the character has not trained is left out of the grid
+  -- instead of shown greyed. Only a definite "not known" hides a tile; nil
+  -- (no spellbook read yet, a custom entry) keeps it, so the grid never
+  -- empties on a slow login.
+  if known and known[key] == false and profile().reactHideUnlearned == true then return false end
+  return true
 end
 
 -- What the editors list: everything the HUD can show, plus pet abilities whose
--- pet is not out (placed, arranged and removed without summoning it).
+-- pet is not out (placed, arranged and removed without summoning it), plus
+-- class spells not yet learned (placed before they are trained; the board
+-- greys them).
 function Cooldowns:IsEntryEditable(key)
   local e = self._byKey and self._byKey[key]
   if e and e.pet then return true end
-  return self:IsEntryAvailable(key)
+  if isRacial(self, key) then return self:IsEntryAvailable(key) end
+  return true
 end
 
 -- The summoned pet's known ability names, re-read on a pet change (UNIT_PET,

@@ -147,7 +147,7 @@ L.TABS = {
   {
     path = "hud.fluffy.tabGrid",
     cards = {
-      { key = "gridCard", name = "Grid", icon = { spell = C.KILL_COMMAND }, actions = { "fcd_reset" }, rows = { "fluffyShowGrid", "fcd_add", "reactKcProcGlow", "reactRaptorGoGlow", "gridGcdSwipe", "fcd_reset" } },
+      { key = "gridCard", name = "Grid", icon = { spell = C.KILL_COMMAND }, actions = { "fcd_reset" }, rows = { "fluffyShowGrid", "fcd_add", "reactKcProcGlow", "reactRaptorGoGlow", "gridGcdSwipe", "reactHideUnlearned", "fcd_reset" } },
       { key = "tintsCard", name = "Tints", icon = { glyph = "palette" }, advanced = true, rows = { "reactRangeTint", "reactTileDim", "reactManaTint" } },
       { key = "iconsCard", name = "Icons", icon = { glyph = "expand" }, advanced = true, desc = "Tile size, and how the spell art sits in each tile.", rows = { "gridIconZoom", "fluffyGridHeight" } },
       { key = "activeHighlightCard", name = "Active highlight", icon = { glyph = "sparkle" }, rows = { "fluffyActiveStyle", "fluffyActiveColor", "fluffyActiveSize", "fluffyActiveFit", "activePreview" } },
@@ -265,7 +265,7 @@ L.TABS = {
     path = "hud.react.tabGrid",
     cards = {
       { key = "cooldownBoardCard", name = "Cooldown grid", forever = true, board = "cooldowns", icon = { glyph = "stack" }, desc = "Drag tiles to reorder, click the catalog to add, or type a spell name or ID.", actions = { "cdBoardReset" }, rows = { "cdBoardReset" } },
-      { key = "gridCard", name = "Grid", icon = { spell = C.KILL_COMMAND }, rows = { "reactConsumablesAlways", "reactKcProcGlow", "reactRaptorGoGlow", "kcActionBarGlow", "gridGcdSwipe" } },
+      { key = "gridCard", name = "Grid", icon = { spell = C.KILL_COMMAND }, rows = { "reactConsumablesAlways", "reactKcProcGlow", "reactRaptorGoGlow", "kcActionBarGlow", "gridGcdSwipe", "reactHideUnlearned" } },
       { key = "tintsCard", name = "Tints", icon = { glyph = "palette" }, advanced = true, rows = { "reactRangeTint", "reactTileDim", "reactManaTint" } },
       { key = "iconsCard", name = "Icons", icon = { glyph = "expand" }, advanced = true, desc = "Tile size, and how the spell art sits in each tile.", rows = { "gridIconZoom", "gridRow1Height", "gridRow1Fill", "gridRow1Width", "gridRow2Height", "gridRow2Width" } },
       { key = "activeHighlightCard", name = "Active highlight", icon = { glyph = "sparkle" }, rows = { "reactActiveStyle", "reactActiveColor", "reactActiveSize", "reactActiveFit", "activePreview" } },

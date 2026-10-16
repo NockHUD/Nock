@@ -256,6 +256,15 @@ do
   ok(CD:IsEntryAvailable("Arc") == true, "rank 2 only: the base entry is in by name")
   ok(CD:IsEntryAvailable("Conc") == true and CD:IsEntryAvailable("RF") == true and CD:IsEntryAvailable("AimMulti") == true, "class spells not yet trained: still in (the level-1 grid keeps its shape)")
   ok(#sent == 0, "the first scan sends nothing (the grid builds from it)")
+  -- Learned spells only: the untrained class spells leave the grid, stay in
+  -- the editors, and the known ones and the racial rule are untouched.
+  Nock.db.profile.reactHideUnlearned = true
+  ok(CD:IsEntryAvailable("Conc") == false and CD:IsEntryAvailable("RF") == false and CD:IsEntryAvailable("AimMulti") == false, "learned only: untrained class spells are out")
+  ok(CD:IsEntryAvailable("Raptor") == true and CD:IsEntryAvailable("Arc") == true, "learned only: trained spells stay")
+  ok(CD:IsEntryEditable("Conc") == true and CD:IsEntryEditable("Raptor") == true, "learned only: the board still lists them")
+  ok(CD:IsEntryAvailable("Meld") == false and CD:IsEntryEditable("Meld") == false, "learned only: a racial you cannot have is still out everywhere")
+  Nock.db.profile.reactHideUnlearned = false
+  ok(CD:IsEntryAvailable("Conc") == true, "off again: greyed tiles are back")
   items[#items + 1] = { spellID = 20580, name = "Shadowmeld" }
   knownIds[20580] = true
   CD:UpdateKnown()
@@ -286,6 +295,9 @@ do
   CD:UpdateKnown()
   ok(CD:IsEntryAvailable("Meld") == false, "no spellbook API: a racial cannot be confirmed, so it stays hidden")
   ok(CD:IsEntryAvailable("Raptor") == true, "no spellbook API: class spells keep showing")
+  Nock.db.profile.reactHideUnlearned = true
+  ok(CD:IsEntryAvailable("Raptor") == true and CD:IsEntryAvailable("Conc") == true, "learned only with no known map: nothing hides (nil is not 'not known')")
+  Nock.db.profile.reactHideUnlearned = false
 end
 
 -- Racial buffs: the tile lights while the racial's own buff is up. In combat

@@ -145,6 +145,8 @@ for _, p in ipairs({ "hud.react.tabBuff", "hud.react.tabRange", "hud.react.tabBa
   ok(nodeAt(opts, p) == nil, p .. " gone")
 end
 ok(nodeAt(opts, "hud.react.tabGrid.gridGcdSwipe") and nodeAt(opts, "hud.react.tabGrid.gridIconZoom"), "grid: GCD swipe and icon zoom kept on Forever")
+local lo = nodeAt(opts, "hud.react.tabGrid.reactHideUnlearned")
+ok(lo and lo.type == "toggle" and lo.name == "Learned spells only" and (lo.desc or ""):find("left out of the grid"), "grid: Learned spells only on Forever")
 for _, p in ipairs({ "hud.react.tabBars", "hud.react.tabSize", "hud.react.tabSkin", "hud.react.tabGrid" }) do
   ok(nodeAt(opts, p) ~= nil, p .. " kept")
 end

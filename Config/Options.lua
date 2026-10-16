@@ -7224,6 +7224,14 @@ local function buildOptionsTable()
       get = get,
       set = function(_, v) visualsSet(_, "reactTileDim", v) end,
     }
+    gridArgs.reactHideUnlearned = {
+      type = "toggle", name = "Learned spells only",
+      desc = "A tile whose spell you have not trained yet is left out of the grid and the row closes up, instead of the tile showing greyed. It comes back the moment you learn the spell. Racials you cannot have are always left out.",
+      order = 69.56, width = "full", disabled = notReact,
+      hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end,
+      get = get,
+      set = function(_, v) visualsSet(_, "reactHideUnlearned", v) end,
+    }
     gridArgs.gridGcdSwipe = {
       type = "toggle", name = "GCD swipe",
       desc = "A light swipe on every tile whose spell is on the global cooldown, the way Blizzard's action bars show it. Spells off the GCD (Kill Command, racials) and items never swipe. Shared by the React and FluffyHUD grids.",
@@ -8176,6 +8184,14 @@ local function buildOptionsTable()
       disabled = notFluffy,
       get = function() return Nock.db.profile.reactTileDim == true end,
       set = function(_, v) visualsSet(_, "reactTileDim", v) end,
+    }
+    fGridArgs.reactHideUnlearned = {
+      type = "toggle", name = "Learned spells only", order = 24.5, width = "full",
+      desc = "A tile whose spell you have not trained yet is left out of the grid and the row closes up, instead of the tile showing greyed. It comes back the moment you learn the spell.",
+      disabled = notFluffy,
+      hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end,
+      get = function() return Nock.db.profile.reactHideUnlearned == true end,
+      set = function(_, v) visualsSet(_, "reactHideUnlearned", v) end,
     }
     fGridArgs.gridGcdSwipe = {
       type = "toggle", name = "GCD swipe", order = 24.4, width = "full",
