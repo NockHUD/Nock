@@ -87,7 +87,7 @@ function Settings:OnInitialize()
   self.state = { page = nil, tab = {}, scroll = {}, quickOpen = {} }
   W.Subscribe(APP, self, function() Settings.index = nil; Settings:Invalidate("ConfigTableChange") end)
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "RefreshLater")
-  self:RegisterMessage("NOCK_LOCK_CHANGED", "RefreshLater")
+  self:RegisterMessage("NOCK_LOCK_CHANGED", "OnLockChanged")
   self:RegisterMessage("NOCK_PRACTICE_CHANGED", "RefreshLater")
   self:RegisterMessage("NOCK_WEAVEBIND_CHANGED", "RefreshLater")
   self:RegisterMessage("NOCK_EDITGRID_CHANGED", "RefreshLater")
@@ -120,6 +120,7 @@ end
 -- Named Invalidate, not Refresh: the central tick calls :Refresh(state) on
 -- every module that has one, every frame.
 function Settings:RefreshLater(event) self:Invalidate(event or "message") end
+function Settings:OnLockChanged(event) self:PaintPeekPill(); self:Invalidate(event) end
 function Settings:Invalidate(why)
   if not self.frame:IsShown() then return end
   if self.DEBUG then self:Log(("refresh <- %s%s"):format(tostring(why), self._pending and " (coalesced)" or "")) end
@@ -481,13 +482,18 @@ function Settings:BuildMain()
   self.lockBtn:SetPoint("LEFT", self.lockText, "RIGHT", 16, 0)
   self.lockBtn:SetScript("OnClick", function() Nock:SetLocked(not Nock.IsLocked()) end)
   self.status = text(foot, "mono", Skin.SIZES.mono, "ink3")
-  self.status:SetPoint("CENTER", foot, "CENTER", 40, 0)
+  self.status:SetPoint("CENTER", foot, "CENTER", -10, 0)
   local edit = Skin.Button(foot, "Edit mode", "ghost", nil, 32)
   edit:SetPoint("RIGHT", foot, "RIGHT", -24, 0)
   edit:SetScript("OnClick", function() Nock:SetLocked(false); Settings:Close() end)
   local reset = Skin.Button(foot, "Reset page", "ghost", nil, 32)
   reset:SetPoint("RIGHT", edit, "LEFT", -10, 0)
   reset:SetScript("OnClick", function() Settings:ResetPage() end)
+  -- Step aside: the window hides without closing (page, tab, scroll, search
+  -- and previews kept) so the HUD can be dragged, and a pill brings it back.
+  local aside = Skin.Button(foot, "Step aside", "ghost", nil, 32)
+  aside:SetPoint("RIGHT", reset, "LEFT", -10, 0)
+  aside:SetScript("OnClick", function() Settings:Peek() end)
   self.foot = foot
 
   local col = Nock.UI.ScrollColumn.New(main, Settings.ROW_H)
@@ -507,6 +513,7 @@ end
 function Settings:IsOpen() return self.frame:IsShown() end
 
 function Settings:Open()
+  if self._peeked then self:Unpeek() return end
   self.nav_model = nil
   if not self.state.page then self.state.page = Nock.HudMode() end
   self:ApplyScale()
@@ -515,11 +522,20 @@ function Settings:Open()
 end
 
 function Settings:Close()
-  if not self.frame:IsShown() then return end
-  self._hiding = true
+  local peeked = self._peeked
+  if peeked then
+    self._peeked = false
+    if self.peekPill then self.peekPill:Hide() end
+  end
+  if not self.frame:IsShown() and not peeked then return end
   self.modeOverride = nil
   self.searchBox:SetText("")
-  self.frame:Hide()
+  -- `_hiding` tells OnHide this is our own Hide (it would otherwise call
+  -- Close again); only armed when a Hide will actually fire.
+  if self.frame:IsShown() then
+    self._hiding = true
+    self.frame:Hide()
+  end
   -- session-only previews (React/Fluffy grid "light every tile", the coach
   -- stage preview) end with the window; the old dialog left them on for good
   if Nock.UI.activePreview or Nock.UI.stagePreview then
@@ -531,6 +547,111 @@ function Settings:Close()
 end
 
 function Settings:Toggle() if self:IsOpen() then self:Close() else self:Open() end end
+
+-- Step aside (the footer button, the keybinding): the window hides WITHOUT
+-- closing. Everything it holds stays (page, tab, scroll, search, the
+-- Advanced override, the session previews). The lock is left as it is (user,
+-- 2026-10-16: no auto-unlock); the pill at the top of the screen carries a
+-- Lock / Unlock toggle next to "Back to settings", and the same key brings
+-- the window straight back. Session-only: a reload drops it. ESC does
+-- nothing while aside (the frame is hidden, so UISpecialFrames skips it).
+Settings._peeked = false
+
+function Settings:IsPeeked() return self._peeked == true end
+
+function Settings:Peek()
+  if not self.frame:IsShown() then return end
+  self._peeked = true
+  self._hiding = true          -- our own Hide: OnHide must not run Close
+  self.frame:Hide()
+  if Nock.UI.SettingsControls then Nock.UI.SettingsControls.HideTooltip() end
+  if Nock.UI.KeyCapture then Nock.UI.KeyCapture.End() end
+  self:ShowPeekPill()
+end
+
+function Settings:Unpeek()
+  if not self._peeked then return end
+  self._peeked = false
+  if self.peekPill then self.peekPill:Hide() end
+  self.frame:Show()
+end
+
+-- One key for the whole cycle: open -> aside, aside -> back, closed -> open.
+function Settings:ToggleVisible()
+  if self:IsOpen() then self:Peek()
+  elseif self._peeked then self:Unpeek()
+  else self:Open() end
+end
+
+-- Bindings.xml: NOCK_SETTINGS_TOGGLE.
+function Nock:SettingsBinding()
+  if self.Settings and self.Settings.ToggleVisible then self.Settings:ToggleVisible() end
+end
+
+-- The pill while aside: top centre, above the HUD. Two parts on one surface:
+-- "Back to settings" (the whole left part is the button, with the bound key as
+-- a hint) and a Lock / Unlock toggle that mirrors the footer's, so the HUD
+-- can be freed for dragging and locked again without the window.
+Settings.PILL_H = 44
+
+function Settings:ShowPeekPill()
+  local p = self.peekPill
+  if not p then
+    p = CreateFrame("Frame", "NockSettingsPeekPill", UIParent)
+    p:SetFrameStrata("HIGH")
+    p:SetHeight(Settings.PILL_H)
+    p:SetPoint("TOP", UIParent, "TOP", 0, -12)
+    p:SetClampedToScreen(true)
+    Skin.Surface(p, "raised", "line")
+
+    local back = CreateFrame("Button", nil, p)
+    back:SetPoint("TOPLEFT", p, "TOPLEFT", 0, 0)
+    back:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", 0, 0)
+    local icon = back:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("LEFT", back, "LEFT", 16, 0)
+    Skin.Icon(icon, "sliders", "accent"); Skin.IconSize(icon, 18)
+    back.label = text(back, "uiMedium", 15, "ink")
+    back.label:SetPoint("LEFT", icon, "RIGHT", 10, 0)
+    back.label:SetText("Back to settings")
+    back.hint = text(back, "mono", Skin.SIZES.mono, "ink3")
+    back.hint:SetPoint("LEFT", back.label, "RIGHT", 10, 0)
+    back:SetScript("OnClick", function() Settings:Unpeek() end)
+    back:SetScript("OnEnter", function(b) Skin.Text(b.label, "accent") end)
+    back:SetScript("OnLeave", function(b) Skin.Text(b.label, "ink") end)
+    p.back = back
+
+    local rule = Skin.Rule(p, "line")
+    rule:SetPoint("TOP", p, "TOP", 0, -8); rule:SetPoint("BOTTOM", p, "BOTTOM", 0, 8); rule:SetWidth(1)
+    p.rule = rule
+
+    p.lockIcon = p:CreateTexture(nil, "ARTWORK")
+    p.lockBtn = Skin.Button(p, "Unlock", "ghost", nil, 30)
+    p.lockBtn:SetScript("OnClick", function() Nock:SetLocked(not Nock.IsLocked()) end)
+    self.peekPill = p
+  end
+  local key = GetBindingKey and GetBindingKey("NOCK_SETTINGS_TOGGLE")
+  p.back.hint:SetText(key and (GetBindingText and GetBindingText(key, "KEY_") or key) or "")
+  local backW = 16 + 18 + 10 + (p.back.label:GetStringWidth() or 120) + (key and (10 + (p.back.hint:GetStringWidth() or 0)) or 0) + 16
+  p.back:SetWidth(backW)
+  p.rule:ClearAllPoints()
+  p.rule:SetPoint("TOP", p, "TOPLEFT", backW, -8); p.rule:SetPoint("BOTTOM", p, "BOTTOMLEFT", backW, 8); p.rule:SetWidth(1)
+  p.lockIcon:ClearAllPoints()
+  p.lockIcon:SetPoint("LEFT", p, "LEFT", backW + 16, 0)
+  p.lockBtn:ClearAllPoints()
+  p.lockBtn:SetPoint("LEFT", p.lockIcon, "RIGHT", 10, 0)
+  self:PaintPeekPill()
+  p:SetWidth(backW + 16 + 18 + 10 + p.lockBtn:GetWidth() + 16)
+  p:Show()
+end
+
+-- The lock half of the pill follows the lock (NOCK_LOCK_CHANGED).
+function Settings:PaintPeekPill()
+  local p = self.peekPill
+  if not p then return end
+  local locked = Nock.IsLocked()
+  Skin.Icon(p.lockIcon, locked and "lock" or "lockopen", locked and "ink2" or "accent"); Skin.IconSize(p.lockIcon, 18)
+  Skin.SetButtonText(p.lockBtn, locked and "Unlock frames" or "Lock frames", 120)
+end
 
 function Settings:SelectPage(key)
   if self.DEBUG then self:Log(("page -> %s"):format(tostring(key))) end

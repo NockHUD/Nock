@@ -2,6 +2,7 @@
   <Binding name="NOCK_PRACTICE_STARTSTOP" header="NOCK">Nock:PracticeBinding("startstop")</Binding>
   <Binding name="NOCK_PRACTICE_FOCUS">Nock:PracticeBinding("focus")</Binding>
   <Binding name="NOCK_PRACTICE_EXPERT">Nock:PracticeBinding("expert")</Binding>
+  <Binding name="NOCK_SETTINGS_TOGGLE">Nock:SettingsBinding()</Binding>
   <Binding name="CLICK NockAspectRingButton:LeftButton"/>
   <Binding name="CLICK NockTrackingWheelButton:LeftButton"/>
   <Binding name="CLICK NockWeaveKey:LeftButton"/>

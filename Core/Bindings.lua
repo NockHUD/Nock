@@ -15,6 +15,10 @@ _G["BINDING_NAME_NOCK_PRACTICE_STARTSTOP"] = "Practice: start / stop the fight"
 _G["BINDING_NAME_NOCK_PRACTICE_FOCUS"] = "Practice: focus (stage on the HUD / workbench)"
 _G["BINDING_NAME_NOCK_PRACTICE_EXPERT"] = "Practice: expert (combat log + weave log, no stage)"
 
+-- Settings window (UI/Frame_Settings.lua): one key cycles open -> step aside
+-- (hidden, nothing closed, HUD unlocked to drag) -> back.
+_G["BINDING_NAME_NOCK_SETTINGS_TOGGLE"] = "Settings: open / step aside / back"
+
 -- Aspect ring (Forever/AspectRing.lua, WoW Forever only: the button does not
 -- exist on TBC, where the entry says so).
 _G["BINDING_NAME_CLICK NockAspectRingButton:LeftButton"] = forever and "Aspect ring (hold)" or "Aspect ring (WoW Forever)"
