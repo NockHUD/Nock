@@ -76,6 +76,14 @@ F.RENAME = {
     desc = "The mark on the Auto Shot bar where the shot's wind-up begins. Be standing still by then: the bow cannot wind up on the move, and a stop made past the mark holds the shot until one wind-up after you stand. Measured from your own shots (every late shot after a stop is a read); until the first read the client's spell-queue window stands in.",
   },
   ["hud.react.tabSkin.autoMarksHeader"] = "Wind-up mark",
+  -- The wind-up on the cast bar: modelled from the measured wind-up here
+  -- (Forever/CastBar). The inverse auto bar already paints the same window
+  -- as its second phase, so with that bar on this is a double; the switch
+  -- sits in Simple mode for that reason (user, 2026-10-16).
+  ["hud.react.tabSize.reactShowAutoShotCast"] = {
+    name = "Auto Shot wind-up on cast bar",
+    desc = "The wind-up before each Auto Shot drawn on the cast bar, from the measured wind-up (nothing until it has been measured). Off if you run the inverse auto bar: its second phase is the same window and the two would double up.",
+  },
   ["hud.react.tabSize.reactShowRangeBar"] = {
     name = "Range Finder",
     desc = "The range ladder: every distance bracket from melee to out of range, the target's bracket lit.",
@@ -92,7 +100,7 @@ F.RENAME = {
 
 -- Rows tagged Advanced by the shared rules that are the plain feature switch
 -- on Forever (one HUD, one mark): untagged so Simple mode reaches them.
-F.SIMPLE = { "hud.react.tabBars.showWindupMark" }
+F.SIMPLE = { "hud.react.tabBars.showWindupMark", "hud.react.tabSize.reactShowAutoShotCast" }
 
 -- Table cards keep their line labels in the layout spec (Config/
 -- OptionsLayoutData.lua), not on the option nodes, so RENAME cannot reach
