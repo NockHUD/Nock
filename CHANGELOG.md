@@ -2,6 +2,15 @@
 
 A combat HUD for Hunters on TBC Classic Anniversary realms.
 
+## 2.1.4
+
+### WoW Forever (beta)
+
+- **Auto Shot wind-up mark**: the mark drifted (reported as marks sitting about a third of the way into each half of a converge bar). The band behind it was a running maximum of interrupt reads, and one read taken from a fresh Auto Shot press on a new target set the mark a second and a half early for good. A dummy session settled the model: the wind-up scales with your reload, and the server retries a held shot every half second. Nock now reads the wind-up from your own pulls, as a share of the bar: Auto Shot pressed on an idle bar while standing still, and the time to the first shot. The share is kept per character and per ranged weapon and only moves when your pulls say so, so a new weapon steps it once and nothing creeps. The mark, the inverse auto bar's second phase and the cast-bar wind-up are there from the first frame, with a stand-in until your first pull. Reads saved by 2.1.3 are dropped at login. /nock probe windup script walks a five-leg dummy run for bug reports, and /nock probe windup now reads it back with a haste verdict.
+- **Sting tiles: grey until applied**: a new Grid option (off by default). Your sting's tile is greyed out while the sting is not on the target and lights in full colour the moment it lands, so the grid tells you what is missing rather than what you have. Its swipe then drains as the sting runs out instead of filling like a cooldown. The timer stays the client's own. By request.
+- **Range colours**: a new option under Range text on the strip (off by default): Text colours the bracket on the weave strip the way the Range Finder colours its segments (8-20 teal, 20-30 blue, 30-35 indigo, 35-40 purple, out of range red); Bar background puts that colour behind the whole bar instead. The weave words and the sweet spot's green keep their own look. The five colours are pickers under Skin → Range colours (Advanced), and the Range Finder reads the same ones. By request.
+- **Melee bar with the weave cue off**: with Weave cue takes over the melee bar off, the melee bar no longer shows the stage words in small text; the weave strip is the cue, and the Weave helper switch owns the strip and the leg learning only. The weaving quickstart says NO CUE when both the melee-bar cue and the strip are off.
+
 ## 2.1.3
 
 ### Both clients
