@@ -104,11 +104,16 @@ function Q.WeaveStatus(p, env)
     if p.reactShowMeleeBar == false then pr[#pr + 1] = { "MELEE BAR OFF", "The melee swing bar is off: the weave words ride on it." } end
     if #pr > 0 then out.hud = attention(pr)
     else
-      local parts = { p.reactMeleeStageCue == true and "Words on the melee bar" or "Small words on the melee bar" }
+      local parts = {}
+      if p.reactMeleeStageCue == true then parts[#parts + 1] = "Words on the melee bar" end
       if p.reactShowWeaveStrip ~= false then
         parts[#parts + 1] = p.weaveStripRangeText == true and "weave strip with the range text" or "weave strip"
       end
-      out.hud = card("ready", "READY", table.concat(parts, ", "))
+      if #parts == 0 then
+        out.hud = attention({ { "NO CUE", "The melee-bar cue and the weave strip are both off, so nothing shows the stages." } })
+      else
+        out.hud = card("ready", "READY", table.concat(parts, ", "))
+      end
     end
   end
 

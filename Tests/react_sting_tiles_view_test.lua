@@ -30,7 +30,7 @@ Nock.ForeverStingTiles = {
     return out
   end,
   Sync = function(tiles, slots, parent, env)
-    syncs[#syncs + 1] = { tiles = tiles, slots = slots, parent = parent, inCombat = env.inCombat, zoom = env.zoom, idsFor = env.idsFor }
+    syncs[#syncs + 1] = { tiles = tiles, slots = slots, parent = parent, inCombat = env.inCombat, zoom = env.zoom, idsFor = env.idsFor, reverse = env.reverse }
     return pendingNext
   end,
   RereadAll = function() rereads = rereads + 1 end,
@@ -54,6 +54,17 @@ view:Refresh(state)
 ok(#syncs == 1 and syncs[1].tiles == view._stingTiles and syncs[1].slots == view._pool and syncs[1].parent == view.frame,
    "the tick syncs the tiles against the grid's slots")
 ok(syncs[1].inCombat == false and syncs[1].zoom == 5, "out of combat, at the grid's icon zoom")
+-- The slot under a live container is greyed only while the toggle is on, the
+-- entry is a sting and the client built its container (a refused one, false,
+-- would leave a tile grey for good).
+local SG = view.StingGrey
+ok(SG({ gridStingGrey = true }, { key = "Serpent", debuff = true }, { Serpent = { c = {} } }) == true, "greyed: toggle on, a sting with a live container")
+ok(SG({ gridStingGrey = true }, { key = "Serpent", debuff = true }, { Serpent = false }) == false, "not greyed: the client refused the container")
+ok(SG({ gridStingGrey = true }, { key = "Serpent", debuff = true }, {}) == false, "not greyed: no container yet")
+ok(SG({ gridStingGrey = true }, { key = "KC" }, { KC = { c = {} } }) == false, "not greyed: not a sting")
+ok(SG({}, { key = "Serpent", debuff = true }, { Serpent = { c = {} } }) == false, "not greyed: toggle off")
+ok(SG({ gridStingGrey = true }, { key = "Serpent", debuff = true }, nil) == false, "not greyed: TBC, no tile set")
+
 view:Refresh(state)
 ok(#syncs == 1, "a clean tile set is not synced again")
 
@@ -89,6 +100,14 @@ view:Refresh(state)
 ok(#syncs == 3, "a hidden grid is not synced")
 shown = true
 
+-- Sting tiles grey (gridStingGrey, 2026-10-18): the containers' swipes drain.
+ok(syncs[3].reverse == false, "the drain is off by default")
+Nock.db.profile.gridStingGrey = true
+view._stingDirty = true
+view:Refresh(state)
+ok(#syncs == 4 and syncs[4].reverse == true, "toggle on: the containers' swipes drain")
+Nock.db.profile.gridStingGrey = nil
+
 -- Events.
 view:OnStingTarget()
 ok(rereads == 1, "a target change re-reads the tiles")
@@ -102,7 +121,7 @@ ok(stale == 1 and view._stingDirty == true, "a spellbook change re-checks the id
 -- TBC (no tile set): the tick never touches the sting code.
 view._stingTiles, view._stingDirty, view._stingAfterCombat = nil, nil, nil
 view:Refresh(state)
-ok(#syncs == 3, "no tile set: no sync")
+ok(#syncs == 4, "no tile set: no sync")
 
 print(("react_sting_tiles_view: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

@@ -104,7 +104,7 @@ end
 -- own tile while the sting is on the target. Rebuild only marks them dirty;
 -- the tick syncs them, and again after combat for whatever had to wait
 -- (building, resizing and re-filtering a container are out-of-combat work).
-local STING_ENV = { inCombat = false, zoom = nil, idsFor = nil }
+local STING_ENV = { inCombat = false, zoom = nil, idsFor = nil, reverse = false }
 local stingBook   -- the spellbook's name -> id map, read once per sync
 
 local function stingName(id)
@@ -139,8 +139,18 @@ function ReactCooldownsView:SyncStingTiles()
   local ST = Nock.ForeverStingTiles
   STING_ENV.inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
   STING_ENV.zoom = profile().gridIconZoom
+  STING_ENV.reverse = profile().gridStingGrey == true
   stingBook = nil
   self._stingAfterCombat = ST.Sync(self._stingTiles, self._pool, self.frame, STING_ENV)
+end
+
+-- Sting tiles grey (Grid toggle, 2026-10-18): the slot under a sting's
+-- container is greyed only while the client built that container (`tiles`
+-- holds false for a refused one, which would otherwise stay grey for good).
+-- Pure; nil tiles = TBC.
+function ReactCooldownsView.StingGrey(p, entry, tiles)
+  if p.gridStingGrey ~= true or entry.debuff ~= true or tiles == nil then return false end
+  return tiles[entry.key] and true or false
 end
 
 function ReactCooldownsView:OnStingTarget()
@@ -380,7 +390,7 @@ end
 -- off / red / grey) off state.target.spellOut. No next-action glow in the
 -- React skin — the reference grid is pure cooldown state. One scratch table
 -- for the options: nothing is allocated on the tick.
-local LOOK = { procGlow = false, tint = "off", whenActive = false, dim = false, manaTint = false }
+local LOOK = { procGlow = false, tint = "off", whenActive = false, dim = false, manaTint = false, stingGrey = false }
 local RES  = {}
 -- The reference WA's colours: out-of-range red (its 0.77/0.12/0.23), no-mana
 -- blue (0.33/0.54/1.0).
@@ -466,6 +476,7 @@ function ReactCooldownsView:Refresh(state)
         LOOK.whenActive  = slot._whenActive
         local mod = self._cdmod
         LOOK.unlearned   = (mod and mod.IsEntryKnown and mod:IsEntryKnown(entry.key) == false) or false
+        LOOK.stingGrey   = ReactCooldownsView.StingGrey(p, entry, self._stingTiles)
         local so = state.target.spellOut
         local r  = Nock.UI.ReactSlotLook(cd, so and so[entry.key], LOOK, RES)
         local lk = Nock.UI.ReactLookKey(r)

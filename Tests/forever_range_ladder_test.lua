@@ -142,6 +142,24 @@ ok(L.Zone(nil, false) == nil and select(2, L.Zone(nil, false)) == -1, "no segmen
 ok(L.SegColor(base[8], true) == L.COLORS.purple and L.SegColor(base[8], false) == L.COLORS.red, "35-40 purple / red")
 ok(L.SegColor(base[4], false) == L.COLORS.teal, "other segments keep their colour")
 
+-- Picker colours (2026-10-18): every segment names its palette entry and the
+-- Range colours card may override it; melee and dead zone keep their fixed reds.
+ok(base[3].colorKey == "teal" and base[5].colorKey == "blue" and base[7].colorKey == "indigo" and base[8].colorKey == "purple" and base[9].colorKey == "red",
+   "segments name their palette colour")
+local allMatch = true
+for i = 1, #base do if base[i].color ~= L.COLORS[base[i].colorKey] then allMatch = false end end
+ok(allMatch and cmp.fine["25_28"].colorKey == "blue" and cmp[4].colorKey == "teal", "every segment's default colour is its palette entry (compact too)")
+ok(L.PROFILE_KEY.teal == "reactColorLadderNear" and L.PROFILE_KEY.blue == "reactColorLadderMid" and L.PROFILE_KEY.indigo == "reactColorLadderFar"
+   and L.PROFILE_KEY.purple == "reactColorLadderMax" and L.PROFILE_KEY.red == "reactColorLadderOut" and L.PROFILE_KEY.melee == nil,
+   "five pickers: near, mid, far, max, out")
+local prof = { reactColorLadderMid = { 1, 0, 0, 1 }, reactColorLadderOut = { 0, 1, 0, 1 } }
+ok(L.Color("blue", prof) == prof.reactColorLadderMid and L.Color("teal", prof) == L.COLORS.teal and L.Color("blue") == L.COLORS.blue,
+   "Color: the profile's picker wins, else the default")
+ok(L.Color("blue", { reactColorLadderMid = "bad" }) == L.COLORS.blue and L.Color("nope", prof) == nil, "a non-table picker is ignored; an unknown key is nil")
+ok(L.SegColor(base[5], true, prof) == prof.reactColorLadderMid and L.SegColor(base[8], false, prof) == prof.reactColorLadderOut
+   and L.SegColor(base[9], false, prof) == prof.reactColorLadderOut and L.SegColor(base[1], false, prof) == L.COLORS.melee,
+   "SegColor routes through the pickers")
+
 -- The weave rest band (2026-09-29 probe: item 9606 flips ~10 yd, 2.3 yd past
 -- the shoot edge): inside it and able to shoot; nil while 9606 has not answered.
 ok(L.Rest(true, true) == true and L.Rest(true, false) == false and L.Rest(false, true) == false, "Rest: shoot and 9606 in range")

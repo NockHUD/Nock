@@ -2296,6 +2296,7 @@ end
 --         dim        reactTileDim: unavailable -> grey at 0.6     (WA cond. 1)
 --         manaTint   reactManaTint: no mana -> blue + grey        (WA cond. 4)
 --         whenActive a consumable row (grey while recharging)
+--         stingGrey  a sting slot under its live aura container (grey)
 --         preview    force the active look (the settings' preview toggle)
 -- res.vis "proc"|"ready"|"cd"; glow "overlay"|"border"|nil; desat; tint
 -- "red"|"blue"|nil; alpha 1|0.6. (The WA's under-3-s cue was built and
@@ -2345,6 +2346,10 @@ function Nock.UI.ReactSlotLook(cd, out, opts, res)
     if opts.tint == "red" then tint = "red"
     elseif opts.tint == "grey" then desat = true end
   end
+  -- Sting tiles grey (Forever): the slot under a sting's aura container is
+  -- greyed, so the client's full-colour button covering it reads as the
+  -- sting landing (UI/Frame_ReactCooldowns.lua StingGrey).
+  if opts.stingGrey then desat = true end
   -- A class or talent spell the character does not know yet keeps its place,
   -- greyed, and never glows (cooldown grid picker, 2026-09-27).
   if opts.unlearned then

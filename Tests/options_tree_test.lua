@@ -654,7 +654,7 @@ onlyKeys(ra, { "intro", "hudMode", "useLook", "tabSize", "tabBars", "tabRange", 
   "react root")
 onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "elementsNote",
   "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview",
-  "weaveHelperEnabled", "reactShowWeaveStrip", "weaveStripRangeText", "weaveLegSeed", "weaveStartWindow", "reactWeaveH", "weaveLegsReset",
+  "weaveHelperEnabled", "reactShowWeaveStrip", "weaveStripRangeText", "weaveStripRangeTint", "weaveLegSeed", "weaveStartWindow", "reactWeaveH", "weaveLegsReset",
   "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
   "reactShowCastBar", "reactShowAutoShotCast", "reactCastLatency", "hideBlizzardCastBar", "reactShowGrid", "reactShowPetRow", "reactPetRowW", "reactShowAspectIcon", "reactShowMarkIcon",
   "reactCornerStyle", "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY",
@@ -696,7 +696,7 @@ ok(raBars.delayHeader and raBars.delayHeader.hidden and raBars.delayHeader.hidde
    and raBars.reactDelayAnchor.hidden() == true and raBars.reactColorDelayHigh.hidden() == true, "react tabBars: delay look rows hidden on TBC")
 onlyKeys(raRange, { "rangeHeader", "rangeFinderFindingStyle" }, "react tabRange")
 onlyKeys(raGrid, { "gridHeader", "cdBoardReset", "gridNote", "reactConsumablesAlways", "rcustHeader",
-  "kcHeader", "reactKcProcGlow", "reactRaptorGoGlow", "kcActionBarGlow", "reactRangeTint", "reactTileDim", "reactManaTint", "gridIconZoom", "gridRow1Height", "gridRow1Fill", "gridRow1Width", "gridRow2Height", "gridRow2Width", "gridGcdSwipe", "reactHideUnlearned",
+  "kcHeader", "reactKcProcGlow", "reactRaptorGoGlow", "kcActionBarGlow", "reactRangeTint", "reactTileDim", "reactManaTint", "gridIconZoom", "gridRow1Height", "gridRow1Fill", "gridRow1Width", "gridRow2Height", "gridRow2Width", "gridGcdSwipe", "reactHideUnlearned", "gridStingGrey",
   "activeHeader", "reactActiveStyle", "reactActiveColor", "reactActiveSize", "reactActiveFit", "activePreview",
   "addHeader", "addType", "addId", "addProc", "addLabel", "addBtn" },
   "react tabGrid", { "rcd_", "rcust_" })
@@ -753,6 +753,7 @@ onlyKeys(raSkin, { "skinHeader", "skinNote", "reactBarTexture", "reactFont", "re
   "reactColorCastFill", "reactColorCastLatency", "reactColorAutoShotFill",
   "reactColorRangeDeadzone", "reactColorRangeSweet", "reactColorRangePerfect",
   "reactColorRangeClose", "reactColorRangeResync", "reactRangeDividerWidth", "reactColorRangeDivider",
+  "reactColorLadderNear", "reactColorLadderMid", "reactColorLadderFar", "reactColorLadderMax", "reactColorLadderOut",
   "reactGcdDividerWidth", "reactColorGcdDivider",
   "autoMarksHeader", "reactTickSteadyWidth", "reactColorTickSteady",
   "reactTickMultiWidth", "reactColorTickMulti", "reactTickWindupWidth",
@@ -806,7 +807,7 @@ if fEng then pcall(fEng.args.rotRaptorWeaveHeadroom.set, nil, 1.35) end
 ok(r.grpEngine.args.rotRaptorWeaveHeadroom.get() == 1.35,
    "weave engine set through Fluffy reads back through Classic")
 onlyKeys(faGrid, { "gridHeader", "gridNote", "fluffyShowGrid",
-  "lookHeader", "lookNote", "reactKcProcGlow", "reactRaptorGoGlow", "reactRangeTint", "reactTileDim", "reactManaTint", "gridIconZoom", "fluffyGridHeight", "gridGcdSwipe", "reactHideUnlearned",
+  "lookHeader", "lookNote", "reactKcProcGlow", "reactRaptorGoGlow", "reactRangeTint", "reactTileDim", "reactManaTint", "gridIconZoom", "fluffyGridHeight", "gridGcdSwipe", "reactHideUnlearned", "gridStingGrey",
   "activeHeader", "fluffyActiveStyle", "fluffyActiveColor", "fluffyActiveSize", "fluffyActiveFit", "activePreview",
   "fcustHeader", "addHeader", "addType", "addId", "addProc", "addLabel", "addBtn" },
   "fluffy tabGrid", { "fcd_", "fcust_" })

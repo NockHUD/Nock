@@ -96,6 +96,11 @@ function ST.Style(b, tile)
   if cd.SetHideCountdownNumbers then cd:SetHideCountdownNumbers(true) end
   if cd.SetDrawEdge then cd:SetDrawEdge(false) end
   if cd.SetSwipeColor then cd:SetSwipeColor(0, 0, 0, 0.75) end
+  -- Sting tiles grey (gridStingGrey): the wedge grows as the sting runs out
+  -- instead of shrinking like a cooldown. Nock's own Cooldown frame, so it
+  -- may be turned round at any time (setReverse).
+  if cd.SetReverse then cd:SetReverse(tile.reverse == true) end
+  b._nockCd = cd
   b:SetDurationCooldown(cd)
 
   -- The countdown fills the tile and centres inside it: the client sets its
@@ -118,11 +123,12 @@ end
 
 -- Build one sting's container on `parent` (the grid). nil on a client
 -- without the template or one that refuses the configuration: the sting then
--- keeps its plain tile. Out of combat only (the caller's rule).
-function ST.Create(parent, key, w, h, ids, zoom)
+-- keeps its plain tile. Out of combat only (the caller's rule). `reverse`:
+-- the swipe drains (gridStingGrey).
+function ST.Create(parent, key, w, h, ids, zoom, reverse)
   local okc, c = pcall(CreateFrame, "AuraContainer", "NockStingTile" .. key, parent, "CustomAuraContainerTemplate")
   if not okc or not c then return nil end
-  local tile = { c = c, key = key, w = w, h = h, zoom = zoom, buttons = {}, sig = ST.Signature(ids) }
+  local tile = { c = c, key = key, w = w, h = h, zoom = zoom, buttons = {}, sig = ST.Signature(ids), reverse = reverse == true }
   local AU = _G.AnchorUtil or {}
   local axis, dir = AU.FlowLayoutAxis or {}, AU.FlowDirection or {}
   local sort, sdir = _G.AuraContainerSortMethod or {}, _G.AuraContainerSortDirection or {}
@@ -187,6 +193,16 @@ local function resize(tile, w, h, zoom)
   for i = 1, #tile.buttons do pcall(fitButton, tile.buttons[i], w, h, zoom) end
 end
 
+-- The drain on or off, on every button the client has asked for so far (the
+-- ones it asks for later read tile.reverse in Style). Allowed in combat.
+local function setReverse(tile, on)
+  tile.reverse = on
+  for i = 1, #tile.buttons do
+    local cd = tile.buttons[i]._nockCd
+    if cd and cd.SetReverse then pcall(cd.SetReverse, cd, on) end
+  end
+end
+
 -- New filters reach only auras that change afterwards, so the container is
 -- told to re-read what is up now (Forever/AuraRow.lua ApplyFilters).
 local function refilter(tile, ids, sig)
@@ -198,9 +214,10 @@ end
 -- Bring the view's tiles (`tiles`: entry key -> tile, or false for one the
 -- client refused) in line with the grid's slots: every shown slot holding a
 -- `debuff` entry gets its container over it, the rest are parked.
--- `env.idsFor(entry)` names the sting's ids. Building, resizing and
--- re-filtering wait for the end of combat: returns true while something
--- waits, so the caller syncs again then.
+-- `env.idsFor(entry)` names the sting's ids; `env.reverse` drains the swipes
+-- (gridStingGrey), applied at once. Building, resizing and re-filtering wait
+-- for the end of combat: returns true while something waits, so the caller
+-- syncs again then.
 local live = {}
 function ST.Sync(tiles, slots, parent, env)
   local pending = false
@@ -214,13 +231,14 @@ function ST.Sync(tiles, slots, parent, env)
         if env.inCombat then
           pending = true
         else
-          tile = ST.Create(parent, e.key, w, h, env.idsFor(e) or {}, env.zoom) or false
+          tile = ST.Create(parent, e.key, w, h, env.idsFor(e) or {}, env.zoom, env.reverse == true) or false
           tiles[e.key] = tile
         end
       end
       if tile then
         live[e.key] = true
         if not place(tile, slot) then pending = pending or env.inCombat end
+        if (env.reverse == true) ~= (tile.reverse == true) then setReverse(tile, env.reverse == true) end
         if env.inCombat then
           if tile.w ~= w or tile.h ~= h or tile.zoom ~= env.zoom then pending = true end
           -- the ids may have moved too: looked at again after combat

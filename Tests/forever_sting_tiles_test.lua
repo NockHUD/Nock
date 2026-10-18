@@ -52,6 +52,7 @@ function Frame:EnableMouse(on) self.mouse = on end
 -- an aura button
 function Frame:SetIcon(t) self.iconSet = t end
 function Frame:SetDurationCooldown(c) self.swipe = c end
+function Frame:SetReverse(on) self.reverse = on end
 function Frame:SetDurationText(fs, o) self.durationText, self.durationOptions = fs, o end
 function Frame:IsShown() error("secret boolean") end
 -- an aura container
@@ -112,6 +113,7 @@ ok(b.durationOptions and b.durationOptions.textFormat == "bare", "the countdown 
 ok(b.durationText.jh == "CENTER" and b.durationText.jv == "MIDDLE", "the countdown is centred in the tile")
 ok(looked[1] == b.durationText and registered[1][1] == b.durationText and registered[1][2] == true and registered[1][3] == "client", "the countdown takes the grid's text look, now and (as a client-owned string) on a media change")
 ok(b.mouse == false, "the button takes no mouse (no tooltip over the HUD)")
+ok(b.swipe.reverse == false, "the swipe runs like a cooldown unless the tile asks for the drain")
 ok(#tile.buttons == 1, "the tile remembers its buttons")
 local icon = b.iconSet
 c.group.opts.initializeFrame(b)
@@ -139,6 +141,21 @@ local sc = tiles.Serpent.c
 ok(sc.points[1][1] == "TOPLEFT" and sc.points[1][2] == s2 and sc.points[1][3] == "TOPLEFT", "anchored over its slot")
 ok(sc.level == 3 + ST.LEVEL_ABOVE, "above the slot's own swipe and text")
 ok(sc.group.opts.layout.elementWidth == 40, "built at the slot's size")
+-- The sting toggle's drain (2026-10-18): `env.reverse` turns every tile's
+-- swipe round so the wedge grows as the debuff runs out. Nock's own Cooldown
+-- frames: allowed in combat, applied to the buttons the client already asked
+-- for and to the ones it asks for later.
+local b1 = setmetatable({}, Frame)
+sc.group.opts.initializeFrame(b1)
+ok(b1.swipe.reverse == false, "built without the drain: a cooldown swipe")
+env.reverse, env.inCombat = true, true
+ok(ST.Sync(tiles, pool, grid, env) == false and b1.swipe.reverse == true and tiles.Serpent.reverse == true, "the drain turns an existing button's swipe round, in combat")
+local b2 = setmetatable({}, Frame)
+sc.group.opts.initializeFrame(b2)
+ok(b2.swipe.reverse == true, "a button styled later is turned round too")
+env.reverse, env.inCombat = false, false
+ST.Sync(tiles, pool, grid, env)
+ok(b1.swipe.reverse == false and b2.swipe.reverse == false, "toggle off: both swipes run like a cooldown again")
 local anchors = #sc.points
 ST.Sync(tiles, pool, grid, env)
 ok(containers() == 1 and #sc.points == anchors and sc.relaid == nil and sc.refiltered == nil, "a second sync changes nothing")

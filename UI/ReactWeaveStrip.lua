@@ -8,6 +8,7 @@ Nock.UI.WeaveStrip = WS
 
 local WHITE8X8 = "Interface\\Buttons\\WHITE8X8"
 WS.COLORS = {
+  text      = { 1, 1, 1, 1 },             -- the bar's plain label (REACT.TEXT)
   dead    = { 0.48, 0.13, 0.15, 1 },   -- the fill while a leg crosses the dead zone
   melee   = { 0.68, 0.18, 0.20, 1 },   -- in melee (the ladder's melee red)
   ranged  = { 0.11, 0.70, 0.67, 1 },   -- in range (the ladder's teal)
@@ -25,6 +26,10 @@ WS.COLORS = {
 }
 WS.LABELS = { MELEE = "MELEE", CLOSE = "DEAD ZONE", SWEET = "RANGED", LONG = "", REST = "SWEET SPOT", OUT = "OUT OF RANGE" }
 WS.FLASH_SEC = 0.4
+-- Range colours on the bar's background (weaveStripRangeTint = "bg"): the
+-- bracket's colour at the bar's own opacity (REACT.BAR_BG is 0.90).
+WS.BG_TINT_ALPHA = 0.90
+local BG_SCRATCH = { 0, 0, 0, 1 }
 local STAGE_BORDER = { GO = "go", IN = "go", WAIT = "wait", STRIKE = "strike", OUT = "out", RELEASE = "release" }
 
 -- Pure: what the strip draws for this state. `out` is reused.
@@ -39,9 +44,14 @@ local STAGE_BORDER = { GO = "go", IN = "go", WAIT = "wait", STRIKE = "strike", O
 -- stands in for the hidden Range Finder until a weave takes over -- OUT OF
 -- RANGE where Auto Shot cannot reach, the bracket while shooting with no
 -- stage, the weave words from the first stage, the rest band or the dead
--- zone in.
-function WS.Look(state, now, out, fine)
+-- zone in. `tint` (weaveStripRangeTint) adds the bracket's palette key
+-- (Forever/RangeLadder.lua colorKey): "text" (or true) as `labelColorKey`,
+-- "bg" as `bgColorKey`; nil = the plain text / the bar's own backdrop. The
+-- weave words stay plain either way.
+function WS.Look(state, now, out, fine, tint)
   out = out or {}
+  out.labelColorKey, out.bgColorKey = nil, nil
+  local mode = (tint == true and "text") or tint
   local t, w = state and state.target, state and state.weave
   local live = t and t.exists == true and t.alive == true and t.friendly ~= true and t.rangeState ~= nil
   if not live then
@@ -65,11 +75,19 @@ function WS.Look(state, now, out, fine)
   else out.fillKey = "dead" end
   out.label = rest and WS.LABELS.REST or (WS.LABELS[zone] or "")
   if fine and not rest then
-    if zone == "LONG" then out.label = WS.LABELS.OUT
+    local ck
+    if zone == "LONG" then
+      out.label = WS.LABELS.OUT
+      ck = (fine.OOR and fine.OOR.colorKey) or "red"
     elseif zone == "SWEET" and not (w and w.stage) then
       local seg = t.ladderKey and fine[t.ladderKey]
-      if seg and seg.label then out.label = seg.label end
+      if seg and seg.label then
+        out.label = seg.label
+        ck = seg.colorKey
+      end
     end
+    if mode == "text" then out.labelColorKey = ck
+    elseif mode == "bg" then out.bgColorKey = ck end
   end
   if w and w.legStale then out.borderKey = "stale"
   elseif w and w.overshot then out.borderKey = "overshot"
@@ -142,6 +160,8 @@ function WS.Layout(f, w, h, dev, e)
   bar.fill:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", e, e)
   f._look.fill = -1
   f._look.fillKey, f._look.borderKey, f._look.label, f._look.asGlow, f._look.rsGlow = nil, nil, nil, nil, nil
+  f._look.labelColorKey = false   -- not nil: the next Paint re-applies the text colour (a picker may have changed)
+  f._look.bgKey = false           -- same for the backdrop
   f._asStart, f._rsStart = nil, nil
 end
 
@@ -153,14 +173,26 @@ local function paintGlow(slot, on, last)
   if slot.SetBackdropBorderColor then slot:SetBackdropBorderColor(c[1], c[2], c[3], c[4]) end
 end
 
--- Every tick, diffed on the look; the swipes on their start edges.
-function WS.Paint(f, look, state)
+-- Every tick, diffed on the look; the swipes on their start edges. `colorOf`
+-- resolves a look's labelColorKey to a colour (the cluster hands in the
+-- ladder's palette with the profile's pickers); absent, the text stays plain.
+function WS.Paint(f, look, state, colorOf)
   local L, bar = f._look, f.bar
-  local isSweetSpot = look.fillKey == "sweetSpot"
-  if isSweetSpot ~= L.sweetSpot then
-    local bg = isSweetSpot and WS.COLORS.sweetSpot or bar.normalBg
+  -- The backdrop: the rest band's green first, then a bracket's colour
+  -- (bg mode), else the bar's own.
+  local bgKey = (look.fillKey == "sweetSpot" and "sweetSpot") or look.bgColorKey or nil
+  if bgKey ~= L.bgKey then
+    local bg = bar.normalBg
+    if bgKey == "sweetSpot" then bg = WS.COLORS.sweetSpot
+    elseif bgKey then
+      local c = colorOf and colorOf(bgKey)
+      if c then
+        BG_SCRATCH[1], BG_SCRATCH[2], BG_SCRATCH[3], BG_SCRATCH[4] = c[1], c[2], c[3], WS.BG_TINT_ALPHA
+        bg = BG_SCRATCH
+      end
+    end
     if bg and bar.SetBackdropColor then bar:SetBackdropColor(bg[1], bg[2], bg[3], bg[4]) end
-    L.sweetSpot = isSweetSpot
+    L.bgKey = bgKey
   end
   if look.fillKey ~= L.fillKey or look.flash > 0 or L.flashing then
     local c = color(look.fillKey)
@@ -180,6 +212,11 @@ function WS.Paint(f, look, state)
   if look.label ~= L.label then
     bar.label:SetText(look.label)
     L.label = look.label
+  end
+  if look.labelColorKey ~= L.labelColorKey then
+    local c = (look.labelColorKey and colorOf and colorOf(look.labelColorKey)) or WS.COLORS.text
+    bar.label:SetTextColor(c[1], c[2], c[3], c[4] or 1)
+    L.labelColorKey = look.labelColorKey
   end
   paintGlow(f.as, look.asGlow, L.asGlow); L.asGlow = look.asGlow
   paintGlow(f.rs, look.rsGlow, L.rsGlow); L.rsGlow = look.rsGlow

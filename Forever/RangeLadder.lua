@@ -42,7 +42,7 @@ function Ladder.Layout(minRange, maxRange, compact)
   local C2 = {
     L[1], L[2], L[3],
     { key = "FAR", label = "20-" .. (L.has4041 and L.hi or 40), short = "20-" .. (L.has4041 and L.hi or 40),
-      weight = 1, color = C.teal, members = {} },
+      weight = 1, color = C.teal, colorKey = "teal", members = {} },
     L[#L],
   }
   for i = 4, #L - 1 do C2[4].members[L[i].key] = true end
@@ -67,19 +67,19 @@ function Ladder.Detailed(minRange, maxRange)
   local hi = (type(maxRange) == "number" and maxRange > 0) and math.floor(maxRange + 0.5) or 35
   local far = (hi > 35 and hi < 40) and ("35-" .. hi) or "35-40"
   local L = {
-    { key = "MELEE", label = "MELEE",     short = "M", wide = "MELEE", weight = 1, color = C.melee },
-    { key = "DEAD",  label = "DEAD ZONE", short = "D", wide = "DEAD",  weight = 1, color = C.dead },
-    { key = "8_20",  label = lo .. "-20", short = lo .. "-20", weight = 1, color = C.teal },
-    { key = "20_25", label = "20-25",     short = "20-25",   weight = 1, color = C.teal },
-    { key = "25_28", label = "25-28",     short = "25-28",   weight = 1, color = C.blue },
-    { key = "28_30", label = "28-30",     short = "28-30",   weight = 1, color = C.blue },
-    { key = "30_35", label = "30-35",     short = "30-35",   weight = 1, color = C.indigo },
-    { key = "35_40", label = far,         short = far,       weight = 1, color = C.purple },
+    { key = "MELEE", label = "MELEE",     short = "M", wide = "MELEE", weight = 1, color = C.melee,  colorKey = "melee" },
+    { key = "DEAD",  label = "DEAD ZONE", short = "D", wide = "DEAD",  weight = 1, color = C.dead,   colorKey = "dead" },
+    { key = "8_20",  label = lo .. "-20", short = lo .. "-20", weight = 1, color = C.teal,   colorKey = "teal" },
+    { key = "20_25", label = "20-25",     short = "20-25",   weight = 1, color = C.teal,   colorKey = "teal" },
+    { key = "25_28", label = "25-28",     short = "25-28",   weight = 1, color = C.blue,   colorKey = "blue" },
+    { key = "28_30", label = "28-30",     short = "28-30",   weight = 1, color = C.blue,   colorKey = "blue" },
+    { key = "30_35", label = "30-35",     short = "30-35",   weight = 1, color = C.indigo, colorKey = "indigo" },
+    { key = "35_40", label = far,         short = far,       weight = 1, color = C.purple, colorKey = "purple" },
   }
   if hi >= 41 then
-    L[#L + 1] = { key = "40_41", label = "40-" .. hi, short = "40-" .. hi, weight = 1, color = C.purple }
+    L[#L + 1] = { key = "40_41", label = "40-" .. hi, short = "40-" .. hi, weight = 1, color = C.purple, colorKey = "purple" }
   end
-  L[#L + 1] = { key = "OOR", label = "OUT OF RANGE", short = "OUT", weight = 1, color = C.red }
+  L[#L + 1] = { key = "OOR", label = "OUT OF RANGE", short = "OUT", weight = 1, color = C.red, colorKey = "red" }
   L.id = lo .. "-" .. hi
   L.has4041 = hi >= 41
   L.hi = hi
@@ -160,11 +160,30 @@ function Ladder.Zone(key, shoot)
   return "LONG", -1
 end
 
+-- The pickers (Skin -> Range colours, 2026-10-18): a palette entry's profile
+-- key. Melee and the dead zone have none (fixed reds).
+Ladder.PROFILE_KEY = {
+  teal = "reactColorLadderNear", blue = "reactColorLadderMid", indigo = "reactColorLadderFar",
+  purple = "reactColorLadderMax", red = "reactColorLadderOut",
+}
+
+-- A palette entry's colour: the profile's picker when it holds one, else the
+-- default. Shared by the ladder and the weave strip's range text, so the two
+-- never drift. nil for an unknown key.
+function Ladder.Color(key, prof)
+  local pk = key and Ladder.PROFILE_KEY[key]
+  if pk and prof then
+    local c = prof[pk]
+    if type(c) == "table" and c[1] then return c end
+  end
+  return C[key]
+end
+
 -- A lit segment's colour: the far segment turns red once Auto Shot no
 -- longer reaches (Hawk Eye rank 1/2 past 37/39 yd, no talent past 35).
-function Ladder.SegColor(seg, shoot)
-  if seg.key == "35_40" and not shoot then return C.red end
-  return seg.color
+function Ladder.SegColor(seg, shoot, prof)
+  if seg.key == "35_40" and not shoot then return Ladder.Color("red", prof) end
+  return Ladder.Color(seg.colorKey, prof) or seg.color
 end
 
 -- The weave rest band: able to shoot and inside item 9606 (~10 yd, 2.3 yd

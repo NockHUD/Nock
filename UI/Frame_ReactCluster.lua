@@ -84,8 +84,11 @@ local MAX_BRACKETS = 12  -- 6 eWS bounds x 2 mirrored sides
 -- there /stopattack-cancels the swing and the Raptor silently. RELEASE (or
 -- the struck sound) is the safe let-go. With reactMeleeStageCue (opt-in)
 -- the stage TAKES OVER the bar: full fill in the stage colour, triangles
--- marching in the direction to move, the word over them. Off, it is the
--- small centred text in the stage colour, as before 1.1.8.
+-- marching in the direction to move, the word over them. Off, on TBC it is
+-- the small centred text in the stage colour, as before 1.1.8; on Forever
+-- the melee bar shows no stage at all -- the weave strip is the cue there,
+-- and the weave helper's switch is the strip, not the melee-bar cue (user
+-- 2026-10-18).
 local FLASH_SEC = 0.4   -- RELEASE: fill lerped from white back to green over this
 
 local function profile()
@@ -1245,15 +1248,17 @@ function ReactCluster:RefreshMelee(state)
     end
   end
 
-  -- Takeover off: the stage outranks READY as the small text, in the stage
-  -- colour (a txt diff is also a colour diff — one cache covers both).
-  -- Forever: no weaving yet (the dead zone is too wide to weave through, and
-  -- no paper exists), so READY says nothing useful; the bar alone stays.
-  local readyWord = (Nock.Flavor and Nock.Flavor.forever) and "" or "READY"
-  local txt = look and look.text or (ready and readyWord or "")
+  -- Takeover off. TBC: the stage outranks READY as the small text, in the
+  -- stage colour (a txt diff is also a colour diff — one cache covers both).
+  -- Forever: neither -- the weave strip carries the stage and READY says
+  -- nothing useful (no paper), so the bar alone stays.
+  local forever = (Nock.Flavor and Nock.Flavor.forever) and true or false
+  local small = look and not forever
+  local readyWord = forever and "" or "READY"
+  local txt = small and look.text or (ready and readyWord or "")
   if txt ~= self._lastMeleeText then
     melee.text:SetText(txt)
-    if look then
+    if small then
       melee.text:SetTextColor(look.fill[1], look.fill[2], look.fill[3])
     else
       melee.text:SetTextColor(unpack(REACT.TEXT))
@@ -1409,22 +1414,31 @@ function ReactCluster:RefreshLadder(state)
     Nock.UI.RangeLadder.Layout(self.ladder, layout, g.w, g.hBar, g.labels, g.dev, g.e)
     self._ladderRev, self._ladderLayout = rev, layout
   end
-  Nock.UI.RangeLadder.Paint(self.ladder, t.ladderKey, t.ladderShoot)
+  Nock.UI.RangeLadder.Paint(self.ladder, t.ladderKey, t.ladderShoot, profile())
+end
+
+-- The strip's range text colours: the ladder's palette through the
+-- profile's pickers (Skin -> Range colours), one source for both.
+local function ladderColorOf(key)
+  local Ld = Nock.RangeLadder
+  return Ld and Ld.Color and Ld.Color(key, profile()) or nil
 end
 
 -- Forever weave strip: the pure look from state, painted diffed.
 function ReactCluster:RefreshWeave(state)
-  local fine
-  if profile().weaveStripRangeText == true then
+  local p = profile()
+  local fine, tint
+  if p.weaveStripRangeText == true then
     local layout = state.target and state.target.ladderLayout
     if not layout then
       self._ladderDefault = self._ladderDefault or Nock.RangeLadder.Layout()
       layout = self._ladderDefault
     end
     fine = layout.fine
+    tint = p.weaveStripRangeTint   -- "off" | "text" | "bg" (true from an older profile = text)
   end
-  local look = Nock.UI.WeaveStrip.Look(state, GetTime(), self._weaveLook, fine)
-  Nock.UI.WeaveStrip.Paint(self.weave, look, state)
+  local look = Nock.UI.WeaveStrip.Look(state, GetTime(), self._weaveLook, fine, tint)
+  Nock.UI.WeaveStrip.Paint(self.weave, look, state, ladderColorOf)
 end
 
 function ReactCluster:PercentCurve()

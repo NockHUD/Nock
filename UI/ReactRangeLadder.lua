@@ -105,12 +105,16 @@ function RL.Layout(f, layout, w, hBar, showAll, dev, e)
   f._key, f._shoot = false, nil   -- force the next Paint
 end
 
--- Light `key`'s segment (nil = none). Diffed: repaints only on a change.
-function RL.Paint(f, key, shoot)
+-- Light `key`'s segment (nil = none). Diffed: repaints only on a change of
+-- segment, reach or the lit colour (`prof` = the profile; a picker change
+-- replaces the colour table, Config/Options.lua setColor).
+function RL.Paint(f, key, shoot, prof)
   shoot = shoot and true or false
-  if key == f._key and shoot == f._shoot then return end
-  f._key, f._shoot = key, shoot
   local layout = f.layout
+  local lit = key and layout and layout.fine and layout.fine[key] or nil
+  local litColor = lit and Nock.RangeLadder.SegColor(lit, shoot, prof) or nil
+  if key == f._key and shoot == f._shoot and litColor == f._litColor then return end
+  f._key, f._shoot, f._litColor = key, shoot, litColor
   if not layout then return end
   for i = 1, #layout do
     local seg = layout[i]
@@ -118,7 +122,7 @@ function RL.Paint(f, key, shoot)
     -- as that bracket: its colour, its label
     local on = seg.key == key or (seg.members ~= nil and key ~= nil and seg.members[key] == true)
     local live = (on and seg.members and layout.fine and layout.fine[key]) or seg
-    local c = on and Nock.RangeLadder.SegColor(live, shoot) or RL.OFF
+    local c = on and Nock.RangeLadder.SegColor(live, shoot, prof) or RL.OFF
     f.segs[i]:SetVertexColor(c[1], c[2], c[3], c[4] or 1)
     local fs = f.labels[i]
     if seg.members then fs:SetText(live.short) end

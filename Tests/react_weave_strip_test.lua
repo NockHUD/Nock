@@ -112,6 +112,29 @@ L = WS.Look(R("MELEE", "MELEE"), 0, out, fine)
 ok(L.label == "MELEE", "range text: melee is the weave's")
 L = WS.Look(R("SWEET", "unknown"), 0, out, fine)
 ok(L.label == "RANGED", "range text: an unknown bracket falls back to RANGED")
+-- Coloured range text (weaveStripRangeTint, 2026-10-18): a bracket's palette
+-- key rides along with its label; the weave words stay plain.
+local fineC = { ["8_20"] = { label = "8-20", colorKey = "teal" }, ["20_25"] = { label = "20-25", colorKey = "blue" }, OOR = { label = "OUT OF RANGE", colorKey = "red" } }
+L = WS.Look(R("SWEET", "20_25"), 0, out, fineC, true)
+ok(L.label == "20-25" and L.labelColorKey == "blue", "tint: the bracket names its colour")
+L = WS.Look(R("LONG", "35_40"), 0, out, fineC, true)
+ok(L.label == "OUT OF RANGE" and L.labelColorKey == "red", "tint: out of range is red")
+L = WS.Look(R("LONG", "OOR"), 0, out, fineC, true)
+ok(L.labelColorKey == "red", "tint: OOR is red")
+L = WS.Look(R("SWEET", "8_20", "OUT"), 0, out, fineC, true)
+ok(L.label == "RANGED" and L.labelColorKey == nil, "tint: the weave words are plain")
+L = WS.Look(R("SWEET", "8_20", nil, true), 0, out, fineC, true)
+ok(L.labelColorKey == nil, "tint: the rest band is plain")
+L = WS.Look(R("CLOSE", "DEAD"), 0, out, fineC, true)
+ok(L.labelColorKey == nil, "tint: the dead zone is plain")
+L = WS.Look(R("MELEE", "MELEE"), 0, out, fineC, true)
+ok(L.labelColorKey == nil, "tint: melee is plain")
+L = WS.Look(R("SWEET", "unknown"), 0, out, fineC, true)
+ok(L.labelColorKey == nil, "tint: an unknown bracket is plain")
+L = WS.Look(R("SWEET", "20_25"), 0, out, fineC)
+ok(L.label == "20-25" and L.labelColorKey == nil, "tint off: the bracket is plain")
+L = WS.Look({ target = { exists = false }, weave = {} }, 0, out, fineC, true)
+ok(L.labelColorKey == nil, "tint: no target, no colour")
 L = WS.Look(R("SWEET", "20_25"), 0, out)
 ok(L.label == "RANGED", "range text off: unchanged")
 L = WS.Look({ target = { exists = false }, weave = {} }, 0, out)
@@ -163,6 +186,59 @@ ok(#bgs == 2 and near(bgs[2][1], 0) and near(bgs[2][2], 0), "left the rest band:
 local hidden = WS.Look({ target = { exists = false }, weave = {} }, 0, out)
 WS.Paint(f, hidden, { ranged = {}, cooldowns = {} })
 ok(f.bar.label._text == "" and f.bar.fill._w < 0.02, "no target: label cleared, fill collapsed")
+
+-- The label's colour: resolved through `colorOf` on a change only, white
+-- when the look carries no key, and re-applied after a Layout (a picker
+-- change relays out the cluster).
+local painted = {}
+f.bar.label.SetTextColor = function(self, r, g, b, a) painted[#painted + 1] = { r, g, b, a } end
+local PAL = { blue = { 0.07, 0.5, 0.73, 1 }, red = { 0.86, 0.31, 0.26, 1 } }
+local colorOf = function(k) return PAL[k] end
+local tinted = WS.Look(R("SWEET", "20_25"), 0, out, fineC, true)
+WS.Paint(f, tinted, st, colorOf)
+ok(#painted == 1 and painted[1][1] == 0.07 and painted[1][3] == 0.73, "label coloured by its bracket")
+WS.Paint(f, tinted, st, colorOf)
+ok(#painted == 1, "same colour key: not re-coloured")
+WS.Paint(f, WS.Look(R("SWEET", "8_20", "OUT"), 0, out, fineC, true), st, colorOf)
+ok(#painted == 2 and painted[2][1] == 1 and painted[2][2] == 1 and painted[2][3] == 1, "a plain label goes back to white")
+WS.Paint(f, WS.Look(R("SWEET", "8_20", "OUT"), 0, out, fineC, true), st, colorOf)
+ok(#painted == 2, "plain to plain: nothing")
+WS.Paint(f, WS.Look(R("LONG", "OOR"), 0, out, fineC, true), st)
+ok(#painted == 3 and painted[3][1] == 1, "no resolver: white")
+WS.Layout(f, 220, 18, 1, 1)
+WS.Paint(f, WS.Look(R("LONG", "OOR"), 0, out, fineC, true), st, colorOf)
+ok(#painted == 4 and painted[4][1] == 0.86, "after a Layout the colour is applied again")
+
+-- Range colours on the bar's background (weaveStripRangeTint = "bg"): the
+-- bracket's colour fills the backdrop at WS.BG_TINT_ALPHA, the rest band's
+-- green keeps priority, and a plain label restores the bar's own backdrop.
+L = WS.Look(R("SWEET", "20_25"), 0, out, fineC, "bg")
+ok(L.bgColorKey == "blue" and L.labelColorKey == nil, "bg mode: the bracket colours the background, not the text")
+L = WS.Look(R("LONG", "OOR"), 0, out, fineC, "bg")
+ok(L.bgColorKey == "red", "bg mode: out of range is a red background")
+L = WS.Look(R("SWEET", "8_20", "OUT"), 0, out, fineC, "bg")
+ok(L.bgColorKey == nil, "bg mode: the weave words keep the plain background")
+L = WS.Look(R("SWEET", "20_25", nil, true), 0, out, fineC, "bg")
+ok(L.bgColorKey == nil and L.fillKey == "sweetSpot", "bg mode: the rest band carries no bracket")
+L = WS.Look(R("SWEET", "20_25"), 0, out, fineC, "text")
+ok(L.labelColorKey == "blue" and L.bgColorKey == nil, "text mode: the text only")
+L = WS.Look(R("SWEET", "20_25"), 0, out, fineC, "off")
+ok(L.labelColorKey == nil and L.bgColorKey == nil, "off: neither")
+L = WS.Look({ target = { exists = false }, weave = {} }, 0, out, fineC, "bg")
+ok(L.bgColorKey == nil, "bg mode: no target, no colour")
+ok(type(WS.BG_TINT_ALPHA) == "number" and WS.BG_TINT_ALPHA > 0 and WS.BG_TINT_ALPHA <= 1, "the background tint has an alpha")
+local nBg = #bgs
+local bgLook = WS.Look(R("SWEET", "20_25"), 0, out, fineC, "bg")
+WS.Paint(f, bgLook, st, colorOf)
+ok(#bgs == nBg + 1 and near(bgs[#bgs][1], 0.07) and near(bgs[#bgs][3], 0.73) and near(bgs[#bgs][4], WS.BG_TINT_ALPHA), "bg mode: the backdrop takes the bracket colour at the tint alpha")
+WS.Paint(f, bgLook, st, colorOf)
+ok(#bgs == nBg + 1, "same bracket: not painted again")
+WS.Paint(f, WS.Look(R("SWEET", "20_25", nil, true), 0, out, fineC, "bg"), st, colorOf)
+ok(#bgs == nBg + 2 and near(bgs[#bgs][2], WS.COLORS.sweetSpot[2]), "the rest band's green wins over the bracket")
+WS.Paint(f, WS.Look(R("SWEET", "8_20", "OUT"), 0, out, fineC, "bg"), st, colorOf)
+ok(#bgs == nBg + 3 and near(bgs[#bgs][1], 0) and near(bgs[#bgs][2], 0), "a plain label: the bar's own backdrop back")
+WS.Paint(f, WS.Look(R("LONG", "OOR"), 0, out, fineC, "bg"), st)
+ok(#bgs == nBg + 4 and near(bgs[#bgs][1], 0), "no resolver: the bar's own backdrop")
 
 print(("react_weave_strip: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

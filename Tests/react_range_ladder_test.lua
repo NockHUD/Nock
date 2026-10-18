@@ -105,6 +105,11 @@ ok(labelAlpha(5) == 1 and labelAlpha(4) == RL.DIM and f.labels[4].shown, "the li
 ok(f.marker == nil, "no underline marker: the colour and the bright label say it")
 RL.Paint(f, "35_40", false)
 ok(f.segs[8].color[1] == L.COLORS.red[1], "35-40 out of Auto Shot range paints red")
+-- Pickers (2026-10-18): the painter takes the profile and the lit segment wears its picker colour.
+RL.Paint(f, "25_28", true, { reactColorLadderMid = { 0.9, 0.1, 0.2, 1 } })
+ok(f.segs[5].color[1] == 0.9 and f.segs[5].color[2] == 0.1, "a picked colour paints the lit segment")
+RL.Paint(f, "25_28", true, { reactColorLadderMid = { 0.3, 0.3, 0.3, 1 } })
+ok(f.segs[5].color[1] == 0.3, "a changed picker repaints the same lit segment")
 RL.Paint(f, nil, false)
 n = litCount()
 ok(n == 0 and labelAlpha(1) == RL.DIM, "no target: nothing lit, every label dim")

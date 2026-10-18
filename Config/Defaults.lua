@@ -747,6 +747,7 @@ Nock.Defaults = {
     weaveHelperEnabled   = false,
     reactShowWeaveStrip  = true,        -- the strip row (the words on the melee bar stay)
     weaveStripRangeText  = false,       -- the strip's bar carries the range text and the Range Finder hides (opt-in)
+    weaveStripRangeTint  = "off",       -- the ladder's bracket colours on the strip: "off" | "text" | "bg" (Skin -> Range colours pickers)
     weaveLegSeed         = 1.1,         -- seconds per leg before the first crossing is learned
     weaveStartWindow     = 0.75,        -- seconds after a shot in which GO IN is offered (directly or after a WAIT)
     reactWeaveH          = 18,          -- strip height px (icons square at it)
@@ -785,6 +786,7 @@ Nock.Defaults = {
     gridIconZoom           = 8,
     gridGcdSwipe           = false,     -- a light GCD swipe on tiles whose spell is on the GCD (Blizzard's bar look)
     reactHideUnlearned     = false,     -- Forever: a class spell not yet trained is left out of the grid (off: shown greyed)
+    gridStingGrey          = false,     -- Forever: a sting's tile greyed until the sting is on the target, its swipe draining
     reactTileDim           = false,     -- a tile on cooldown or not usable: desaturated at 60% (the WA's condition 1)
     reactManaTint          = false,     -- a tile whose spell lacks mana: blue + desaturated (the WA's condition 4)
     -- Active-state highlight on the React grid (KC keeps its own
@@ -881,6 +883,13 @@ Nock.Defaults = {
     reactColorRangeResync   = { 1.00, 0.58, 0.10, 1.00 },
     reactRangeDividerWidth  = 1,                            -- range bar centre divider width px
     reactColorRangeDivider  = { 1.00, 1.00, 1.00, 0.90 },   -- range bar centre divider (melee boundary)
+    -- Forever Range Finder ladder brackets, shared with the weave strip's
+    -- coloured range text (Forever/RangeLadder.lua COLORS, PROFILE_KEY).
+    reactColorLadderNear    = { 0.11, 0.70, 0.67, 1.00 },  -- 8-20 (teal)
+    reactColorLadderMid     = { 0.07, 0.50, 0.73, 1.00 },  -- 20-30 (blue)
+    reactColorLadderFar     = { 0.38, 0.40, 0.80, 1.00 },  -- 30-35 (indigo)
+    reactColorLadderMax     = { 0.74, 0.28, 0.75, 1.00 },  -- 35-40 (purple)
+    reactColorLadderOut     = { 0.86, 0.31, 0.26, 1.00 },  -- out of range (red)
     -- React Auto Shot bar marks. Defaults reproduce the reference constants in
     -- Frame_ReactCluster exactly, so exposing them changes nothing until you
     -- touch one. Deliberately NOT the classic clipTick*Color keys: React runs

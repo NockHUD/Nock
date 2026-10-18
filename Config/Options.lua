@@ -6323,7 +6323,7 @@ local function buildOptionsTable()
     sizeArgs.reactShowAutoBar  = reactToggle("reactShowAutoBar",  "Auto Shot bar",  "The converge Auto Shot bar (clip ticks, delay readout, notation).", 21)
     sizeArgs.reactShowMeleeBar = reactToggle("reactShowMeleeBar", "Melee swing bar", "Melee swing bar with the READY text and weave-coach cues.", 22)
     sizeArgs.reactMeleeStageCue = reactOptInToggle("reactMeleeStageCue", "Weave cue takes over the melee bar",
-      "While the weave coach has a stage (GO IN / HOLD / BACK OUT / RELEASE; needs the hold-to-weave key), the melee bar fills in the stage colour with chevrons marching the way to move and the word in a bigger font, and the buff row carries the stage as its weave slot. Off: the stage is only the small text in the bar and the row shows no weave slot.", 22.1)
+      "While the weave coach has a stage (GO IN / HOLD / BACK OUT / RELEASE; needs the hold-to-weave key), the melee bar fills in the stage colour with chevrons marching the way to move and the word in a bigger font, and the buff row carries the stage as its weave slot. Off: the melee bar shows no stage (the weave strip under it is the cue) and the row shows no weave slot.", 22.1)
     -- SESSION-ONLY (Nock.UI.stagePreview, never a profile key): cycles the
     -- four coach stages on the melee bar (and the Raptor tile's GO glow) so
     -- the cue can be looked at without a fight. Suspended in combat.
@@ -6362,6 +6362,23 @@ local function buildOptionsTable()
       disabled = function() return notReact() or Nock.db.profile.weaveHelperEnabled == false or Nock.db.profile.reactShowWeaveStrip == false end,
       get = function() return Nock.db.profile.weaveStripRangeText == true end,
       set = function(_, v) visualsSet(_, "weaveStripRangeText", v and true or false) end,
+    }
+    sizeArgs.weaveStripRangeTint = {
+      type = "select", name = "Range colours", order = 22.316,
+      desc = "The Range Finder's colour for your distance (8-20 teal, 20-30 blue, 30-35 indigo, 35-40 purple, out of range red) on the strip's range text, or on the whole bar behind it. The weave words and the sweet spot's green keep their own look. The colours are the Range text pickers under Skin -> Range colours.",
+      values = { off = "Off", text = "Text", bg = "Bar background" },
+      sorting = { "off", "text", "bg" },
+      dialogControl = lsmWidget(nil, "plain"),  -- LSM Font leak guard
+      hidden = notForever,
+      disabled = function()
+        local p = Nock.db.profile
+        return notReact() or p.weaveHelperEnabled == false or p.reactShowWeaveStrip == false or p.weaveStripRangeText ~= true
+      end,
+      get = function()
+        local v = Nock.db.profile.weaveStripRangeTint
+        return (v == "text" or v == "bg") and v or "off"
+      end,
+      set = function(_, v) visualsSet(_, "weaveStripRangeTint", v) end,
     }
     sizeArgs.weaveLegSeed = {
       type = "range", name = "Leg seed", order = 22.32, min = 0.5, max = 3.0, step = 0.05,
@@ -7232,6 +7249,14 @@ local function buildOptionsTable()
       get = get,
       set = function(_, v) visualsSet(_, "reactHideUnlearned", v) end,
     }
+    gridArgs.gridStingGrey = {
+      type = "toggle", name = "Sting tiles: grey until applied",
+      desc = "A sting's tile is greyed out while your sting is not on the target and lights in full colour the moment it lands. Its swipe then drains as the sting runs out instead of filling like a cooldown. The timer stays the client's own.",
+      order = 69.57, width = "full", disabled = notReact,
+      hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end,
+      get = get,
+      set = function(_, v) visualsSet(_, "gridStingGrey", v and true or false) end,
+    }
     gridArgs.gridGcdSwipe = {
       type = "toggle", name = "GCD swipe",
       desc = "A light swipe on every tile whose spell is on the global cooldown, the way Blizzard's action bars show it. Spells off the GCD (Kill Command, racials) and items never swipe. Shared by the React and FluffyHUD grids.",
@@ -7557,6 +7582,11 @@ local function buildOptionsTable()
       reactColorRangeResync   = { 1.00, 0.58, 0.10, 1.00 },
       reactRangeDividerWidth  = 1,
       reactColorRangeDivider  = { 1.00, 1.00, 1.00, 0.90 },
+      reactColorLadderNear    = { 0.11, 0.70, 0.67, 1.00 },
+      reactColorLadderMid     = { 0.07, 0.50, 0.73, 1.00 },
+      reactColorLadderFar     = { 0.38, 0.40, 0.80, 1.00 },
+      reactColorLadderMax     = { 0.74, 0.28, 0.75, 1.00 },
+      reactColorLadderOut     = { 0.86, 0.31, 0.26, 1.00 },
       reactGcdDividerWidth    = 1,
       reactColorGcdDivider    = { 0.62, 0.35, 0.98, 1.00 },
       reactColorTickSteady    = { 1.00, 0.10, 0.10, 1.00 },
@@ -7752,6 +7782,18 @@ local function buildOptionsTable()
       "Range: divider width",
       "Width of the centre divider on the range bar (the melee boundary), in real screen pixels.", 105.5, 1, 8)
     skinArgs.reactColorRangeDivider = skinColorOpt("Range: divider", "The centre divider on the range bar (the melee boundary).", 106)
+    -- Forever only: the Range Finder ladder's brackets, shared with the weave
+    -- strip's coloured range text (Size & Elements -> Coloured range text).
+    local function ladderColorOpt(name, desc, order)
+      local o = skinColorOpt(name, desc .. " Colours the Range Finder's segment and the weave strip's Range colours (text or bar background) alike.", order)
+      o.hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end
+      return o
+    end
+    skinArgs.reactColorLadderNear = ladderColorOpt("Range text: 8-20",         "The near brackets, 8-20 yards.", 106.1)
+    skinArgs.reactColorLadderMid  = ladderColorOpt("Range text: 20-30",        "The middle brackets, 20-30 yards.", 106.2)
+    skinArgs.reactColorLadderFar  = ladderColorOpt("Range text: 30-35",        "The far bracket, 30-35 yards.", 106.3)
+    skinArgs.reactColorLadderMax  = ladderColorOpt("Range text: 35-40",        "The Hawk Eye bracket past 35 yards while Auto Shot still reaches.", 106.4)
+    skinArgs.reactColorLadderOut  = ladderColorOpt("Range text: out of range", "OUT OF RANGE, and the far bracket once Auto Shot no longer reaches.", 106.5)
     -- GCD divider: same narrow span as the range divider, for the same reason.
     -- Both rows stay visible while the feature is off — the skin tab is where
     -- you set a look up before switching it on.
@@ -8192,6 +8234,14 @@ local function buildOptionsTable()
       hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end,
       get = function() return Nock.db.profile.reactHideUnlearned == true end,
       set = function(_, v) visualsSet(_, "reactHideUnlearned", v) end,
+    }
+    fGridArgs.gridStingGrey = {
+      type = "toggle", name = "Sting tiles: grey until applied", order = 24.6, width = "full",
+      desc = "A sting's tile is greyed out while your sting is not on the target and lights in full colour the moment it lands. Its swipe then drains as the sting runs out instead of filling like a cooldown. The timer stays the client's own.",
+      disabled = notFluffy,
+      hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end,
+      get = function() return Nock.db.profile.gridStingGrey == true end,
+      set = function(_, v) visualsSet(_, "gridStingGrey", v and true or false) end,
     }
     fGridArgs.gridGcdSwipe = {
       type = "toggle", name = "GCD swipe", order = 24.4, width = "full",

@@ -68,6 +68,7 @@ profile.reactBarOrder = nil
 RC:ApplyLayout()
 RC.frame:Show()   -- the HUD shows the container once it is placed; headless, do it here
 local calls = 0
+local realRefreshWeave = RC.RefreshWeave
 RC.RefreshWeave = function() calls = calls + 1 end
 RC.RefreshAuto, RC.RefreshMelee, RC.RefreshRange, RC.RefreshStrip, RC.RefreshLadder, RC.RefreshMana =
   function() end, function() end, function() end, function() end, function() end, function() end
@@ -77,6 +78,30 @@ ok(calls == 1, "Refresh dispatches to RefreshWeave")
 RC.weave:Hide()
 RC:Refresh(blank)
 ok(calls == 1, "a hidden row is not refreshed")
+
+-- Range colours (weaveStripRangeTint, a select: "off" | "text" | "bg"): the
+-- real RefreshWeave hands the ladder's brackets and the mode to the look,
+-- and the ladder palette resolver to the painter.
+RC.RefreshWeave = realRefreshWeave   -- back to the module's own
+local seen = {}
+local WS = Nock.UI.WeaveStrip
+local realLook, realPaint = WS.Look, WS.Paint
+WS.Look = function(state, now, out, fine, tint) seen.fine, seen.tint = fine, tint; return realLook(state, now, out, fine, tint) end
+WS.Paint = function(f, look, state, colorOf) seen.colorOf = colorOf end
+Nock.RangeLadder = { Layout = function() return { fine = { ["8_20"] = { label = "8-20", colorKey = "teal" } } } end,
+                     Color = function(key, prof) return prof and prof.picked or key end }
+profile.weaveStripRangeText, profile.weaveStripRangeTint = true, "bg"
+RC:RefreshWeave(blank)
+ok(seen.fine ~= nil and seen.tint == "bg", "the select's value reaches the look as the mode (bg)")
+profile.weaveStripRangeTint = "text"
+RC:RefreshWeave(blank)
+ok(seen.tint == "text", "text mode too")
+profile.picked = "P"
+ok(type(seen.colorOf) == "function" and seen.colorOf("teal") == "P", "the painter gets the ladder palette through the profile")
+profile.weaveStripRangeText = nil
+RC:RefreshWeave(blank)
+ok(seen.fine == nil and not seen.tint, "range text off: no brackets, no mode")
+WS.Look, WS.Paint = realLook, realPaint
 
 print(("react_weave_row: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
