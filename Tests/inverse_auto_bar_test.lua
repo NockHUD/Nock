@@ -51,9 +51,9 @@ if W then
   ok(near(W(), Nock.Constants.AUTO_SHOT_CAST), "TBC: cold-start seed when nothing is derived yet")
   r.windup = 0.365
   Nock.Flavor = { forever = true }
-  ok(near(W(), 0.25), "Forever, no wind-up feed: the spell-queue window stands in")
+  ok(near(W(), 0.365), "Forever: the published share's seconds, never the spell-queue window (Forever has none)")
   r.queueWindow = nil
-  ok(W() == 0, "Forever, no feed and no queue window: 0")
+  ok(near(W(), 0.365), "Forever, no queue window field at all: unchanged")
   r.queueWindow = 0.25
   r.windupMeasured = true
   ok(near(W(), 0.365), "Forever with a wind-up feed: the wind-up itself")

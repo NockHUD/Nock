@@ -222,254 +222,239 @@ end
 -- before the arrow leaves. UNIT_SPELLCAST_START(75) opens it, the ranged
 -- PLAYER_SWING is the release; the ratio wind-up/duration is what the TBC
 -- side measures too, and one accepted sample flips windupMeasured.
+-- THE BAND (2026-10-18 design): a fixed share of the reload, published from
+-- switch-on reads, seeded until one exists, moved only in steps. No other
+-- feed moves it; their rows stay for the probe.
 do
   _G.UnitCastingInfo = function(u)
     if u == "player" and _G.__autoCast then return unpack(_G.__autoCast) end
   end
   st.player.inCombat = true
+  st.network = st.network or {}
+  st.network.latencyMs = 110
   fire("PLAYER_ENTERING_WORLD")
-  ok(st.ranged.windupMeasured == false, "wind-up starts unmeasured")
+  ok(st.ranged.windupMeasured == true and st.ranged.windupSource == "seed", "Forever starts on the seed share: measured, source seed")
   ok(module.events["UNIT_SPELLCAST_START"] and module.events["UNIT_SPELLCAST_STOP"]
      and module.events["UNIT_SPELLCAST_SUCCEEDED"] and module.events["UNIT_SPELLCAST_INTERRUPTED"], "cast events registered")
-  st.ranged.windupRatio = 0.5 / 3.0
   now = 400
-  fire("PLAYER_SWING", 2.0, 2)                 -- seed: the shot before
+  fire("PLAYER_SWING", 2.232, 2)
+  ok(math.abs(st.ranged.windupRatio - (0.24 + 0.11 / 2.232)) < 1e-6, "ratio = seed server share + rtt / reload")
+  st.ranged.windup = st.ranged.windupRatio * st.ranged.swingDuration   -- what the tick does
+  ok(math.abs(Nock.AutoShotWindup() - st.ranged.windup) < 1e-9, "views read the share; the queue window never stands in")
+  local band = st.ranged.windupRatio
+
+  -- Cast-edge and release feeds (never seen on this client): tagged rows, band untouched.
   now = 401.65
   _G.__autoCast = { "Auto Shot", "", 132369, 401650, 402000, false, "cast-a", false, 75 }
   fire("UNIT_SPELLCAST_START", "player", "cast-a", 75)
-  ok(st.ranged.windupMeasured == true, "the client's own cast window samples at START")
-  ok(math.abs(st.ranged.windupRatio - 0.35 / 2.0) < 1e-9, "first sample replaces the seed: 0.35 / 2.0")
   now = 402.0
   _G.__autoCast = nil
   fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-a", 75)
   fire("UNIT_SPELLCAST_STOP", "player", "cast-a", 75)
-  fire("PLAYER_SWING", 2.0, 2)
-  ok(math.abs(st.ranged.windupRatio - 0.175) < 1e-9, "the release of a cast-sampled shot is not a second sample")
-  st.ranged.windup = st.ranged.windupRatio * st.ranged.swingDuration   -- what the tick does
-  ok(math.abs(Nock.AutoShotWindup() - 0.35) < 1e-9, "views read the measured wind-up, not the queue window")
-
-  -- A second clean sample averages in.
+  fire("PLAYER_SWING", 2.232, 2)
+  local W = module:WindupSamples()
+  ok(W[1].ev == "UNIT_SPELLCAST_START" and W[1].sampled == "cast" and W[1].castStart == 401.65 and W[1].castEnd == 402.0, "a client cast window is a tagged row with its times")
+  ok(math.abs(st.ranged.windupRatio - band) < 1e-9, "...and does not move the band")
   now = 403.65
   fire("UNIT_SPELLCAST_START", "player", "cast-b", 75)
   now = 404.0
-  fire("PLAYER_SWING", 2.0, 2)
-  ok(math.abs(st.ranged.windupRatio - 0.175) < 1e-9, "a matching sample leaves the ratio put")
-
-  -- A late shot is a clipped cycle: its wind-up read is inflated and rejected.
-  now = 405.65
-  fire("UNIT_SPELLCAST_START", "player", "cast-c", 75)
-  now = 406.3
-  fire("PLAYER_SWING", 2.0, 2)
-  ok(math.abs(st.ranged.autoDelay - 0.3) < 1e-9, "late shot measured as delay")
-  ok(math.abs(st.ranged.windupRatio - 0.175) < 1e-9, "late shot does not move the ratio")
-
-  -- A speed change between start and release mixes two speeds: rejected.
-  now = 407.95
-  fire("UNIT_SPELLCAST_START", "player", "cast-d", 75)
-  now = 408.3
-  fire("PLAYER_SWING", 1.5, 2)
-  ok(math.abs(st.ranged.windupRatio - 0.175) < 1e-9, "a shot carrying a new duration is not sampled")
-
-  -- STOP / INTERRUPTED on 75 cancel the pending start.
-  now = 409.5
-  fire("UNIT_SPELLCAST_START", "player", "cast-e", 75)
-  fire("UNIT_SPELLCAST_INTERRUPTED", "player", "cast-e", 75)
-  now = 409.8
-  fire("PLAYER_SWING", 1.5, 2)
-  ok(math.abs(st.ranged.windupRatio - 0.175) < 1e-9, "a cancelled wind-up is not sampled")
-
-  -- A FAILED(75) is a refused re-press, not the end of the wind-up (TBC rule).
-  now = 411.0
-  fire("UNIT_SPELLCAST_START", "player", "cast-f", 75)
-  fire("UNIT_SPELLCAST_FAILED", "player", "cast-g", 75)
-  now = 411.3
-  fire("PLAYER_SWING", 1.5, 2)
-  ok(math.abs(st.ranged.windupRatio - (0.175 + (0.2 - 0.175) * 0.5)) < 1e-9, "FAILED leaves the start standing; sample averaged (0.3/1.5)")
-
-  -- Other spells never touch it.
-  now = 412.5
-  fire("UNIT_SPELLCAST_START", "player", "cast-h", 56641)
-  now = 412.8
-  fire("PLAYER_SWING", 1.5, 2)
-  local r0 = st.ranged.windupRatio
-  ok(math.abs(r0 - 0.1875) < 1e-9, "another spell's START is not a wind-up")
-
-  -- A start coincident with the swing (the client firing PLAYER_SWING at the
-  -- wind-up start) is under the floor: rejected, and the probe shows it.
-  now = 414.3
-  fire("UNIT_SPELLCAST_START", "player", "cast-i", 75)
-  fire("PLAYER_SWING", 1.5, 2)
-  ok(st.ranged.windupRatio == r0, "a zero-length read is rejected")
-
-  -- Wind-up samples ring for the probe: every 75 edge with the client's own cast times.
-  local W = module:WindupSamples()
-  ok(#W > 0 and W[1].ev == "UNIT_SPELLCAST_START" and W[1].t == 401.65, "samples keep the START edges")
-  ok(W[1].castStart == 401.65 and W[1].castEnd == 402.0, "UnitCastingInfo's own window is kept with the START")
+  fire("PLAYER_SWING", 2.232, 2)
+  W = module:WindupSamples()
   local lastRel
   for i = 1, #W do if W[i].ev == "RELEASE" then lastRel = W[i] end end
-  ok(lastRel and lastRel.measured ~= nil, "releases carry the measured wind-up")
+  ok(lastRel and lastRel.sampled == "release" and math.abs(lastRel.measured - 0.35) < 1e-9, "a release read is a tagged row")
+  ok(math.abs(st.ranged.windupRatio - band) < 1e-9, "...and does not move the band either")
   _G.UnitCastingInfo = nil
 end
 
--- The stop-gated read (build 70425: no cast edge at all). A stop with the bar
--- already full -> the shot one wind-up (less the round trip) later.
+-- Stop-gated reads: rows and the stop-by edge; the band stays the share.
 do
   fire("PLAYER_ENTERING_WORLD")
   st.player.inCombat = true
-  st.network = st.network or {}
   st.network.latencyMs = 60
-  st.ranged.windupMeasured, st.ranged.windupRatio = false, 0.5 / 3.0
   now = 500
   fire("PLAYER_SWING", 2.0, 2)          -- due at 502.0
+  local band = st.ranged.windupRatio
+  ok(math.abs(band - (0.24 + 0.06 / 2.0)) < 1e-6, "the rtt part follows the reload and the ping (quantised)")
   now = 501.0; fire("PLAYER_STARTED_MOVING")
   now = 502.3; fire("PLAYER_STOPPED_MOVING")   -- bar full since 502.0
   now = 502.3 + 0.41                              -- shot 0.41 s after the stop
   fire("PLAYER_SWING", 2.0, 2)
-  ok(st.ranged.windupMeasured == true, "a stop-gated shot samples the wind-up")
-  ok(math.abs(st.ranged.windupRatio - 0.41 / 2.0) < 1e-9, "the RAW read is the bar's number: 0.41 / 2.0")
   local W = module:WindupSamples()
   local last = W[#W]
   ok(last.ev == "STOP->SHOT" and math.abs(last.raw - 0.41) < 1e-9 and math.abs(last.lessRtt - 0.35) < 1e-9 and last.sampled == "stop",
-     "sample carries raw, the rtt-corrected value and the source")
+     "a stop-gated shot is a tagged row with raw, the rtt-corrected value and the source")
   ok(math.abs(last.late - 0.71) < 1e-9, "...and how late the shot was")
+  ok(math.abs(st.ranged.stopByRatio - 0.205) < 1e-9, "stop-by = the one read")
+  ok(math.abs(st.ranged.windupRatio - band) < 1e-9 and st.ranged.windupSource == "seed", "the band does not move on a stop read")
 
-  ok(st.ranged.windupSource == "stop" and math.abs(st.ranged.stopByRatio - 0.205) < 1e-9, "source is the stop feed; stop-by = the one read")
-
-  -- The dummy-run case: a stop BEFORE the due time, inside the wind-up, with
-  -- the shot pushed late. The shot fires at stop + W: W is read from the stop.
-  -- Two reads -> the band keeps the SHORTEST (tick-aligned) and the stop-by
-  -- edge the upper median (the longer one).
   now = 503.5; fire("PLAYER_STARTED_MOVING")
   now = 504.41; fire("PLAYER_STOPPED_MOVING")   -- due is 504.71: 0.3 s left
   now = 504.71 + 0.5; fire("PLAYER_SWING", 2.0, 2)   -- 0.5 late = 0.8 after the stop
-  ok(math.abs(st.ranged.windupRatio - 0.205) < 1e-9, "a late shot after a stop inside the wind-up is a read; band = min of {0.205, 0.4}")
   ok(math.abs(st.ranged.stopByRatio - 0.4) < 1e-9, "stop-by edge = upper median of {0.205, 0.4}")
   W = module:WindupSamples()
   ok(W[#W].ev == "STOP->SHOT" and math.abs(W[#W].late - 0.5) < 1e-9 and W[#W].sampled == "stop", "the row carries the lateness")
 
-  -- A stop while the bar was still running with the shot ON TIME: the stop
-  -- did not gate it, no read.
+  -- A stop while the bar was still running with the shot ON TIME: no read.
   local n0 = #module:WindupSamples()
-  local ratio0 = st.ranged.windupRatio
   now = 505.8; fire("PLAYER_STARTED_MOVING")
   now = 506.2; fire("PLAYER_STOPPED_MOVING")   -- due is 507.21
   now = 507.21; fire("PLAYER_SWING", 2.0, 2)
-  ok(st.ranged.windupRatio == ratio0, "a stop with the shot on time is not a sample")
-  ok(#module:WindupSamples() == n0, "...and leaves no stop row")
-
+  ok(#module:WindupSamples() == n0, "a stop with the shot on time leaves no stop row")
   -- An old stop (before the previous shot) is spent, even on a late shot.
   now = 509.6; fire("PLAYER_SWING", 2.0, 2)   -- 0.39 late, no stop since the last shot
-  ok(st.ranged.windupRatio == ratio0 and #module:WindupSamples() == n0, "a late shot without a fresh stop: no stop read")
-
+  ok(#module:WindupSamples() == n0, "a late shot without a fresh stop: no stop read")
   -- A cast edge after the stop may have pushed the shot: not read.
   now = 510.0; fire("PLAYER_STARTED_MOVING")
   now = 511.3; fire("PLAYER_STOPPED_MOVING")   -- due 511.6
   now = 511.4; fire("UNIT_SPELLCAST_SUCCEEDED", "player", "ms", 2643)
   now = 512.1; fire("PLAYER_SWING", 2.0, 2)    -- 0.5 late
-  ok(st.ranged.windupRatio == ratio0 and #module:WindupSamples() == n0, "a cast after the stop disqualifies the read")
-
-  -- A stop with the bar full but the shot coming at once (no wind-up on this
-  -- server) reads under the floor and is dropped: the model stays unmeasured.
-  st.ranged.windupMeasured = false
+  ok(#module:WindupSamples() == n0, "a cast after the stop disqualifies the read")
+  -- An immediate shot after the stop reads under the floor: the row is kept, unsampled.
   now = 513.0; fire("PLAYER_STARTED_MOVING")
   now = 514.3; fire("PLAYER_STOPPED_MOVING")   -- due 514.1
-  now = 514.33; fire("PLAYER_SWING", 2.0, 2)   -- 0.23 late (the run), 0.03 after the stop
-  ok(st.ranged.windupMeasured == false, "an immediate shot after the stop is no wind-up")
+  now = 514.33; fire("PLAYER_SWING", 2.0, 2)   -- 0.03 after the stop
   W = module:WindupSamples()
-  ok(W[#W].ev == "STOP->SHOT" and W[#W].sampled == nil, "...but the row is kept for the probe")
+  ok(W[#W].ev == "STOP->SHOT" and W[#W].sampled == nil, "an immediate shot after the stop is a kept, unsampled row")
 
-  -- The first shot on a new mob (after a kill: target changed and auto
-  -- re-armed since the previous shot) waits for the pull as well: not read.
-  st.ranged.windupMeasured = true
-  local n2, ratio2 = #module:WindupSamples(), st.ranged.windupRatio
+  -- The first shot on a new mob (target changed, auto re-armed while the
+  -- bar still ran) is neither a stop read nor a switch-on read.
+  local ratio2 = st.ranged.windupRatio
   now = 520.0; fire("PLAYER_SWING", 2.0, 2)
   now = 520.8; fire("PLAYER_TARGET_CHANGED")
   now = 520.85; fire("START_AUTOREPEAT_SPELL")
   now = 520.9; fire("PLAYER_STARTED_MOVING")
   now = 522.6; fire("PLAYER_STOPPED_MOVING")   -- due was 522.0
   now = 523.59; fire("PLAYER_SWING", 2.0, 2)   -- 0.99 after the stop
-  ok(st.ranged.windupRatio == ratio2 and #module:WindupSamples() == n2, "first shot on a new target is not a read")
-  -- ...and the next stop-gated shot on that target is.
+  W = module:WindupSamples()
+  ok(st.ranged.windupRatio == ratio2, "first shot on a new target: the band stays")
+  ok(W[#W].ev == "ON->SHOT" and W[#W].sampled == nil and W[#W].idle == false, "...its ON->SHOT row says the bar was running")
+  ok(W[#W - 1].ev == "AUTO_ON", "...after the AUTO_ON row")
+  -- ...and the next stop-gated shot on that target reads normally.
   now = 524.0; fire("PLAYER_STARTED_MOVING")
   now = 525.3; fire("PLAYER_STOPPED_MOVING")   -- due 525.59
   now = 526.1; fire("PLAYER_SWING", 2.0, 2)    -- 0.51 late, 0.8 after the stop
-  ok(#module:WindupSamples() == n2 + 1 and module:WindupSamples()[n2 + 1].sampled == "stop", "the second shot on the target reads normally")
+  W = module:WindupSamples()
+  ok(W[#W].ev == "STOP->SHOT" and W[#W].sampled == "stop", "the second shot on the target reads normally")
 
-  -- A move inside a running swing is a ring row with the bar's remaining time;
-  -- an INTERRUPTED(75) is recorded once per burst (the client sends three).
+  -- Moves inside a running swing and INTERRUPTED(75): probe rows, paired,
+  -- once per burst; the band is not theirs to move.
   do
-    local n3 = #module:WindupSamples()
+    local n3, band = #module:WindupSamples(), st.ranged.windupRatio
     now = 530.0; fire("PLAYER_SWING", 2.0, 2)
     st.ranged.swingRemaining = 0.5
     now = 531.5; fire("PLAYER_STARTED_MOVING")
     local W3 = module:WindupSamples()
     ok(#W3 == n3 + 1 and W3[#W3].ev == "MOVE" and math.abs(W3[#W3].swingRemaining - 0.5) < 1e-9, "move inside the swing: a MOVE row with the remaining time")
-    now = 531.71                                            -- the interrupt lands ~0.21 s after the move
+    ok(math.abs((W3[#W3].swingDuration or 0) - 2.0) < 1e-9, "...and the reload it was made in (the haste question)")
+    now = 531.71
     fire("UNIT_SPELLCAST_INTERRUPTED", "player", "Cast-75-a", 75)
     fire("UNIT_SPELLCAST_INTERRUPTED", "player", "Cast-75-a", 75)
     fire("UNIT_SPELLCAST_INTERRUPTED", "player", "Cast-75-a", 75)
     W3 = module:WindupSamples()
     ok(#W3 == n3 + 2 and W3[#W3].ev == "UNIT_SPELLCAST_INTERRUPTED", "three INTERRUPTED(75) in one frame are one row")
     ok(W3[#W3].sampled == "interrupt" and math.abs(W3[#W3].pairedMoveRem - 0.5) < 1e-9 and math.abs(W3[#W3].lag - 0.21) < 1e-9,
-       "the interrupt is paired with its move: the wind-up was running 0.5 s before the shot")
-    ok(st.ranged.windupSource == "interrupt" and math.abs(st.ranged.windupRatio - (0.25 + 0.02)) < 1e-9,
-       "the band is now the interrupt edge: 0.5 / 2.0 plus the margin")
-    -- A later interrupt further from the shot grows the edge; a nearer one does not shrink it.
+       "the interrupt is paired with its move")
+    ok(math.abs(st.ranged.windupRatio - band) < 1e-9 and st.ranged.windupSource == "seed", "an interrupt read does not move the band")
     now = 531.8; fire("PLAYER_STOPPED_MOVING")
-    now = 540.0; fire("PLAYER_SWING", 2.0, 2)
-    st.ranged.swingRemaining = 0.3
-    now = 541.7; fire("PLAYER_STARTED_MOVING")
-    now = 541.9; fire("UNIT_SPELLCAST_INTERRUPTED", "player", "Cast-75-c", 75)
-    ok(math.abs(st.ranged.windupRatio - 0.27) < 1e-9, "a nearer interrupt leaves the edge")
-    now = 542.0; fire("PLAYER_STOPPED_MOVING")
-    now = 542.7; fire("PLAYER_SWING", 2.0, 2)             -- 0.7 late, 0.7 after the stop
+    -- A fresh press since the last shot: the interrupted wind-up is not the bar's.
+    now = 552.0; fire("PLAYER_SWING", 2.0, 2)
+    now = 552.5; fire("PLAYER_TARGET_CHANGED")
+    st.ranged.swingRemaining = 1.5
+    now = 552.7; fire("PLAYER_STARTED_MOVING")
+    now = 552.9; fire("UNIT_SPELLCAST_INTERRUPTED", "player", "Cast-75-f", 75)
     W3 = module:WindupSamples()
-    ok(W3[#W3].ev == "STOP->SHOT" and W3[#W3].restart == true and W3[#W3].sampled == "stop", "a stop-gated shot after an interrupt is a RESTART read (stop-by only)")
-    ok(st.ranged.windupSource == "interrupt" and math.abs(st.ranged.windupRatio - 0.27) < 1e-9, "...and the band stays the interrupt edge")
-    now = 544.0; fire("PLAYER_SWING", 2.0, 2)
-    st.ranged.swingRemaining = 0.6
-    now = 545.4; fire("PLAYER_STARTED_MOVING")
-    now = 545.6; fire("UNIT_SPELLCAST_INTERRUPTED", "player", "Cast-75-d", 75)
-    ok(math.abs(st.ranged.windupRatio - (0.3 + 0.02)) < 1e-9, "an interrupt further from the shot grows the edge")
+    ok(W3[#W3].ev == "UNIT_SPELLCAST_INTERRUPTED" and W3[#W3].sampled == nil and W3[#W3].freshPress, "an interrupt after a target change is tagged, not sampled")
+    now = 553.0; fire("PLAYER_STOPPED_MOVING")
     -- A move with no interrupt within the window pairs with nothing.
-    now = 545.7; fire("PLAYER_STOPPED_MOVING")
-    now = 548.0; fire("PLAYER_SWING", 2.0, 2)
+    now = 556.0; fire("PLAYER_SWING", 2.0, 2)
     st.ranged.swingRemaining = 0.9
-    now = 549.1; fire("PLAYER_STARTED_MOVING")
-    now = 549.7; fire("UNIT_SPELLCAST_INTERRUPTED", "player", "Cast-75-e", 75)   -- 0.6 s later: not this move's
-    ok(math.abs(st.ranged.windupRatio - 0.32) < 1e-9, "an interrupt outside the pairing window is not a read")
-    now = 549.8; fire("PLAYER_STOPPED_MOVING")
+    now = 557.1; fire("PLAYER_STARTED_MOVING")
+    now = 557.7; fire("UNIT_SPELLCAST_INTERRUPTED", "player", "Cast-75-e", 75)   -- 0.6 s later: not this move's
+    W3 = module:WindupSamples()
+    ok(W3[#W3].sampled == nil and W3[#W3].pairedMoveRem == nil, "an interrupt outside the pairing window is not paired")
+    now = 557.8; fire("PLAYER_STOPPED_MOVING")
   end
 
-  -- Reads persist per character and come back measured on the next login.
+  -- The auto-repeat toggles are ring rows (the switch-on question).
   do
-    local savedS, savedI = module._stopRatios, module._interruptRatios
-    ok(Nock.db == nil, "test harness has no db (saves are no-ops without one)")
+    local n = #module:WindupSamples()
+    now = 570.0; fire("START_AUTOREPEAT_SPELL")
+    now = 571.0; fire("STOP_AUTOREPEAT_SPELL")
+    local W = module:WindupSamples()
+    ok(#W == n + 2 and W[#W - 1].ev == "AUTO_ON" and W[#W].ev == "AUTO_OFF" and W[#W - 1].t == 570.0, "START/STOP_AUTOREPEAT_SPELL leave AUTO_ON / AUTO_OFF rows")
+  end
+
+  -- THE SWITCH-ON FEED. Idle bar, press, still, the shot 0.655 s later at a
+  -- 2.232 s reload with rtt 0.110: server share (0.655 - 0.11) / 2.232.
+  do
     Nock.db = { char = {} }
-    module:SaveWindupReads()
-    local sv = Nock.db.char.foreverWindupReads
-    ok(#sv.stops == #savedS and sv.stops[1] == savedS[1] and #sv.interrupts == #savedI and sv.interrupts[#savedI] == savedI[#savedI], "SaveWindupReads writes both rings to db.char")
-    st.ranged.windupMeasured, st.ranged.windupRatio, st.ranged.windupSource = false, 0.5 / 3.0, nil
-    module._stopRatios, module._interruptRatios = {}, {}
+    st.network.latencyMs = 110
+    now = 600.0; fire("PLAYER_SWING", 2.232, 2)   -- a shot long ago
+    now = 610.0; fire("STOP_AUTOREPEAT_SPELL")
+    now = 620.0; fire("START_AUTOREPEAT_SPELL")   -- bar idle since 602.232
+    now = 620.655; fire("PLAYER_SWING", 2.232, 2)
+    local W = module:WindupSamples()
+    local share1 = (0.655 - 0.11) / 2.232
+    ok(W[#W].ev == "ON->SHOT" and W[#W].sampled == "switch-on" and math.abs(W[#W].share - share1) < 1e-9, "an idle switch-on reads the wind-up as a server share")
+    ok(st.ranged.windupSource == "switch-on", "source: switch-on")
+    ok(math.abs(st.ranged.windupRatio - (0.24 + 0.11 / 2.232)) < 1e-6, "one read inside the step leaves the published share on the seed")
+    ok(type(Nock.db.char.foreverWindupShares) == "table" and #Nock.db.char.foreverWindupShares.any == 1, "the read is saved under the weapon key")
+    -- Reads well off the seed: the median crosses the step and the share moves ONCE.
+    for i = 1, 3 do
+      now = 700 + i * 20; fire("STOP_AUTOREPEAT_SPELL")
+      now = 710 + i * 20; fire("START_AUTOREPEAT_SPELL")
+      now = 710 + i * 20 + 0.80; fire("PLAYER_SWING", 2.232, 2)   -- share (0.80 - 0.11) / 2.232
+    end
+    local share2 = (0.80 - 0.11) / 2.232
+    ok(math.abs(st.ranged.windupRatio - (share2 + 0.11 / 2.232)) < 1e-6, "the median moved past the step: the share steps to it")
+    local pub = module:WindupShare()
+    ok(math.abs(pub - share2) < 1e-9, "WindupShare reports the published server share")
+    -- A read that leaves the median where it is leaves the band alone.
+    now = 800; fire("STOP_AUTOREPEAT_SPELL")
+    now = 810; fire("START_AUTOREPEAT_SPELL")
+    now = 810.7; fire("PLAYER_SWING", 2.232, 2)   -- share 0.264: median of 5 stays 0.309
+    ok(math.abs(st.ranged.windupRatio - (share2 + 0.11 / 2.232)) < 1e-6, "a read inside the step: no move")
+    -- Disqualifiers leave a tagged, unsampled row.
+    local function pressAndShoot(t, between, shotAt)
+      now = t; fire("STOP_AUTOREPEAT_SPELL")
+      now = t + 5; fire("START_AUTOREPEAT_SPELL")
+      if between then between(t + 5) end
+      now = shotAt or (t + 5.655); fire("PLAYER_SWING", 2.232, 2)
+      local W = module:WindupSamples()
+      return W[#W]
+    end
+    local nReads = #module._onReads
+    local row = pressAndShoot(900, function(t0) now = t0 + 0.2; fire("PLAYER_STARTED_MOVING"); now = t0 + 0.3; fire("PLAYER_STOPPED_MOVING") end)
+    ok(row.ev == "ON->SHOT" and row.sampled == nil and row.moved == true, "a move between press and shot: not a read")
+    row = pressAndShoot(920, function(t0) now = t0 + 0.2; fire("UNIT_SPELLCAST_SUCCEEDED", "player", "ms", 2643) end)
+    ok(row.sampled == nil and row.cast == true, "a cast between press and shot: not a read")
+    st.ranged.targetInRange = false
+    row = pressAndShoot(940)
+    ok(row.sampled == nil and row.inRange == false, "target out of range at the press: not a read")
+    st.ranged.targetInRange = nil
+    row = pressAndShoot(960, nil, 960 + 5 + 1.5)
+    ok(row.sampled == nil and math.abs(row.read - 1.5) < 1e-9, "a shot 1.5 s after the press was waiting for more than a wind-up: not a read")
+    ok(#module._onReads == nReads, "none of them entered the ring")
+    -- Persistence: the ring comes back per weapon; the old key is dropped.
+    local savedReads = #module._onReads
+    module._onReads, module._shareServer, module._onMedian = {}, nil, nil
+    Nock.db.char.foreverWindupReads = { stops = { 0.3 }, interrupts = { 0.4 } }
     module:RestoreWindupReads()
-    ok(st.ranged.windupMeasured == true and st.ranged.windupSource == "interrupt" and math.abs(st.ranged.windupRatio - 0.32) < 1e-9, "RestoreWindupReads: the interrupt edge comes back")
-    Nock.db.char.foreverWindupReads = { 0.3, "junk", 5, 0.4 }     -- the first, flat shape: stop reads
-    module._stopRatios, module._interruptRatios = {}, {}
-    module:RestoreWindupReads()
-    ok(#module._stopRatios == 2 and st.ranged.windupSource == "stop" and st.ranged.windupRatio == 0.3 and st.ranged.stopByRatio == 0.4, "a flat saved list restores as stop reads, junk dropped")
-    Nock.db.char.foreverWindupReads = {}
-    st.ranged.windupMeasured = false
-    module._stopRatios, module._interruptRatios = {}, {}
-    module:RestoreWindupReads()
-    ok(st.ranged.windupMeasured == false, "nothing saved: stays unmeasured")
-    module._stopRatios, module._interruptRatios = { 0.4 }, { 0.3 }; st.ranged.windupMeasured = true
+    ok(#module._onReads == savedReads and st.ranged.windupSource == "switch-on" and math.abs(module:WindupShare() - share2) < 1e-9, "RestoreWindupReads brings the weapon's reads and share back")
+    ok(Nock.db.char.foreverWindupReads == nil, "the pre-2026-10-18 reads key is dropped")
+    -- A new ranged weapon starts its own reads (seed until its first pull).
+    _G.GetInventoryItemID = function(unit, slot) return (unit == "player" and slot == 18) and 1234 or nil end
+    fire("PLAYER_EQUIPMENT_CHANGED")
+    ok(module._onKey == "1234" and #module._onReads == 0 and st.ranged.windupSource == "seed", "a new ranged weapon: own key, no reads, seed share")
+    _G.GetInventoryItemID = nil
+    fire("PLAYER_EQUIPMENT_CHANGED")
+    ok(module._onKey == "any" and #module._onReads == savedReads, "back on the old weapon: its reads return")
+    -- Reset: both rings, the save and back to the seed.
     module:ResetWindupReads()
-    ok(#module._stopRatios == 0 and #module._interruptRatios == 0 and next(Nock.db.char.foreverWindupReads) == nil
-       and st.ranged.windupMeasured == false and st.ranged.windupSource == nil and st.ranged.stopByRatio == nil
-       and math.abs(st.ranged.windupRatio - 0.5 / 3.0) < 1e-9, "ResetWindupReads clears both rings, the save and the flags")
+    ok(#module._onReads == 0 and next(Nock.db.char.foreverWindupShares) == nil and st.ranged.windupSource == "seed"
+       and st.ranged.windupMeasured == true and st.ranged.stopByRatio == nil, "ResetWindupReads: rings cleared, save cleared, seed share, still measured")
     Nock.db = nil
-    module._stopRatios, module._interruptRatios = savedS, savedI
-    module:ApplyWindupEstimate()
   end
 
   -- The median: a wild read does not move the estimate the way an average would.

@@ -62,10 +62,10 @@ ok(text:find("UnitCastingInfo: nil", 1, true), "casting info line")
 -- cast ring
 module:OnEnable()
 ok(module.events["UNIT_SPELLCAST_START"] and module.events["UNIT_SPELLCAST_SUCCEEDED"] and module.events["UNIT_SPELLCAST_STOP"], "cast events registered")
-for i = 1, 25 do module:OnCast("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 1000 + i, nil) end
+for i = 1, 305 do module:OnCast("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 1000 + i, nil) end
 module:OnCast("UNIT_SPELLCAST_SUCCEEDED", "target", "guid", 9, nil)
 local casts = module:Casts()
-ok(#casts == 20 and casts[#casts].spellID == 1025 and casts[1].spellID == 1006, "ring keeps the last 20 player casts only")
+ok(#casts == 300 and casts[#casts].spellID == 1305 and casts[1].spellID == 1006, "ring keeps the last 300 player casts only (one dummy session)")
 
 -- `/nock probe aura <name> [id]`: waits for the named player aura (a short
 -- proc cannot be caught by hand), then reports how the cache stored it.
@@ -369,7 +369,7 @@ do
   ok(rep:find("PLAYER_SWING Ranged  dur 2.000  +0.000 vs cycle  extra=[0.35]", 1, true), "extra PLAYER_SWING payload shown")
   ok(rep:find("RELEASE  start->swing 0.350 s  dur 2.000  delay 0.000  (cast-sampled shot)", 1, true), "release row")
   ok(rep:find("feed SUCCEEDED(75)", 1, true), "other feed edges stripped of their prefix")
-  ok(not rep:find("MainHand", 1, true) or rep:find("MainHand=0", 1, true), "melee swings stay out of the timeline")
+  ok(rep:find("PLAYER_SWING MainHand  dur 2.600", 1, true), "melee swings are in the timeline (the reset question)")
   ok(rep:find("1 START(75), 1 client windows (mean 0.350 s), 1 release reads (mean 0.350 s), sampled cast=1 release=0", 1, true), "summary counts")
   ok(rep:find("82.5% into the cycle", 1, true) and rep:find("TBC model", 1, true), "phase verdict: end of cycle")
 
@@ -413,7 +413,21 @@ do
   ok(im:find("MOVE  0.900 before the shot was due: free (no interrupt)", 1, true), "a free move row")
   ok(im:find("MOVE  0.450 before the shot was due: INTERRUPTED the wind-up (+0.210 s)", 1, true), "an interrupting move row, with the lag (0.21 s is inside the 0.4 s window)")
   ok(im:find("feed INTERRUPTED(75)  bar rem 0.240  SAMPLED interrupt (move at rem 0.450)", 1, true), "the interrupt row names its move")
-  ok(im:find("band in use: 0.580 s from interrupt; stop-by edge 0.950 s", 1, true), "band and stop-by line")
+  ok(im:find("band in use: 0.580 s (share 0.0000) from interrupt; stop-by edge 0.950 s", 1, true), "band and stop-by line")
+
+  -- The band's feed rows and the share line.
+  local so = Probe.WindupReport({ state = { windup = 0.655, windupRatio = 0.2934, windupSource = "switch-on" },
+    share = { published = 0.244, reads = { 0.244, 0.251 }, key = "19361" },
+    windups = {
+      { t = 10.0, ev = "ON->SHOT", read = 0.655, duration = 2.232, rtt = 0.11, idle = true, sampled = "switch-on", share = 0.244 },
+      { t = 20.0, ev = "ON->SHOT", read = 0.9, duration = 2.232, rtt = 0.11, idle = true, moved = true },
+      { t = 30.0, ev = "ON->SHOT", read = 0.7, duration = 2.232, rtt = 0.11, idle = false },
+    } })
+  ok(so:find("ON->SHOT  0.655 s after the press  share 0.244  SAMPLED switch-on", 1, true), "a sampled switch-on row")
+  ok(so:find("ON->SHOT  0.900 s after the press  (moved: not a read)", 1, true), "a moved switch-on row")
+  ok(so:find("ON->SHOT  0.700 s after the press  (bar was running: not a read)", 1, true), "a running-bar switch-on row")
+  ok(so:find("band in use: 0.655 s (share 0.2934) from switch-on", 1, true), "band line with the share")
+  ok(so:find("switch-on reads (server share, weapon 19361): 0.244, 0.251; published 0.244", 1, true), "the reads behind the share")
   ok(im:find("interrupt=1", 1, true), "sampled interrupt count")
   ok(im:find("moves inside a running swing: 3: the wind-up begins between 0.450 and 0.900 s before the shot", 1, true), "the edge is bracketed")
   ok(im:find("RESTART->SHOT  (wind-up interrupted this cycle)  shot 0.700 late  0.950 after the stop  (penalty, not sampled)", 1, true), "restart row")
@@ -438,6 +452,94 @@ do
   })
   ok(all:find("cast START  spell 1234567  castBar 9  UnitCastingInfo: Auto Shot id=1234567 51600..52000 ms", 1, true), "a START under another id shows with the client's record")
   ok(all:find("cast FAILED  spell 75  x3", 1, true), "a FAILED run folds with its count")
+
+  -- One-session probe (2026-10-18): the melee-reset question. A melee hit
+  -- followed by a ranged PLAYER_SWING inside 0.1 s is the client restarting
+  -- the reload; with no such event the next shot's timing says whether the
+  -- reload restarted silently (a full reload after the hit) or ran on.
+  local mr = Probe.WindupReport({ swings = {
+    { t = 100.0, swingType = 2, duration = 2.0 },
+    { t = 101.0, swingType = 0, duration = 2.6 },
+    { t = 101.05, swingType = 2, duration = 2.0 },
+    { t = 103.05, swingType = 2, duration = 2.0 },
+    { t = 104.0, swingType = 0, duration = 2.6 },
+    { t = 106.0, swingType = 2, duration = 2.0 },
+    { t = 107.0, swingType = 0, duration = 2.6 },
+    { t = 108.0, swingType = 2, duration = 2.0 },
+  } })
+  ok(mr:find("PLAYER_SWING MainHand  dur 2.600  ranged event +0.050 after: the client restarted the reload", 1, true), "a hit with a ranged event right after")
+  ok(mr:find("PLAYER_SWING MainHand  dur 2.600  no ranged event; next shot +2.000 after the hit (reload 2.000), +0.950 vs the old due: the reload restarted silently", 1, true), "a silent restart read from the next shot")
+  ok(mr:find("PLAYER_SWING MainHand  dur 2.600  no ranged event; next shot +1.000 after the hit (reload 2.000), +0.000 vs the old due: the reload ran on", 1, true), "no restart read from the next shot")
+  ok(mr:find("melee hits: 3; ranged event within 0.1 s: 1; silent restarts: 1; ran on: 1", 1, true), "melee-reset summary")
+
+  -- The haste question: moves grouped by the reload they were made in. The
+  -- same edge in seconds across reloads = fixed seconds; the same share = scaled.
+  local fixed = Probe.WindupReport({ windups = {
+    { t = 10.0, ev = "MOVE", swingRemaining = 0.55, swingDuration = 2.0 }, { t = 10.21, ev = "UNIT_SPELLCAST_INTERRUPTED" },
+    { t = 12.0, ev = "MOVE", swingRemaining = 0.70, swingDuration = 2.0 },
+    { t = 20.0, ev = "MOVE", swingRemaining = 0.54, swingDuration = 1.43 }, { t = 20.21, ev = "UNIT_SPELLCAST_INTERRUPTED" },
+    { t = 22.0, ev = "MOVE", swingRemaining = 0.66, swingDuration = 1.43 },
+  } })
+  ok(fixed:find("reload 2.000 s: 2 moves, interrupted up to 0.550 s (share 0.275), free from 0.700 s", 1, true), "a per-reload edge line, slow reload")
+  ok(fixed:find("reload 1.430 s: 2 moves, interrupted up to 0.540 s (share 0.378), free from 0.660 s", 1, true), "a per-reload edge line, hasted reload")
+  ok(fixed:find("haste: the edge stays at 0.54-0.55 s across reloads 1.430-2.000: the wind-up is FIXED SECONDS (not scaled)", 1, true), "haste verdict: fixed seconds")
+  local scaled = Probe.WindupReport({ windups = {
+    { t = 10.0, ev = "MOVE", swingRemaining = 0.55, swingDuration = 2.0 }, { t = 10.21, ev = "UNIT_SPELLCAST_INTERRUPTED" },
+    { t = 20.0, ev = "MOVE", swingRemaining = 0.39, swingDuration = 1.43 }, { t = 20.21, ev = "UNIT_SPELLCAST_INTERRUPTED" },
+  } })
+  ok(scaled:find("haste: the edge keeps its share 0.273-0.275 across reloads 1.430-2.000: the wind-up SCALES with haste", 1, true), "haste verdict: scaled")
+  local one = Probe.WindupReport({ windups = { { t = 10.0, ev = "MOVE", swingRemaining = 0.55, swingDuration = 2.0 }, { t = 10.21, ev = "UNIT_SPELLCAST_INTERRUPTED" } } })
+  ok(one:find("haste: interrupts seen at one reload only (2.000 s); repeat the moves with Rapid Fire up", 1, true), "haste verdict needs two reloads")
+
+  -- The switch-on question: !Auto Shot from idle to the first shot.
+  local on = Probe.WindupReport({
+    swings = { { t = 100.0, swingType = 2, duration = 2.0 }, { t = 110.72, swingType = 2, duration = 2.0 }, { t = 112.72, swingType = 2, duration = 2.0 } },
+    windups = { { t = 105.0, ev = "AUTO_OFF", swingRemaining = 0 }, { t = 110.0, ev = "AUTO_ON", swingRemaining = 0, latency = 0.11 }, { t = 111.0, ev = "AUTO_ON", swingRemaining = 1.72, latency = 0.11 } },
+  })
+  ok(on:find("AUTO_ON  bar idle  first shot +0.720 s (rtt 0.110)", 1, true), "a switch-on from idle with its first shot")
+  ok(on:find("AUTO_ON  bar running (rem 1.720)", 1, true), "a switch-on while the bar runs is tagged, not read")
+  ok(on:find("AUTO_OFF", 1, true), "the switch-off row")
+  ok(on:find("switch-on from idle -> first shot: 1 read, 0.720 s (0.5 + rtt + 0.110)", 1, true), "switch-on summary")
+  ok(on:find("reload 2.000 s: 1 switch-on, 0.720 s (share 0.360)", 1, true), "switch-on per reload (the second haste witness)")
+
+  -- First run (2026-10-18): moves with auto-repeat OFF and moves inside the
+  -- move tail are not edge reads; dropped stop rows stay out of the summary.
+  local off = Probe.WindupReport({ state = { latency = 0.11 }, windups = {
+    { t = 10.0, ev = "MOVE", swingRemaining = 0.63, swingDuration = 2.23 }, { t = 10.2, ev = "UNIT_SPELLCAST_INTERRUPTED" },
+    { t = 12.0, ev = "AUTO_OFF", swingRemaining = 0 },
+    { t = 13.0, ev = "MOVE", swingRemaining = 0.58, swingDuration = 2.23 },
+    { t = 14.0, ev = "AUTO_ON", swingRemaining = 1.0 },
+    { t = 16.0, ev = "MOVE", swingRemaining = 0.09, swingDuration = 2.23 },
+    { t = 18.0, ev = "MOVE", swingRemaining = 0.67, swingDuration = 2.23 },
+    { t = 20.0, ev = "STOP->SHOT", stoppedAt = 18.3, due = 19.5, late = 0.5, raw = 1.7, latency = 0.11, lessRtt = 1.59, measured = 1.7 },
+    { t = 22.0, ev = "STOP->SHOT", stoppedAt = 21.0, due = 21.1, late = 0.9, raw = 1.0, latency = 0.11, lessRtt = 0.89, measured = 1.0, sampled = "stop" },
+  } })
+  ok(off:find("MOVE  0.580 before the shot was due: auto-repeat off, nothing to interrupt (not a read)", 1, true), "a move with auto off is tagged")
+  ok(off:find("MOVE  0.090 before the shot was due: free, inside the move tail (rtt + 0.10 = 0.210 s)", 1, true), "a move inside the tail is tagged")
+  ok(off:find("moves inside a running swing: 2: the wind-up begins between 0.630 and 0.670 s before the shot", 1, true), "neither counts toward the edge")
+  ok(off:find("moves inside the move tail (last 0.210 s): 1, all free", 1, true), "tail summary")
+  ok(off:find("stop-gated shots: 1, raw (bar time) min 1.000 mean 1.000 max 1.000 s", 1, true), "dropped stop reads stay out of the stop summary")
+
+  -- The retry question: FAILED_QUIET(75) with a SENT(75) of the same cast id
+  -- is the player's press; the rest are the server's tries, 0.5 s apart.
+  local rt = Probe.WindupReport({
+    swings = { { t = 300.0, swingType = 2, duration = 2.0 }, { t = 303.47, swingType = 2, duration = 2.0 } },
+    casts = {
+      { t = 301.0, ev = "UNIT_SPELLCAST_SENT", spellID = 75, guid = "A" },
+      { t = 301.01, ev = "UNIT_SPELLCAST_FAILED_QUIET", spellID = 75, guid = "A" },
+      { t = 302.0, ev = "UNIT_SPELLCAST_FAILED_QUIET", spellID = 75, guid = "B" },
+      { t = 302.01, ev = "UNIT_SPELLCAST_FAILED_QUIET", spellID = 75, guid = "B" },
+      { t = 302.5, ev = "UNIT_SPELLCAST_FAILED_QUIET", spellID = 75, guid = "C" },
+      { t = 302.51, ev = "UNIT_SPELLCAST_FAILED_QUIET", spellID = 75, guid = "C" },
+    },
+  })
+  ok(rt:find("cast FAILED_QUIET  spell 75  (your press)", 1, true), "a press's failure is named")
+  ok(rt:find("cast FAILED_QUIET  spell 75  (server try)  x2", 1, true), "a server try folds its pair and is named")
+  ok(rt:find("server tries: 2, 0.500 s apart; shot 0.970 s after the last try", 1, true), "retry cadence summary")
+
+  -- The session script for the one-session probe.
+  local sc = Probe.WindupScript()
+  ok(sc:find("Rapid Fire", 1, true) and sc:find("melee", 1, true) and sc:find("/nock probe windup", 1, true), "script names the Rapid Fire leg, the melee leg and the report command")
   ok(all:find("cast SUCCEEDED  spell 1234567", 1, true), "the SUCCEEDED row")
 end
 

@@ -108,9 +108,8 @@ function ReactCastBar:ApplyLayout()
   self._lagW = nil
 end
 
--- The zone is sized once per cast with the latency at its start (Quartz and
--- AppelSwings do the same), and re-placed only when the device-pixel width
--- changes.
+-- The zone is sized once per cast with the latency at its start (as Quartz
+-- does), and re-placed only when the device-pixel width changes.
 function ReactCastBar:PaintLatency(c, p, maxW, state)
   local lag = self.bar.lag
   if c.startTime ~= self._lagStart then

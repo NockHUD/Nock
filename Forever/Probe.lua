@@ -6,7 +6,7 @@ local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 local Probe = Nock:NewModule("ForeverProbe", "AceEvent-3.0")
 Nock.ForeverProbe = Probe
 
-local CAST_MAX = 20
+local CAST_MAX = 300   -- one dummy session (the one-session wind-up probe, 2026-10-18)
 
 -- Pure: data table -> copybox text. Kept API-free so it is unit-testable.
 function Probe.Format(d)
@@ -80,7 +80,9 @@ end
 function Probe:OnCast(event, unit, castGUID, spellID, castBarID)
   if unit ~= "player" then return end
   local C = self._casts
-  local s = { t = GetTime(), ev = event, spellID = spellID, castBarID = castBarID }
+  -- The cast id pairs a FAILED_QUIET(75) with the SENT of the player's own
+  -- press; a failure with no SENT is one of the server's retries.
+  local s = { t = GetTime(), ev = event, spellID = spellID, castBarID = castBarID, guid = castGUID }
   -- What the client's own cast record says at a START (the wind-up question,
   -- 2026-10-16: a wind-up cast under another spell id would show here).
   if (event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_DELAYED") and _G.UnitCastingInfo then
@@ -226,8 +228,8 @@ function Probe.WindupReport(d)
   local L = {}
   local st = d.state or {}
   L[#L + 1] = ("Auto Shot wind-up probe  build %s  forever %s"):format(tostring(d.build), tostring(d.forever))
-  L[#L + 1] = ("state: windupRatio %.4f  windup %.3f s  measured %s  queueWindow %.2f s  swingDuration %.3f s"):format(
-    st.windupRatio or 0, st.windup or 0, tostring(st.windupMeasured), st.queueWindow or 0, st.swingDuration or 0)
+  L[#L + 1] = ("state: windupRatio %.4f  windup %.3f s  measured %s  queueWindow %.2f s  swingDuration %.3f s  rtt %.3f s"):format(
+    st.windupRatio or 0, st.windup or 0, tostring(st.windupMeasured), st.queueWindow or 0, st.swingDuration or 0, st.latency or 0)
   L[#L + 1] = "C_SwingTimer: " .. ((d.api and #d.api > 0) and table.concat(d.api, ", ") or "nil")
   local parts = {}
   for _, e in ipairs(d.enum or {}) do parts[#parts + 1] = e[1] .. "=" .. tostring(e[2]) end
@@ -238,9 +240,25 @@ function Probe.WindupReport(d)
   -- Merge the two rings on time.
   local rows = {}
   for _, w in ipairs(d.windups or {}) do rows[#rows + 1] = { t = w.t, w = w } end
-  local RANGED = 2
+  -- Ranged and main-hand swings: a melee hit is in the timeline for the
+  -- reset question (does the client send a ranged event for the restart?).
+  local RANGED, MAINHAND = 2, 0
+  local ranged = {}
   for _, s in ipairs(d.swings or {}) do
-    if s.swingType == RANGED then rows[#rows + 1] = { t = s.t, s = s } end
+    if s.swingType == RANGED or s.swingType == MAINHAND then rows[#rows + 1] = { t = s.t, s = s } end
+    if s.swingType == RANGED then ranged[#ranged + 1] = s end
+  end
+  -- The first ranged swing after t (inside `within` seconds when given).
+  local function nextRanged(t, within)
+    for _, s in ipairs(ranged) do
+      if s.t > t and (not within or s.t - t <= within) then return s end
+    end
+    return nil
+  end
+  -- The player's own !Auto Shot presses, by cast id (UNIT_SPELLCAST_SENT).
+  local pressGuid = {}
+  for _, c in ipairs(d.casts or {}) do
+    if c.ev == "UNIT_SPELLCAST_SENT" and tonumber(c.spellID) == 75 and c.guid ~= nil then pressGuid[c.guid] = c.t end
   end
   -- Every player cast edge the probe saw (any spell id), so a wind-up cast
   -- under another id than 75 shows. Runs of the same FAILED are folded.
@@ -250,6 +268,7 @@ function Probe.WindupReport(d)
     local c = casts[i]
     local n = 1
     while casts[i + n] and casts[i + n].ev == c.ev and c.ev:find("FAILED") and tostring(casts[i + n].spellID) == tostring(c.spellID)
+          and (casts[i + n].guid == nil or c.guid == nil or casts[i + n].guid == c.guid)
           and casts[i + n].t - casts[i + n - 1].t < 0.2 do n = n + 1 end
     rows[#rows + 1] = { t = c.t, c = c, n = n }
     i = i + n
@@ -262,6 +281,20 @@ function Probe.WindupReport(d)
   local movingShots, movingOnTime, movingLate = 0, {}, {}
   local restarts, restartSum, moves, intMax, freeMin, sampledInt = 0, 0, 0, nil, nil, 0
   local phaseSum, phaseN, lastSwing = 0, 0, nil
+  -- One-session probe (2026-10-18): melee reset, haste buckets, switch-on, retries.
+  local mhHits, mhEvent, mhSilent, mhRanOn = 0, 0, 0, 0
+  local buckets, bucketKeys = {}, {}
+  local onN, onSum, onRtt = 0, 0, 0
+  local onBuckets = {}            -- reload -> { n, sum }: the switch-on read per reload (the haste question, second witness)
+  local tries = {}
+  -- Auto-repeat as the timeline runs: a move with it OFF has no wind-up to
+  -- interrupt and is no probe of the edge (first run, 2026-10-18: two
+  -- "free" moves after an AUTO_OFF made the edge read as overlapping).
+  local autoOn = true
+  -- The move tail: a move begun inside the last rtt + 0.10 s cannot reach
+  -- the server before the shot, so it is free whatever the wind-up does.
+  local tail = (st.latency or 0.1) + 0.10
+  local tailMoves = 0
   for _, r in ipairs(rows) do
     local gap = prev and (r.t - prev) or 0
     local what
@@ -271,8 +304,48 @@ function Probe.WindupReport(d)
       if c.ci then
         ci = ("  UnitCastingInfo: %s id=%s %s..%s ms"):format(tostring(c.ci.name), tostring(c.ci.id), tostring(c.ci.startMs), tostring(c.ci.endMs))
       end
-      what = ("cast %s  spell %s%s%s%s"):format((c.ev or "?"):gsub("^UNIT_SPELLCAST_", ""), tostring(c.spellID),
-        c.castBarID and ("  castBar " .. tostring(c.castBarID)) or "", ci, r.n > 1 and (("  x%d"):format(r.n)) or "")
+      -- A FAILED_QUIET(75): the player's press (its SENT shares the cast
+      -- id, within 5 s) or one of the server's retries, 0.5 s apart.
+      local who = ""
+      if c.ev == "UNIT_SPELLCAST_FAILED_QUIET" and tonumber(c.spellID) == 75 then
+        local pt = c.guid and pressGuid[c.guid]
+        if pt and c.t - pt <= 5 then
+          who = "  (your press)"
+        else
+          who = "  (server try)"
+          tries[#tries + 1] = c.t
+        end
+      end
+      what = ("cast %s  spell %s%s%s%s%s"):format((c.ev or "?"):gsub("^UNIT_SPELLCAST_", ""), tostring(c.spellID),
+        c.castBarID and ("  castBar " .. tostring(c.castBarID)) or "", ci, who, r.n > 1 and (("  x%d"):format(r.n)) or "")
+    elseif r.s and r.s.swingType == MAINHAND then
+      -- The melee-reset question. A ranged PLAYER_SWING inside 0.1 s of the
+      -- hit is the client restarting the reload; with none, the next shot's
+      -- timing says whether the reload restarted silently (a full reload
+      -- after the hit) or ran on (at the old due).
+      local s = r.s
+      local tail
+      local ev = nextRanged(s.t, 0.1)
+      if ev then
+        mhEvent = mhEvent + 1
+        tail = ("ranged event %+.3f after: the client restarted the reload"):format(ev.t - s.t)
+      else
+        local nx = nextRanged(s.t)
+        if nx and lastSwing and tonumber(lastSwing.duration) and lastSwing.duration > 0 then
+          local gapHit = nx.t - s.t
+          local vsDue = nx.t - (lastSwing.t + lastSwing.duration)
+          local v
+          if math.abs(vsDue) < 0.15 then v = "the reload ran on"; mhRanOn = mhRanOn + 1
+          elseif math.abs(gapHit - lastSwing.duration) < 0.15 then v = "the reload restarted silently"; mhSilent = mhSilent + 1
+          else v = "unclear" end
+          tail = ("no ranged event; next shot %+.3f after the hit (reload %.3f), %+.3f vs the old due: %s"):format(
+            gapHit, lastSwing.duration, vsDue, v)
+        else
+          tail = "no ranged event; no shot after it yet"
+        end
+      end
+      mhHits = mhHits + 1
+      what = ("PLAYER_SWING MainHand  dur %.3f  %s"):format(tonumber(s.duration) or -1, tail)
     elseif r.s then
       local s = r.s
       local extra = ""
@@ -315,10 +388,15 @@ function Probe.WindupReport(d)
         what = ("RESTART->SHOT  (wind-up interrupted this cycle)  shot %.3f late  %.3f after the stop  (penalty, not sampled)"):format(
           w.late or 0, w.raw or 0)
       elseif w.ev == "STOP->SHOT" then
-        stops = stops + 1; stopSum = stopSum + (w.measured or 0); stopRaw = stopRaw + (w.raw or 0)
-        local m = w.measured or 0
-        if not stopMin or m < stopMin then stopMin = m end
-        if not stopMax or m > stopMax then stopMax = m end
+        -- Sampled reads feed the summary, plus an immediate shot after the
+        -- stop (dropped as too short to be a wind-up, but it IS evidence of
+        -- none); a stop made long before the due mark says nothing.
+        if w.sampled or (w.raw or 0) < 0.05 then
+          stops = stops + 1; stopSum = stopSum + (w.measured or 0); stopRaw = stopRaw + (w.raw or 0)
+          local m = w.measured or 0
+          if not stopMin or m < stopMin then stopMin = m end
+          if not stopMax or m > stopMax then stopMax = m end
+        end
         what = ("STOP->SHOT  stopped %+.3f vs due  shot %.3f late  %.3f after the stop (less rtt %.3f = %.3f)%s"):format(
           (w.stoppedAt or 0) - (w.due or 0), w.late or 0, w.raw or 0, w.latency or 0, w.lessRtt or (m - (w.latency or 0)),
           w.sampled and ("  SAMPLED " .. w.sampled) or "  (dropped)")
@@ -330,14 +408,72 @@ function Probe.WindupReport(d)
           if o.ev == "UNIT_SPELLCAST_INTERRUPTED" and o.t >= w.t and o.t - w.t <= 0.4 then hit, lag = true, o.t - w.t break end
         end
         local rem = w.swingRemaining or 0
-        if hit then
+        local counts = true
+        if not autoOn and not hit then
+          counts = false
+          what = ("MOVE  %.3f before the shot was due: auto-repeat off, nothing to interrupt (not a read)"):format(rem)
+        elseif not hit and rem <= tail then
+          counts = false
+          tailMoves = tailMoves + 1
+          what = ("MOVE  %.3f before the shot was due: free, inside the move tail (rtt + 0.10 = %.3f s)"):format(rem, tail)
+        elseif hit then
           if not intMax or rem > intMax then intMax = rem end
           what = ("MOVE  %.3f before the shot was due: INTERRUPTED the wind-up (+%.3f s)"):format(rem, lag)
         else
           if not freeMin or rem < freeMin then freeMin = rem end
           what = ("MOVE  %.3f before the shot was due: free (no interrupt)"):format(rem)
         end
-        moves = moves + 1
+        if counts then moves = moves + 1 end
+        -- Grouped by the reload the move was made in (the haste question).
+        local dk = tonumber(w.swingDuration) or 0
+        dk = math.floor(dk * 100 + 0.5) / 100
+        if dk > 0 and counts then
+          local b = buckets[dk]
+          if not b then b = { dur = dk, n = 0 }; buckets[dk] = b; bucketKeys[#bucketKeys + 1] = dk end
+          b.n = b.n + 1
+          if hit then
+            if not b.intMax or rem > b.intMax then b.intMax = rem end
+          elseif not b.freeMin or rem < b.freeMin then
+            b.freeMin = rem
+          end
+          what = what .. ("  [reload %.3f]"):format(dk)
+        end
+      elseif w.ev == "ON->SHOT" then
+        -- The band's feed: press on an idle bar -> first shot.
+        local why
+        if w.sampled == "switch-on" then why = ("share %.3f  SAMPLED switch-on"):format(w.share or 0)
+        elseif not w.idle then why = "(bar was running: not a read)"
+        elseif w.moving or w.moved then why = "(moved: not a read)"
+        elseif w.cast then why = "(cast in between: not a read)"
+        elseif w.inRange == false then why = "(target out of range at the press: not a read)"
+        else why = "(outside the plausible window: not a read)" end
+        what = ("ON->SHOT  %.3f s after the press  %s"):format(w.read or 0, why)
+      elseif w.ev == "AUTO_OFF" then
+        autoOn = false
+        what = "AUTO_OFF  (auto-repeat off)"
+      elseif w.ev == "AUTO_ON" then
+        autoOn = true
+        -- The switch-on question: from a press on an idle bar to the shot.
+        local rem = w.swingRemaining or 0
+        if rem > 0 then
+          what = ("AUTO_ON  bar running (rem %.3f)"):format(rem)
+        else
+          local nx = nextRanged(w.t, 5)
+          if nx then
+            local g = nx.t - w.t
+            onN, onSum, onRtt = onN + 1, onSum + g, onRtt + (w.latency or 0)
+            local dk = tonumber(nx.duration) or 0
+            dk = math.floor(dk * 100 + 0.5) / 100
+            if dk > 0 then
+              local b = onBuckets[dk] or { n = 0, sum = 0 }
+              b.n, b.sum = b.n + 1, b.sum + g
+              onBuckets[dk] = b
+            end
+            what = ("AUTO_ON  bar idle  first shot %+.3f s (rtt %.3f)"):format(g, w.latency or 0)
+          else
+            what = "AUTO_ON  bar idle  no shot yet"
+          end
+        end
       elseif w.ev == "RELEASE" then
         reads = reads + 1; readSum = readSum + (w.measured or 0)
         what = ("RELEASE  start->swing %.3f s  dur %.3f  delay %.3f%s%s"):format(
@@ -345,7 +481,9 @@ function Probe.WindupReport(d)
           w.fromCast and "  (cast-sampled shot)" or "", w.sampled and ("  SAMPLED " .. w.sampled) or "")
       else
         what = ("feed %s(75)  bar rem %.3f%s"):format((w.ev or "?"):gsub("^UNIT_SPELLCAST_", ""), w.swingRemaining or 0,
-          w.sampled == "interrupt" and ("  SAMPLED interrupt (move at rem %.3f)"):format(w.pairedMoveRem or 0) or "")
+          w.sampled == "interrupt" and ("  SAMPLED interrupt (move at rem %.3f)"):format(w.pairedMoveRem or 0)
+          or w.freshPress and ("  move at rem %.3f, fresh press since the last shot: not the bar's wind-up, not sampled"):format(w.pairedMoveRem or 0)
+          or w.pairedMoveRem and ("  move at rem %.3f: outside the band ceiling, not sampled"):format(w.pairedMoveRem) or "")
       end
       if w.sampled == "cast" then sampledCast = sampledCast + 1 elseif w.sampled == "release" then sampledRel = sampledRel + 1
       elseif w.sampled == "stop" then sampledStop = sampledStop + 1 elseif w.sampled == "interrupt" then sampledInt = sampledInt + 1 end
@@ -357,8 +495,14 @@ function Probe.WindupReport(d)
   L[#L + 1] = ""
   L[#L + 1] = ("summary: %d START(75), %d client windows (mean %.3f s), %d release reads (mean %.3f s), sampled cast=%d release=%d stop=%d interrupt=%d"):format(
     starts, windows, windows > 0 and winSum / windows or 0, reads, reads > 0 and readSum / reads or 0, sampledCast, sampledRel, sampledStop, sampledInt)
-  L[#L + 1] = ("band in use: %.3f s from %s; stop-by edge %s"):format(st.windup or 0, tostring(st.windupSource or "the seed"),
-    st.stopBy and ("%.3f s"):format(st.stopBy) or "none yet")
+  L[#L + 1] = ("band in use: %.3f s (share %.4f) from %s; stop-by edge %s"):format(st.windup or 0, st.windupRatio or 0,
+    tostring(st.windupSource or "the seed"), st.stopBy and ("%.3f s"):format(st.stopBy) or "none yet")
+  if d.share then
+    local parts = {}
+    for i = 1, #(d.share.reads or {}) do parts[#parts + 1] = ("%.3f"):format(d.share.reads[i]) end
+    L[#L + 1] = ("switch-on reads (server share, weapon %s): %s; published %s"):format(tostring(d.share.key or "any"),
+      #parts > 0 and table.concat(parts, ", ") or "none", d.share.published and ("%.3f"):format(d.share.published) or "seed")
+  end
   if stops > 0 then
     local m = stopSum / stops
     local verdict
@@ -387,6 +531,72 @@ function Probe.WindupReport(d)
       verdict = ("overlap (interrupted at %.3f, free at %.3f): the edge jitters or a move was not what ended it"):format(intMax, freeMin)
     end
     L[#L + 1] = ("moves inside a running swing: %d: %s"):format(moves, verdict)
+    -- Per reload, then the haste verdict: the same edge in SECONDS across
+    -- reloads means a fixed wind-up; the same SHARE means it scales.
+    table.sort(bucketKeys)
+    local secLo, secHi, shLo, shHi, dLo, dHi, nInt
+    for _, k in ipairs(bucketKeys) do
+      local b = buckets[k]
+      local intTxt = b.intMax and ("interrupted up to %.3f s (share %.3f)"):format(b.intMax, b.intMax / b.dur) or "interrupted: none"
+      local freeTxt = b.freeMin and ("free from %.3f s"):format(b.freeMin) or "free: none"
+      L[#L + 1] = ("  reload %.3f s: %d moves, %s, %s"):format(b.dur, b.n, intTxt, freeTxt)
+      if b.intMax then
+        local sh = b.intMax / b.dur
+        nInt = (nInt or 0) + 1
+        if not secLo or b.intMax < secLo then secLo = b.intMax end
+        if not secHi or b.intMax > secHi then secHi = b.intMax end
+        if not shLo or sh < shLo then shLo = sh end
+        if not shHi or sh > shHi then shHi = sh end
+        if not dLo or b.dur < dLo then dLo = b.dur end
+        if not dHi or b.dur > dHi then dHi = b.dur end
+      end
+    end
+    if (nInt or 0) >= 2 then
+      if secHi - secLo <= 0.08 and shHi - shLo > 0.03 then
+        L[#L + 1] = ("haste: the edge stays at %.2f-%.2f s across reloads %.3f-%.3f: the wind-up is FIXED SECONDS (not scaled)"):format(secLo, secHi, dLo, dHi)
+      elseif shHi - shLo <= 0.03 and secHi - secLo > 0.08 then
+        L[#L + 1] = ("haste: the edge keeps its share %.3f-%.3f across reloads %.3f-%.3f: the wind-up SCALES with haste"):format(shLo, shHi, dLo, dHi)
+      else
+        L[#L + 1] = ("haste: unclear (edges %.2f-%.2f s, shares %.3f-%.3f across reloads %.3f-%.3f): more moves at both speeds"):format(secLo, secHi, shLo, shHi, dLo, dHi)
+      end
+    elseif nInt == 1 then
+      L[#L + 1] = ("haste: interrupts seen at one reload only (%.3f s); repeat the moves with Rapid Fire up"):format(dLo)
+    elseif #bucketKeys > 0 then
+      L[#L + 1] = "haste: no interrupted move yet; move later in the reload to find the edge"
+    end
+  end
+  if mhHits > 0 then
+    L[#L + 1] = ("melee hits: %d; ranged event within 0.1 s: %d; silent restarts: %d; ran on: %d"):format(mhHits, mhEvent, mhSilent, mhRanOn)
+  end
+  if tailMoves > 0 then
+    L[#L + 1] = ("moves inside the move tail (last %.3f s): %d, all free"):format(tail, tailMoves)
+  end
+  if onN > 0 then
+    local mean, rtt = onSum / onN, onRtt / onN
+    L[#L + 1] = ("switch-on from idle -> first shot: %d read%s, %.3f s (0.5 + rtt + %.3f)"):format(onN, onN == 1 and "" or "s", mean, mean - 0.5 - rtt)
+    -- Per reload: a second witness for the haste question (the switch-on
+    -- wait is the wind-up itself, read from a standing start).
+    local keys = {}
+    for k in pairs(onBuckets) do keys[#keys + 1] = k end
+    table.sort(keys)
+    for _, k in ipairs(keys) do
+      local b = onBuckets[k]
+      L[#L + 1] = ("  reload %.3f s: %d switch-on%s, %.3f s (share %.3f)"):format(k, b.n, b.n == 1 and "" or "s", b.sum / b.n, b.sum / b.n / k)
+    end
+  end
+  if #tries > 0 then
+    local gapSum, gapN = 0, 0
+    for i = 2, #tries do
+      local g = tries[i] - tries[i - 1]
+      if g < 2 then gapSum, gapN = gapSum + g, gapN + 1 end
+    end
+    local nx = nextRanged(tries[#tries], 5)
+    local after = nx and ("shot %.3f s after the last try"):format(nx.t - tries[#tries]) or "no shot after the last try yet"
+    if gapN > 0 then
+      L[#L + 1] = ("server tries: %d, %.3f s apart; %s"):format(#tries, gapSum / gapN, after)
+    else
+      L[#L + 1] = ("server tries: %d; %s"):format(#tries, after)
+    end
   end
   -- Shots made on the move: if those on time all began their move inside the
   -- last W, the wind-up needs stillness only at its START (move freely once
@@ -637,6 +847,23 @@ function Probe:BlizzSwingData()
   }
 end
 
+-- `/nock probe windup script`: the one-session dummy run that feeds every
+-- question in WindupReport (Rapid Fire's cooldown is long, so one session).
+function Probe.WindupScript()
+  return table.concat({
+    "Auto Shot wind-up: one-session probe. Target dummy, Auto Shot on, stand at range. Do not /reload before copying the report.",
+    "",
+    "1. EDGE, unhasted (~2 min): shoot standing still. On separate shots, start moving (a step back) at about 0.3, 0.45, 0.6, 0.75 and 0.9 s before the shot; keep moving ~1 s, stop, let the shot come. Do the set twice.",
+    "2. EDGE under Rapid Fire (15 s): pop Rapid Fire, repeat the same moves, one per shot, as many as fit in the buff.",
+    "3. MELEE (~1 min): with the bar running, run in, let ONE melee swing land, run back out, shoot. Four times, with the hit at different points of the reload.",
+    "4. SWITCH-ON (~1 min): press !Auto Shot to turn it off, stand still until the bar is empty, press once, stand still until the shot. Four times.",
+    "5. RETRIES (~1 min): with the bar near full, walk and keep walking ~1.5 s past the shot time, stop, stand still until the shot. Four times.",
+    "",
+    "Then /nock probe windup and paste everything from the box.",
+    "The report groups moves by reload (step 1 vs 2), reads each melee hit (3), each AUTO_ON from idle (4) and the server tries (5).",
+  }, "\n")
+end
+
 -- The live data for WindupReport (API-touching half).
 function Probe:WindupData()
   local version, build = GetBuildInfo()
@@ -669,11 +896,17 @@ function Probe:WindupData()
     build = ("%s (%s)"):format(tostring(version), tostring(build)), forever = Nock.Flavor.forever,
     state = { windupRatio = r.windupRatio, windup = r.windup, windupMeasured = r.windupMeasured,
               windupSource = r.windupSource, stopBy = r.stopByRatio and (r.stopByRatio * r.swingDuration) or nil,
-              queueWindow = r.queueWindow, swingDuration = r.swingDuration },
+              queueWindow = r.queueWindow, swingDuration = r.swingDuration,
+              latency = ((Nock.state.network and Nock.state.network.latencyMs) or 0) / 1000 },
     api = api, enum = enum, globals = globals, castingInfo = castingInfo,
     windups = (ST and ST.WindupSamples) and ST:WindupSamples() or {},
     swings = (ST and ST.Samples) and ST:Samples() or {},
     casts = self:Casts(),
+    share = (function()
+      if not (ST and ST.WindupShare) then return nil end
+      local pub, reads, key = ST:WindupShare()
+      return { published = pub, reads = reads, key = key }
+    end)(),
   }
 end
 
@@ -2106,10 +2339,14 @@ function Probe:Show(which, rest)
   -- `/nock probe windup`: the Auto Shot wind-up as the client now serves it,
   -- plus Blizzard's own swing-timer frame. The first run installs read-only
   -- hooks on that frame; shoot a few cycles and run it again for the log.
+  if which == "windup" and rest == "script" then
+    if Nock.UI and Nock.UI.ShowCopyBox then Nock.UI.ShowCopyBox(Probe.WindupScript()) else Nock:Print(Probe.WindupScript()) end
+    return
+  end
   if which == "windup" and rest == "reset" then
     local ST = Nock:GetModule("SwingTimer", true)
     if ST and ST.ResetWindupReads then ST:ResetWindupReads() end
-    Nock:Print("Auto Shot wind-up reads cleared (this session and saved): the bar is unmeasured until the next stop-gated shots.")
+    Nock:Print("Auto Shot wind-up reads cleared (this session and saved, every weapon): the mark is on the seed share until the next pull.")
     return
   end
   if which == "windup" then

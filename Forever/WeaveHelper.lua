@@ -280,7 +280,11 @@ function WeaveHelper:Refresh(state)
   local k = self:ReadKeys(self._k)
   local radial, lateral = WeaveHelper.Radial(k, self._moving)
   local before = st.stage
-  E.Step(st, now, zone, rest, radial, facing(), meleeReadyIn, r.swingRemaining, r.queueWindow, raptorReadyIn, rangedElapsed, lateral)
+  -- The release tail: a move begun inside the last rtt + 0.10 s cannot reach
+  -- the server before the shot (probe 2026-10-18: a move 0.093 s before the
+  -- shot fired it on time). Forever has no spell-queue window.
+  local tail = (((Nock.state.network and Nock.state.network.latencyMs) or 0) / 1000) + 0.10
+  E.Step(st, now, zone, rest, radial, facing(), meleeReadyIn, r.swingRemaining, tail, raptorReadyIn, rangedElapsed, lateral)
   if st.stage ~= before then
     self:LogTransition(now, before, st.stage, zone, rangedElapsed, meleeReadyIn, raptorReadyIn, st.radial, st.face, st.lateral)
     -- The cue sounds (Forever/RangeCues.lua) and anything else that wants a

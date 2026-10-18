@@ -6,7 +6,7 @@
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 local SwingTimer = Nock:NewModule("SwingTimer", "AceEvent-3.0")
 
-local SAMPLE_MAX = 20
+local SAMPLE_MAX = 200   -- one dummy session's worth (the one-session probe, 2026-10-18)
 
 -- A Ranged PLAYER_SWING this soon after a melee hit is the client's own reset
 -- of the ranged reload (Forever client bug: melee resets ranged; fix pending),
@@ -27,9 +27,8 @@ local RESET_GRACE = 0.1
 -- standing the queue window in for it (Nock.AutoShotWindup).
 local WINDUP_MIN, WINDUP_MAX = 0.05, 1.0
 local WINDUP_MAX_DELAY = 0.03   -- seconds of shot lateness that still counts as a clean cycle
-local WINDUP_ALPHA     = 0.5
 local WINDUP_END_GRACE = 0.05   -- a STOP this close before the swing is the normal end, not a cancel
-local WINDUP_RING      = 60     -- probe ring
+local WINDUP_RING      = 200    -- probe ring: one dummy session (2026-10-18)
 -- Third feed (the one that actually has data on build 70425, probe
 -- 2026-10-16: the client raises NO cast edge for Auto Shot, UnitCastingInfo
 -- is nil, SUCCEEDED(75) lands in the frame of PLAYER_SWING): the shot cannot
@@ -68,20 +67,51 @@ local WINDUP_RING      = 60     -- probe ring
 -- 0.64 s or earlier was free: the wind-up begins ~0.55-0.6 s before the
 -- shot in bar time (the 0.5 s of the patch note plus latency). The stop
 -- reads are another thing: 0.68-1.07 s raw, restart or not, as if the
--- server only picks the wind-up up on a tick after a stop. So:
---   * the BAND (windupRatio, what the bar and the modelled wind-up draw) is
---     the interrupt edge: the largest remaining-time at which a move was
---     interrupted, plus a small margin, grown by every interrupt seen;
---   * until an interrupt has been seen the SHORTEST stop read stands in
---     (tick-aligned, it is about W + rtt);
---   * the stop reads' upper median is published separately as stopByRatio,
---     the conservative "stop moving by here" edge.
+-- server only picks the wind-up up on a tick after a stop. It is a retry
+-- rhythm: the server retries a held shot every 0.5 s (UNIT_SPELLCAST_FAILED_QUIET
+-- on 75, no SENT of its own), and the shot comes retry + wind-up later
+-- (probe 2026-10-18: four tries 0.526 s apart, the shot 0.959 s after the
+-- last). The band was the interrupt edge
+-- as a running max until 2026-10-18; it crept with every read. Now:
+-- THE BAND (2026-10-18 design, from the one-session probe on build 70450):
+-- the wind-up SCALES with the reload (interrupt edge 0.63-0.67 s at a 2.232 s
+-- reload, 0.44-0.60 s under Rapid Fire at 1.595 s; switch-on waits 0.66 /
+-- 0.65 and 0.51 / 0.47 s), so the band is a fixed SHARE of the bar:
+--   windupRatio = shareServer + rtt / reload
+-- shareServer is the haste-invariant part (the server's wind-up over the
+-- reload, 0.5 / weapon speed if the patch note holds), rtt the round trip
+-- (quantised to RTT_STEP). The share comes from the SWITCH-ON read: !Auto
+-- Shot pressed on an idle bar, standing still, the first shot one wind-up
+-- later -- clean, unambiguous, and every pull in real play is one. It is
+-- published as the upper median of the last ON_READS reads, per character
+-- and per ranged weapon, and the published value only moves when the
+-- median is more than ON_STEP away from it: a step on a new weapon or a real
+-- change, never a creep (the earlier running max crept with every read and
+-- the mark drifted, user 2026-10-18). Until a read exists the seed stands
+-- in. The interrupt pairing and the stop reads stay as probe evidence and
+-- the stop-by edge; neither moves the band any more.
+local ON_READS   = 7
+local ON_STEP    = 0.03
+local ON_MIN, ON_MAX = 0.2, 1.0    -- seconds press -> shot that can be a wind-up
+local SHARE_MAX  = 0.6
+local SEED_SHARE_SERVER = 0.24     -- (0.655 - 0.110) / 2.232, the 2026-10-18 session
+local RTT_STEP   = 0.01            -- the published rtt part moves in these steps (sub-pixel on the bar)
 local STOP_LATE_MIN    = 0.05   -- a shot this much past its due time was pushed by something
 local STOP_RAW_MAX     = 2.0    -- a stop further back than this before the shot was not what gated it
 local STOP_READS       = 7      -- the stop-read window
 local INTERRUPT_READS  = 10     -- the interrupt-edge window
 local MOVE_PAIR_WINDOW = 0.4    -- an INTERRUPTED(75) this soon after a move start belongs to it
-local INTERRUPT_MARGIN = 0.02   -- ratio: the edge sits a little above the largest interrupted read
+-- An interrupt is a read only when the wind-up it ended is the bar's own: a
+-- fresh !Auto Shot press (new target, or auto re-armed since the last shot)
+-- winds up from the press while the bar still runs the previous cycle, so a
+-- nudge right after it paired with a large remaining time, and the band
+-- being a max made that one read a permanent too-early mark (reported
+-- 2026-10-18, mark at ~30% of the bar). The stop path had both guards; this
+-- one now has them too, plus a ceiling: no wind-up runs a full second
+-- (WINDUP_MAX) before the shot, and in ratio form 0.5 is a second at a
+-- two-second cycle, past any ranged weapon outside a haste burst. Saved
+-- reads from before the rule pass the same ceiling on restore.
+local INTERRUPT_RATIO_MAX = 0.5
 
 local function swingType(name)
   local E = _G.Enum and _G.Enum.PlayerSwingType
@@ -109,7 +139,10 @@ function SwingTimer:OnEnable()
   self._moving, self._movedAt, self._stoppedAt = false, nil, nil
   -- Auto Shot wind-up edges (spell 75 only; everything else is dropped on entry).
   self._windups, self._stopRatios, self._interruptRatios = {}, {}, {}
+  self._onReads, self._onKey, self._switchOn, self._shareServer, self._onMedian = {}, nil, nil, nil, nil
+  self._onKey = SwingTimer.WeaponKey()
   self:RestoreWindupReads()
+  self:ApplyWindupEstimate()
   self._windupStart, self._windupSd, self._windupEndAt, self._windupFromCast = nil, nil, nil, false
   self:RegisterEvent("UNIT_SPELLCAST_START", "OnAutoShotEdge")
   self:RegisterEvent("UNIT_SPELLCAST_STOP", "OnAutoShotEdge")
@@ -159,6 +192,7 @@ end
 
 function SwingTimer:PLAYER_TARGET_CHANGED()
   self._targetChangedAt = GetTime()
+  self._switchOn = nil       -- the first shot now goes to another target: no switch-on read
   self:RefreshTargetRange()
 end
 
@@ -181,12 +215,15 @@ function SwingTimer:PLAYER_STARTED_MOVING()
   self._moving, self._movedAt = true, now
   local c = Nock.state.context
   c.moving, c.movingSince = true, now
+  if self._switchOn then self._switchOn.moved = true end
   -- A move inside a running swing is a probe of the wind-up's start (see
   -- the INTERRUPTED note above); the ring pairs it with any interrupt.
   local r = Nock.state.ranged
   if r.swingStart > 0 and r.swingRemaining > 0 and self._windups then
     local W = self._windups
-    W[#W + 1] = { t = now, ev = "MOVE", swingRemaining = r.swingRemaining }
+    -- The reload the move was made in: the probe groups moves by it to
+    -- tell a fixed-seconds wind-up from one that scales with haste.
+    W[#W + 1] = { t = now, ev = "MOVE", swingRemaining = r.swingRemaining, swingDuration = r.swingDuration }
     if #W > WINDUP_RING then table.remove(W, 1) end
     self._lastMoveAt, self._lastMoveRem = now, r.swingRemaining
   else
@@ -242,12 +279,15 @@ function SwingTimer:PLAYER_SWING(event, duration, kind, ...)
     local r = Nock.state.ranged
     local isReset = self._lastHitAt ~= nil and (now - self._lastHitAt) <= RESET_GRACE
     if not isReset then
-      self:UpdateWindupFromStop(now, duration)   -- reads the state BEFORE this shot moves it
+      self:UpdateWindupFromSwitchOn(now, duration)   -- the band's feed; reads the state BEFORE this shot moves it
+      self:UpdateWindupFromStop(now, duration)
       self:UpdateAutoDelay(now)
       self:UpdateWindupAtRelease(now, duration)
     end
+    self._switchOn = nil
     r.swingStart = now
     r.swingDuration = duration
+    self:ApplyWindupEstimate(duration)   -- rtt / reload follows the reload
   elseif kind == swingType("MainHand") then
     local m = Nock.state.melee
     m.swingStart = now
@@ -261,19 +301,11 @@ function SwingTimer:PLAYER_SWING(event, duration, kind, ...)
   end
 end
 
--- One accepted wind-up sample: ratio = wind-up seconds / swing seconds. The
--- first real sample replaces the TBC seed outright; later ones average in.
+-- A cast-edge or release read (feeds never seen on this client): the row is
+-- tagged when the ratio is plausible, and that is all -- the band is the
+-- switch-on share (see THE BAND above).
 local function acceptWindupRatio(ratio)
-  if ratio <= 0.01 or ratio >= 1 then return false end
-  local r = Nock.state.ranged
-  local cur = r.windupRatio
-  if not r.windupMeasured or not cur or cur <= 0 then
-    r.windupRatio = ratio
-  else
-    r.windupRatio = cur + (ratio - cur) * WINDUP_ALPHA
-  end
-  r.windupMeasured = true
-  return true
+  return ratio > 0.01 and ratio < 1
 end
 
 local function pushWindup(self, sample)
@@ -295,7 +327,10 @@ function SwingTimer:OnAutoShotEdge(event, unit, castGUID, spellID)
   if P(spellID) ~= Nock.Spells.AUTO_SHOT then
     -- Another spell's START or release: a shot after it may have been pushed
     -- by the cast rather than by a stop (UpdateWindupFromStop).
-    if event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_SUCCEEDED" then self._lastCastAt = GetTime() end
+    if event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_SUCCEEDED" then
+      self._lastCastAt = GetTime()
+      if self._switchOn then self._switchOn.cast = true end
+    end
     return
   end
   -- SUCCEEDED(75) is the shot (PLAYER_SWING has it) and FAILED(75) is the
@@ -329,14 +364,18 @@ function SwingTimer:OnAutoShotEdge(event, unit, castGUID, spellID)
       local r = Nock.state.ranged
       if self._lastMoveAt and now - self._lastMoveAt <= MOVE_PAIR_WINDOW and self._lastMoveRem and r.swingDuration > 0 then
         local ratio = self._lastMoveRem / r.swingDuration
-        sample.pairedMoveRem, sample.lag = self._lastMoveRem, now - self._lastMoveAt
-        if ratio > 0.01 and ratio < 1 then
+        sample.pairedMoveRem, sample.lag, sample.swingDuration = self._lastMoveRem, now - self._lastMoveAt, r.swingDuration
+        -- Not the bar's wind-up: a press since the last shot started its own.
+        local prevShot = r.swingStart
+        local fresh = (self._targetChangedAt and self._targetChangedAt >= prevShot)
+                   or (self._autoStartAt and self._autoStartAt >= prevShot)
+        if fresh then sample.freshPress = true end
+        if not fresh and self._lastMoveRem <= WINDUP_MAX
+           and ratio > 0.01 and ratio < INTERRUPT_RATIO_MAX then
           local R = self._interruptRatios
           R[#R + 1] = ratio
           if #R > INTERRUPT_READS then table.remove(R, 1) end
-          sample.sampled = "interrupt"
-          self:ApplyWindupEstimate()
-          self:SaveWindupReads()
+          sample.sampled = "interrupt"      -- probe evidence; the band is the switch-on share
         end
         self._lastMoveAt, self._lastMoveRem = nil, nil
       end
@@ -400,54 +439,103 @@ function SwingTimer:UpdateWindupFromStop(now, duration)
   R[#R + 1] = ratio
   if #R > STOP_READS then table.remove(R, 1) end
   sample.sampled = "stop"
-  self:ApplyWindupEstimate()
+  self:ApplyWindupEstimate()   -- the stop-by edge; the band itself does not move
+end
+
+-- The switch-on read (the band's feed): !Auto Shot pressed on an idle bar,
+-- the player still and casting nothing until the shot, the target in range
+-- at the press. press -> shot is the wind-up in bar time; less the round
+-- trip, over the reload, it is the server's share.
+function SwingTimer:UpdateWindupFromSwitchOn(now, duration)
+  local so = self._switchOn
+  self._switchOn = nil
+  if not so then return end
+  local read = now - so.t
+  local sample = { t = now, ev = "ON->SHOT", read = read, duration = duration, rtt = so.rtt, idle = so.idle,
+                   moving = so.moving, moved = so.moved, cast = so.cast, inRange = so.inRange }
+  pushWindup(self, sample)
+  if not so.idle or so.moving or so.moved or so.cast or so.inRange == false then return end
+  if read < ON_MIN or read > ON_MAX then return end
+  if type(duration) ~= "number" or duration <= 0 then return end
+  local share = (read - (so.rtt or 0)) / duration
+  if share <= 0.02 or share >= SHARE_MAX then return end
+  local R = self._onReads
+  R[#R + 1] = share
+  if #R > ON_READS then table.remove(R, 1) end
+  sample.sampled, sample.share = "switch-on", share
+  self._onMedian = nil
   self:SaveWindupReads()
 end
 
--- The published numbers from the two rings (see the note above STOP_LATE_MIN).
-function SwingTimer:ApplyWindupEstimate()
+-- The equipped ranged weapon's item id as a string, or "any": the share is
+-- per weapon (0.5 / its speed), so a swap starts its own reads.
+function SwingTimer.WeaponKey()
+  local id = _G.GetInventoryItemID and _G.GetInventoryItemID("player", 18)
+  id = Nock.Flavor.Plain(id)
+  return (type(id) == "number" and id > 0) and tostring(id) or "any"
+end
+
+local function rttNow(quantised)
+  local n = Nock.state.network
+  local rtt = ((n and n.latencyMs) or 0) / 1000
+  if quantised then return math.floor(rtt / RTT_STEP + 0.5) * RTT_STEP end
+  return rtt
+end
+
+-- The published band (see THE BAND above). `duration` is the reload the
+-- rtt part is spread over (the shot's, else the state's). The median is
+-- cached until a read changes the ring; the published server share moves
+-- only by a step of more than ON_STEP.
+function SwingTimer:ApplyWindupEstimate(duration)
   local r = Nock.state.ranged
-  local I, S = self._interruptRatios or {}, self._stopRatios or {}
-  if #I > 0 then
-    local mx = I[1]
-    for i = 2, #I do if I[i] > mx then mx = I[i] end end
-    r.windupRatio, r.windupSource, r.windupMeasured = math.min(0.99, mx + INTERRUPT_MARGIN), "interrupt", true
-  elseif #S > 0 then
-    local mn = S[1]
-    for i = 2, #S do if S[i] < mn then mn = S[i] end end
-    r.windupRatio, r.windupSource, r.windupMeasured = mn, "stop", true
-  else
-    r.windupRatio, r.windupSource, r.windupMeasured = 0.5 / 3.0, nil, false
-  end
+  local R, S = self._onReads or {}, self._stopRatios or {}
+  if #R > 0 and self._onMedian == nil then self._onMedian = SwingTimer.UpperMedian(R) end
+  local med, pub = self._onMedian, self._shareServer
+  if med and (not pub or math.abs(med - pub) > ON_STEP) then pub = med end
+  if not pub then pub = SEED_SHARE_SERVER end
+  self._shareServer = pub
+  local d = tonumber(duration) or r.swingDuration or 0
+  local ratio = pub
+  if d > 0 then ratio = pub + rttNow(true) / d end
+  if ratio > 0.9 then ratio = 0.9 end
+  r.windupRatio, r.windupMeasured = ratio, true
+  r.windupSource = (#R > 0) and "switch-on" or "seed"
   r.stopByRatio = #S > 0 and SwingTimer.UpperMedian(S) or nil
 end
 
--- The reads outlive the session (db.char: the wind-up is the server's, and
--- the ratio form stays valid across haste), so a fresh login starts measured.
+-- The published server share and the reads behind it (for the probe).
+function SwingTimer:WindupShare()
+  return self._shareServer, self._onReads or {}, self._onKey
+end
+
+-- The switch-on reads outlive the session, per character and per ranged
+-- weapon (db.char.foreverWindupShares[weaponKey]), so a login starts on the
+-- weapon's own share. Stop and interrupt reads are session evidence only.
 function SwingTimer:SaveWindupReads()
   local c = Nock.db and Nock.db.char
   if not c then return end
-  local stops, ints = {}, {}
-  for i = 1, #self._stopRatios do stops[i] = self._stopRatios[i] end
-  for i = 1, #self._interruptRatios do ints[i] = self._interruptRatios[i] end
-  c.foreverWindupReads = { stops = stops, interrupts = ints }
+  local list = {}
+  for i = 1, #self._onReads do list[i] = self._onReads[i] end
+  if type(c.foreverWindupShares) ~= "table" then c.foreverWindupShares = {} end
+  c.foreverWindupShares[self._onKey or "any"] = list
 end
 
 -- `/nock probe windup reset`: forget every read (this session's and the
--- saved ones) and fall back to the unmeasured seed.
+-- saved ones, every weapon) and go back to the seed share.
 function SwingTimer:ResetWindupReads()
-  self._stopRatios, self._interruptRatios = {}, {}
+  self._stopRatios, self._interruptRatios, self._onReads = {}, {}, {}
+  self._shareServer, self._onMedian = nil, nil
   local c = Nock.db and Nock.db.char
-  if c then c.foreverWindupReads = {} end
+  if c then c.foreverWindupShares, c.foreverWindupReads = {}, nil end
   self:ApplyWindupEstimate()
 end
 
-local function cleanRatios(list, max)
+local function cleanRatios(list, max, ceiling)
   local R = {}
   if type(list) ~= "table" then return R end
   for i = 1, #list do
     local v = list[i]
-    if type(v) == "number" and v > 0.01 and v < 1 then R[#R + 1] = v end
+    if type(v) == "number" and v > 0.01 and v < (ceiling or 1) then R[#R + 1] = v end
   end
   while #R > max do table.remove(R, 1) end
   return R
@@ -455,13 +543,14 @@ end
 
 function SwingTimer:RestoreWindupReads()
   local c = Nock.db and Nock.db.char
-  local saved = c and c.foreverWindupReads
-  if type(saved) ~= "table" then return end
-  -- The first shape was a flat list of stop reads.
-  local stops = saved.stops or (saved[1] ~= nil and saved) or {}
-  self._stopRatios = cleanRatios(stops, STOP_READS)
-  self._interruptRatios = cleanRatios(saved.interrupts, INTERRUPT_READS)
-  if #self._stopRatios == 0 and #self._interruptRatios == 0 then return end
+  if not c then return end
+  -- The pre-2026-10-18 shape (stop and interrupt ratios) fed a band that
+  -- crept; it is dropped, not converted.
+  if c.foreverWindupReads ~= nil then c.foreverWindupReads = nil end
+  local saved = c.foreverWindupShares
+  local list = type(saved) == "table" and saved[self._onKey or "any"] or nil
+  self._onReads = cleanRatios(list, ON_READS, SHARE_MAX)
+  self._onMedian = nil
   self:ApplyWindupEstimate()
 end
 
@@ -498,15 +587,38 @@ end
 
 function SwingTimer:PLAYER_EQUIPMENT_CHANGED()
   self:RefreshDualWield()
+  local k = SwingTimer.WeaponKey()
+  if k ~= self._onKey then
+    self._onKey, self._shareServer, self._onMedian = k, nil, nil
+    self._onReads = {}
+    self:RestoreWindupReads()
+  end
+end
+
+-- Both toggles are probe rows (the switch-on question: how long from a
+-- press on an idle bar to the first shot).
+local function pushAutoRow(self, ev, now)
+  if not self._windups then return end
+  local r, n = Nock.state.ranged, Nock.state.network
+  pushWindup(self, { t = now, ev = ev, swingRemaining = r.swingRemaining, swingDuration = r.swingDuration,
+                     latency = ((n and n.latencyMs) or 0) / 1000 })
 end
 
 function SwingTimer:START_AUTOREPEAT_SPELL()
-  Nock.state.ranged.repeating = true
-  self._autoStartAt = GetTime()
+  local now, r = GetTime(), Nock.state.ranged
+  r.repeating = true
+  self._autoStartAt = now
+  -- A pending switch-on read: idle bar, still, in range (UpdateWindupFromSwitchOn).
+  local idle = r.swingStart <= 0 or r.swingDuration <= 0 or now >= r.swingStart + r.swingDuration
+  self._switchOn = { t = now, idle = idle, moving = self._moving == true, inRange = r.targetInRange,
+                     rtt = rttNow(), moved = false, cast = false }
+  pushAutoRow(self, "AUTO_ON", now)
 end
 
 function SwingTimer:STOP_AUTOREPEAT_SPELL()
   Nock.state.ranged.repeating = false
+  self._switchOn = nil
+  pushAutoRow(self, "AUTO_OFF", GetTime())
 end
 
 function SwingTimer:PLAYER_ENTER_COMBAT()

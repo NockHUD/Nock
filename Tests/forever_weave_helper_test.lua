@@ -78,8 +78,9 @@ now = 102.5; H:Refresh(st)
 ok(near(st.ranged.swingStart, 101.9), "and not again")
 
 -- Learned legs are saved per character on the edge that learned them.
+Nock.state.network = Nock.state.network or {}; Nock.state.network.latencyMs = 110   -- release tail = 0.21 s
 st.target.rangeState = "SWEET"; now = 102.9; st.ranged.swingRemaining = 0.2; H:Refresh(st)
-ok(w.stage == "RELEASE", "back in range inside the queue window: RELEASE")
+ok(w.stage == "RELEASE", "back in range inside the release tail (rtt + 0.10): RELEASE")
 ok(Nock.db.char.weaveLegs and near(Nock.db.char.weaveLegs.legOutBack, 1.0) and near(Nock.db.char.weaveLegs.legIn, 1.1),
    "the backpedal out leg (1.0 s) saved; the in leg (0.95 s moving of 1.7) rejected, record carries the seed")
 

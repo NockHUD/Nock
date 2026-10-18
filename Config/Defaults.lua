@@ -1281,10 +1281,11 @@ Nock.Defaults = {
 
   -- Per-character runtime memos (survive /reload mid-cycle).
   char = {
-    -- Forever Auto Shot wind-up: the last stop-gated reads (ratios wind-up /
-    -- swing, Forever/SwingTimer), so the modelled wind-up bar is there from
-    -- the first shot of a session instead of after the first few stops.
-    foreverWindupReads = {},
+    -- Forever Auto Shot wind-up: the switch-on reads (server share of the
+    -- reload, Forever/SwingTimer THE BAND) per ranged weapon item id, so a
+    -- login starts on the weapon's own share. (foreverWindupReads was the
+    -- pre-2026-10-18 shape; dropped on restore.)
+    foreverWindupShares = {},
     -- Forever pet happiness tier changes (Forever/Pet.lua, `/nock pet log`):
     -- the data the future happiness drain is designed from. Never exported
     -- (profile sharing carries the profile only).

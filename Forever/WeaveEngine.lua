@@ -284,8 +284,10 @@ end
 -- known = inside); radial / lateral: the movement keys' intent in the
 -- character's frame (forward +, strafe right +), -1..1; facing: radians
 -- (GetPlayerFacing) or nil; meleeReadyIn / raptorReadyIn: seconds until the
--- white swing / Raptor are ready; rangedElapsed: the ranged swing's age.
-function E.Step(st, now, zone, rest, radial, facing, meleeReadyIn, rangedRemaining, queueWindow, raptorReadyIn, rangedElapsed, lateral)
+-- white swing / Raptor are ready; rangedElapsed: the ranged swing's age;
+-- releaseTail: seconds before the shot inside which an out leg's finish
+-- still rides the shot (the move tail, rtt + 0.10, from the helper).
+function E.Step(st, now, zone, rest, radial, facing, meleeReadyIn, rangedRemaining, releaseTail, raptorReadyIn, rangedElapsed, lateral)
   local dt = st.lastNow and (now - st.lastNow) or 0
   if dt < 0 then dt = 0 elseif dt > E.DT_MAX then dt = E.DT_MAX end
   st.lastNow = now
@@ -332,7 +334,7 @@ function E.Step(st, now, zone, rest, radial, facing, meleeReadyIn, rangedRemaini
       if zone == "SWEET" then
         st.pos = st.shootFrac
         finishOut(st, now)
-        if rangedRemaining ~= nil and queueWindow ~= nil and rangedRemaining <= queueWindow then
+        if rangedRemaining ~= nil and releaseTail ~= nil and rangedRemaining <= releaseTail then
           st.releaseAt = now
           setStage(st, "RELEASE", now)
         else

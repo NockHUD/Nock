@@ -238,7 +238,7 @@ ok(qw and qw.name == "Wind-up mark width" and (qw.desc or ""):find("wind%-up mar
 ok(qc and qc.name == "Wind-up mark" and (qc.desc or ""):find("stop moving"), "wind-up mark colour kept and reworded (the stop-by edge)")
 ok((nodeAt(opts, "hud.react.tabSkin.autoMarksHeader") or {}).name == "Wind-up mark", "marks header")
 local qt = nodeAt(opts, "hud.react.tabBars.showWindupMark")
-ok(qt and qt.type == "toggle" and qt.name == "Wind-up mark" and (qt.desc or ""):find("standing still") and (qt.desc or ""):find("spell%-queue window stands in"), "wind-up mark toggle on the Bars tab: stop-by meaning, queue-window fallback named")
+ok(qt and qt.type == "toggle" and qt.name == "Wind-up mark" and (qt.desc or ""):find("standing still") and (qt.desc or ""):find("fixed share of the bar") and not (qt.desc or ""):find("queue window"), "wind-up mark toggle on the Bars tab: stop-by meaning, a fixed share, no queue-window talk")
 -- The one feature switch the auto bar has on Forever is reachable in Simple.
 ok(qt and not W.IsAdvanced(qt), "queue mark toggle is Simple on Forever")
 -- The Skin card's table: the dropped Steady/Multi/bracket/GCD lines are gone

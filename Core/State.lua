@@ -125,20 +125,16 @@ Nock.state = {
     -- (no target, TBC). false blanks the auto bar: a shot cannot fire.
     targetInRange  = nil,
     swingRangeSignal = false, -- true once PLAYER_SWING_RANGE_UPDATE has ever fired (then it owns targetInRange)
-    -- Forever: the client's spell-queue window in seconds (cvar
-    -- SpellQueueWindow, ms). A press inside the last queueWindow of the
-    -- cycle is queued behind the shot instead of clipping it; the auto bar
-    -- marks that edge (Forever/SwingTimer keeps it current).
+    -- Forever: the client's SpellQueueWindow cvar in seconds, kept current
+    -- by Forever/SwingTimer for the probe. Forever has no spell-queue window
+    -- in play (user 2026-10-18): nothing reads this for a mark any more.
     queueWindow    = 0.4,
-    -- Forever: true once the client has an Auto Shot wind-up and
-    -- Forever/SwingTimer feeds windupRatio from it. Until then `windup` above
-    -- is only the TBC seed there; views read Nock.AutoShotWindup(), which
-    -- falls back to queueWindow.
+    -- Forever: true once Forever/SwingTimer has published the band (at
+    -- OnEnable, seeded; see THE BAND there), so the modelled wind-up bar
+    -- and the marks never wait for a read. TBC leaves it false.
     windupMeasured = false,
-    -- Forever: which feed set windupRatio ("interrupt" = the client's own
-    -- INTERRUPTED(75) on a move inside the wind-up, the edge itself;
-    -- "stop" = stop-gated shots, a fallback that reads long; "cast" = a
-    -- client cast window, never seen so far). nil while unmeasured.
+    -- Forever: what the published share rests on: "seed" until the first
+    -- switch-on read on this weapon, "switch-on" after. nil on TBC.
     windupSource   = nil,
     -- Forever: the conservative "stop by" edge as a ratio of the swing, the
     -- upper median of the stop-gated reads (raw, bar time): stop moving this
@@ -731,15 +727,13 @@ end
 
 -- The Auto Shot wind-up in seconds, as the VIEWS draw it (the inverse auto
 -- bar's second phase, the wind-up mark). TBC: the measured state.ranged.windup.
--- Forever has no wind-up yet, so the spell-queue window stands in -- it marks
--- the same thing, the lower edge of the clip band -- until
--- state.ranged.windupMeasured says a real feed exists. That flag is the one
+-- Forever: the same field, from the published share (Forever/SwingTimer, THE
+-- BAND): seeded at login, so there is never an unmeasured phase and nothing
+-- else ever stands in (Forever has no spell-queue window; the old fallback
+-- to queueWindow made the mark jump at the first read). windupMeasured is
 -- switch to flip when the wind-up lands there.
 function Nock.AutoShotWindup()
   local r = Nock.state.ranged
-  if Nock.Flavor and Nock.Flavor.forever and not r.windupMeasured then
-    return r.queueWindow or 0
-  end
   return r.windup or (Nock.Constants and Nock.Constants.AUTO_SHOT_CAST) or 0.5
 end
 

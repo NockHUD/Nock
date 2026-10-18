@@ -73,7 +73,7 @@ F.RENAME = {
   ["utilities.intro"] = { name = "Quality-of-life helpers (what happens at a vendor, the full-screen glow, the camera and world switches the game hides), the aspect ring and the tracking wheel." },
   ["hud.react.tabBars.showWindupMark"] = {
     name = "Wind-up mark",
-    desc = "The mark on the Auto Shot bar where the shot's wind-up begins. Be standing still by then: the bow cannot wind up on the move, and a stop made past the mark holds the shot until one wind-up after you stand. Measured from your own shots (every late shot after a stop is a read); until the first read the client's spell-queue window stands in.",
+    desc = "The mark on the Auto Shot bar where the shot's wind-up begins. Be standing still by then: the bow cannot wind up on the move, and a stop made past the mark holds the shot until one wind-up after you stand. A fixed share of the bar, so it stays put and only the bar's speed changes with haste. Read from your own pulls: Auto Shot pressed on an empty bar, standing still, fires one wind-up later; the mark steps to the median of those reads and otherwise holds.",
   },
   ["hud.react.tabSkin.autoMarksHeader"] = "Wind-up mark",
   -- The wind-up on the cast bar: modelled from the measured wind-up here
@@ -82,7 +82,7 @@ F.RENAME = {
   -- sits in Simple mode for that reason (user, 2026-10-16).
   ["hud.react.tabSize.reactShowAutoShotCast"] = {
     name = "Auto Shot wind-up on cast bar",
-    desc = "The wind-up before each Auto Shot drawn on the cast bar, from the measured wind-up (nothing until it has been measured). Off if you run the inverse auto bar: its second phase is the same window and the two would double up.",
+    desc = "The wind-up before each Auto Shot drawn on the cast bar, from the same wind-up as the mark. Off if you run the inverse auto bar: its second phase is the same window and the two would double up.",
   },
   ["hud.react.tabSize.reactShowRangeBar"] = {
     name = "Range Finder",
