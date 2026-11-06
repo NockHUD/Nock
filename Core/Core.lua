@@ -8,6 +8,8 @@ local VERSION = C_AddOns.GetAddOnMetadata("Nock", "Version") or "?"
 
 function Nock:OnInitialize()
   self.db = LibStub("AceDB-3.0"):New("NockDB", self.Defaults, true)
+  -- Before anything reads db.profile or db.char. A nil identity retries in OnEnable.
+  self._restoredProfile = self.CharIdentity.Adopt(self.db, self.CharIdentity.ReadIdent())
   -- Live profile switching: every view re-reads its keys off NOCK_VISUALS_CHANGED,
   -- so switching/copying/resetting an AceDB profile must fire it (plus position/
   -- lock, which have their own apply paths) — otherwise the HUD keeps rendering
@@ -41,6 +43,14 @@ function Nock:OnInitialize()
 end
 
 function Nock:OnEnable()
+  -- The name read Unknown at load: the callbacks are registered by now, so a
+  -- profile change from here fans out through OnProfileSwitched.
+  local CI = self.CharIdentity
+  if not CI.adopted then self._restoredProfile = CI.Adopt(self.db, CI.ReadIdent()) end
+  if self._restoredProfile then
+    self:Print(('Restored your profile "%s". Your Default profile is still in the Profiles list.'):format(self._restoredProfile))
+    self._restoredProfile = nil
+  end
   if not self.isHunter then return end   -- banker alts: only the Mailbox module runs
   self:Print(("loaded v%s"):format(VERSION))
   self:UpdateLatency()

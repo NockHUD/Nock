@@ -17,6 +17,7 @@ Core\API.lua
 Core\State.lua
 Core\AuraCache.lua
 Core\WeaveMacro.lua
+Core\CharIdentity.lua
 Core\ProfileShare.lua
 Core\Minimap.lua
 Core\PracticeModel.lua
