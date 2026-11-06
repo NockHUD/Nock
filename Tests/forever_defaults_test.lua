@@ -37,6 +37,7 @@ ok(fv.reactMeleeStageCue == true and tbc.reactMeleeStageCue == false, "Forever: 
 ok(tbc.weaveHelperEnabled == false and tbc.reactWeaveH == 18, "TBC carries the keys unused (one profile shape)")
 -- Wrong-tracking warning (Forever/Tracking.lua): on, everywhere, by default.
 ok(fv.warnTrackingEnabled == true and fv.warnTrackingGate == "always", "Forever: wrong-tracking warning on, gate Always")
+ok(fv.warnAutoSwitchEnabled == false, "Forever: auto-switch warning off for now")
 ok(fv.trackingWheelKey == nil and fv.trackingWheelScale == nil, "Forever: the tracking wheel has no key until set, size 100%")
 ok(fv.trackingAutoSwitch == false, "Forever: the tracking auto-switch is off until asked for")
 print(("forever_defaults: %d passed, %d failed"):format(pass, fail))

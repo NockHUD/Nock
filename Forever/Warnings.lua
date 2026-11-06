@@ -195,7 +195,16 @@ function Checks.trueshot(reads)
   return warn("trueshot", "amber", spellIcon(Nock.Spells.TRUESHOT_AURA) or 132329, "TSA", low and rem or nil)
 end
 
-Warnings.ORDER = { Checks.ammo, Checks.petDead, Checks.petMissing, Checks.petUnhappy, Checks.notAttacking, Checks.notInRange, Checks.petAttack, Checks.petGrowl, Checks.wrongTracking, Checks.trueshot }
+-- The game's Auto Attack/Auto Shot option is on: the client swaps the attack
+-- by range on its own, which a weave cannot plan around. An unknown value is
+-- quiet.
+function Checks.autoSwitch(reads)
+  if not isEnabled("warnAutoSwitchEnabled") then return nil end
+  if reads.autoSwitchCvar ~= "1" then return nil end
+  return warn("autoSwitch", "amber", spellIcon(Nock.Spells.AUTO_SHOT) or 132222, "AUTO SWAP", nil)
+end
+
+Warnings.ORDER = { Checks.ammo, Checks.petDead, Checks.petMissing, Checks.petUnhappy, Checks.notAttacking, Checks.notInRange, Checks.petAttack, Checks.petGrowl, Checks.wrongTracking, Checks.trueshot, Checks.autoSwitch }
 
 -- The live reads, every one secret-guarded: a secret answer is a nil read
 -- and the check stays quiet.
@@ -246,6 +255,8 @@ function Warnings:Reads(state)
   local exp = pl and pl.trueshotExpires
   r.trueshotRemaining = type(exp) == "number" and math.max(0, exp - GetTime()) or nil
   r.playerDead = P(_G.UnitIsDeadOrGhost and UnitIsDeadOrGhost("player")) == true
+  local CV = _G.C_CVar
+  r.autoSwitchCvar = (CV and CV.GetCVar) and P(CV.GetCVar("autoRangedCombat")) or nil
   r.now = GetTime()
   return r
 end
@@ -540,5 +551,15 @@ Warnings.Catalog = {
         values = { always = "Always", dungeon = "Dungeons and raids", raid = "Raids only" },
         order = Warnings.GATES },
     },
+  },
+  {
+    key         = "autoSwitch",
+    category    = "combat",
+    name        = "Auto attack switching on",
+    severity    = "amber",
+    enabledKey  = "warnAutoSwitchEnabled",
+    iconFn      = function() return spellIcon(Nock.Spells.AUTO_SHOT) or 132222 end,
+    description = "The game is set to swap between Auto Shot and melee by itself, which works against weaving.",
+    logic       = "Fires when:\n• The game's Auto Attack/Auto Shot option is on\n\nIn and out of combat. To turn it off: Options, Combat, scroll to the bottom and untick Auto Attack/Auto Shot. The square clears as soon as you do.",
   },
 }

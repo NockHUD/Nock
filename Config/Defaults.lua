@@ -1423,6 +1423,9 @@ if Nock.Flavor and Nock.Flavor.forever then
   p.warnTrueshotEnabled  = true
   p.warnTrueshotGate     = "always"
   p.warnTrueshotLead     = 60        -- seconds left on the 30-minute buff
+  -- The game's Auto Attack/Auto Shot option is on (Forever/Warnings.lua): off
+  -- until the bars are settled with that option on.
+  p.warnAutoSwitchEnabled = false
   -- The auto-switch (Forever/Tracking.lua AutoSwitch): off until asked for,
   -- it casts on the user's behalf.
   p.trackingAutoSwitch   = false

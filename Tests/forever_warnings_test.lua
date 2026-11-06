@@ -22,7 +22,7 @@ dofile("Forever/Spells.lua")
 dofile("Forever/Warnings.lua")
 local W = module
 ok(W and W.name == "Warnings" and W.refreshInterval == 0.1, "registers as Warnings on the slow lane")
-ok(#W.Catalog == 11 and W.Catalog[10].key == "wrongTracking" and W.Catalog[9].key == "petGrowl" and W.Catalog[6].key == "notAttacking" and W.Catalog[7].key == "notInRange" and W.Catalog[7].category == "combat" and W.Catalog[8].key == "petAttack" and W.Catalog[8].category == "pet" and W.Catalog[1].key == "ammo" and W.Catalog[2].key == "petDead" and W.Catalog[3].key == "petMissing" and W.Catalog[4].key == "petUnhappy", "eleven catalog entries")
+ok(#W.Catalog == 12 and W.Catalog[12].key == "autoSwitch" and W.Catalog[10].key == "wrongTracking" and W.Catalog[9].key == "petGrowl" and W.Catalog[6].key == "notAttacking" and W.Catalog[7].key == "notInRange" and W.Catalog[7].category == "combat" and W.Catalog[8].key == "petAttack" and W.Catalog[8].category == "pet" and W.Catalog[1].key == "ammo" and W.Catalog[2].key == "petDead" and W.Catalog[3].key == "petMissing" and W.Catalog[4].key == "petUnhappy", "twelve catalog entries")
 for _, e in ipairs(W.Catalog) do
   ok(e.category and e.name and e.severity and e.enabledKey and e.iconFn and e.description and e.logic, "catalog entry complete: " .. e.key)
   ok(type(e.iconFn()) == "number", "catalog icon resolves: " .. e.key)
@@ -297,6 +297,29 @@ do
   st.player.trueshotExpires = nil
   st.player.trueshot = nil
   ok(W:Reads(st).trueshotOn == nil, "reads: an unknown aura stays nil")
+end
+
+-- The game's Auto Attack/Auto Shot option (CVar autoRangedCombat): on, the
+-- client swaps the attack by range on its own.
+do
+  local w = C.autoSwitch(with({ autoSwitchCvar = "1" }))
+  ok(w and w.id == "autoSwitch" and w.severity == "amber" and w.text == "AUTO SWAP" and w.icon == 1000 + Nock.Spells.AUTO_SHOT, "option on: amber AUTO SWAP with the Auto Shot icon")
+  ok(C.autoSwitch(with({ autoSwitchCvar = "1", inCombat = false })) ~= nil, "out of combat too (it is fixed in the options)")
+  ok(C.autoSwitch(with({ autoSwitchCvar = "0" })) == nil, "option off: quiet")
+  ok(C.autoSwitch(base) == nil, "unknown: quiet")
+  Nock.db.profile.warnAutoSwitchEnabled = false
+  ok(C.autoSwitch(with({ autoSwitchCvar = "1" })) == nil, "disabled: quiet")
+  Nock.db.profile.warnAutoSwitchEnabled = nil
+  local cat = W.Catalog[12]
+  ok(cat.category == "combat" and cat.severity == "amber" and cat.enabledKey == "warnAutoSwitchEnabled"
+     and cat.logic:find("Auto Attack/Auto Shot", 1, true), "catalog: says which option to untick")
+  local st = { player = {} }
+  _G.C_CVar = { GetCVar = function(name) return name == "autoRangedCombat" and "1" or "x" end }
+  ok(W:Reads(st).autoSwitchCvar == "1", "reads: the option's value")
+  _G.C_CVar = { GetCVar = function() return "SECRET" end }
+  ok(W:Reads(st).autoSwitchCvar == nil, "reads: a secret is unknown")
+  _G.C_CVar = nil
+  ok(W:Reads(st).autoSwitchCvar == nil, "reads: no API is unknown")
 end
 
 -- Call Pet knowledge falls back to the level.
