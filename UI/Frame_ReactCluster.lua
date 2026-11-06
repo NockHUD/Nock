@@ -1549,6 +1549,9 @@ end
 
 function ReactCluster:Refresh(state)
   if not self.frame:IsShown() then return end
+  local hideAuto, hideMelee = Nock.SwingBarsHidden(Nock.db.profile, state)
+  Nock.SetIdleHidden(self.auto, hideAuto)
+  Nock.SetIdleHidden(self.melee, hideMelee)
   if self.auto:IsShown()  then self:RefreshAuto(state)  end
   if self.melee:IsShown() then self:RefreshMelee(state) end
   if self.range:IsShown() then self:RefreshRange(state) end

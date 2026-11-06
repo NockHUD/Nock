@@ -1343,6 +1343,16 @@ local function buildOptionsTable()
             get = get,
             set = function(_, v) visualsSet(_, "hideOoc", v) end,
           },
+          hideIdleSwingBars = {
+            type = "toggle",
+            name = "Hide idle swing bars",
+            desc = "Hide the Auto Shot and melee bars out of combat while they are idle. A bar stays while its swing is running or that attack is switched on, so a shot started before the pull still shows. Their space stays reserved so the HUD does not move, and they always show while frames are unlocked or practice mode is on.",
+            order = 24.5,
+            hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end,
+            disabled = function() return Nock.db.profile.hideOoc end,
+            get = get,
+            set = function(_, v) visualsSet(_, "hideIdleSwingBars", v) end,
+          },
           reactHeader = {
             type = "header",
             name = "React HUD",
@@ -8511,7 +8521,7 @@ local function buildOptionsTable()
   regroup("general", "grpLook", "HUD look", 10,
     { "reactNote", "hudMode" }, true)
   regroup("general", "grpVisibility", "Visibility", 11,
-    { "hudEnabled", "opacityNote", "opacity", "opacityOoc", "hideOoc" }, true)
+    { "hudEnabled", "opacityNote", "opacity", "opacityOoc", "hideOoc", "hideIdleSwingBars" }, true)
   -- Background is gathered here but MOVED to the Classic branch below — the
   -- backdrop box is classic-only (HUD:ApplyBackground paints nothing in react
   -- mode; React's styling is its Skin subtab), so it lives with that look.

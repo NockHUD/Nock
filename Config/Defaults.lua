@@ -35,6 +35,7 @@ Nock.Defaults = {
     opacity          = 1.0,
     opacityOoc       = 1.0,
     hideOoc          = false,
+    hideIdleSwingBars = false,  -- Nock.SwingBarsHidden: only the two swing bars, only while idle
     showAutoShotCast = false,
     -- Show mounts and other non-combat casts on the cast bar. Off by default: the
     -- cast bar is driven by CLEU (the only reliable source for ranged shots like

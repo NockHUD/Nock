@@ -163,6 +163,8 @@ ok(g.runWizard and g.runWizard.order > g.unlockAll.order, "general: run-wizard b
 ok(g.resetPos and g.resetPos.order > g.runWizard.order - 2, "general: reset position beside the wizard button")
 ok(g.grpLook and g.grpLook.args.hudMode, "general: HUD look group holds hudMode")
 ok(g.grpVisibility and g.grpVisibility.args.hideOoc, "general: visibility group holds hideOoc")
+local idleBars = g.grpVisibility and g.grpVisibility.args.hideIdleSwingBars
+ok(idleBars and type(idleBars.hidden) == "function" and idleBars.hidden() == true, "general: Hide idle swing bars is hidden off Forever")
 -- Background moved to the Classic branch (the backdrop box is classic-only:
 -- React paints no box — HUD:ApplyBackground short-circuits in react mode).
 ok(g.grpBackground == nil, "general: background group moved out")

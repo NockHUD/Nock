@@ -387,6 +387,11 @@ function SwingTimers:Refresh(state)
   -- notation when weaving in range, otherwise the turret profile name). The
   -- notation text can be hidden on its own without hiding the bar.
   local p = Nock.db and Nock.db.profile
+  local hideAuto, hideMelee = Nock.SwingBarsHidden(p, state)
+  Nock.SetIdleHidden(self.ranged, hideAuto)
+  Nock.SetIdleHidden(self.autoIcon, hideAuto)
+  Nock.SetIdleHidden(self.melee, hideMelee)
+  Nock.SetIdleHidden(self.raptorIcon, hideMelee)
   local profileName
   if p and p.autoShotBarRotationText == false then
     profileName = ""

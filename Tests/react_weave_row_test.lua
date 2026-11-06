@@ -73,7 +73,12 @@ RC.RefreshWeave = function() calls = calls + 1 end
 RC.RefreshAuto, RC.RefreshMelee, RC.RefreshRange, RC.RefreshStrip, RC.RefreshLadder, RC.RefreshMana =
   function() end, function() end, function() end, function() end, function() end, function() end
 local blank = { target = {}, weave = {}, ranged = {}, melee = { swingStart = 0, swingRemaining = 0, swingDuration = 0 }, cooldowns = {}, player = {} }
+-- The idle swing bar verdict lands on the right bar (Core/State.lua owns the rule).
+local idle = {}
+Nock.SwingBarsHidden = function() return true, false end
+Nock.SetIdleHidden = function(region, hidden) idle[region] = hidden end
 RC:Refresh(blank)
+ok(idle[RC.auto] == true and idle[RC.melee] == false, "the auto verdict goes to the auto bar, the melee verdict to the melee bar")
 ok(calls == 1, "Refresh dispatches to RefreshWeave")
 RC.weave:Hide()
 RC:Refresh(blank)

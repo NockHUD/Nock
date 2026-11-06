@@ -1064,6 +1064,9 @@ function FluffyCluster:Refresh(state)
     self._pixelScale = ps
     self:ApplyLayout()
   end
+  local hideAuto, hideMelee = Nock.SwingBarsHidden(Nock.db.profile, state)
+  Nock.SetIdleHidden(self.swing, hideAuto)
+  Nock.SetIdleHidden(self.melee, hideMelee)
   refreshCastBar(self)
   refreshSwing(self, state)
   refreshLanes(self, state)

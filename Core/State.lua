@@ -575,6 +575,34 @@ function Nock.RestedHideApplies(p, resting, state)
   return true
 end
 
+-- The "Hide idle swing bars" switch (General -> Visibility, Forever only): whether
+-- the Auto Shot bar and the melee bar each go right now, as two returns. Out of
+-- combat a bar only goes while it has nothing to say: no swing running and that
+-- attack switched off, so an Auto Shot started before the pull keeps its bar. Same
+-- exceptions as Hide out of combat. Space stays reserved: every HUD mode draws
+-- this as alpha, so the HUD does not shift at each pull. Pure; every view reads
+-- it, nothing below the views does. Off Forever the switch is ignored, even when
+-- a shared profile carries it.
+function Nock.SwingBarsHidden(p, state)
+  if not (Nock.Flavor and Nock.Flavor.forever) then return false, false end
+  if not (p and p.hideIdleSwingBars) then return false, false end
+  if p.locked == false then return false, false end
+  if state.player.inCombat then return false, false end
+  if state.demo and state.demo.hudForceShow then return false, false end
+  if state.sim and state.sim.active then return false, false end
+  local r, m = state.ranged, state.melee
+  local autoBusy = r.repeating or (r.swingStart > 0 and r.swingRemaining > 0)
+  local meleeBusy = m.attacking or m.swingRemaining > 0
+  return not autoBusy, not meleeBusy
+end
+
+-- Applies a swing bar's verdict, writing only on a change (tick path).
+function Nock.SetIdleHidden(region, hidden)
+  if not region or region._idleHidden == hidden then return end
+  region._idleHidden = hidden
+  region:SetAlpha(hidden and 0 or 1)
+end
+
 -- PanelShowApplies: a floating panel's own show-when rule, on top of the
 -- global rested hide above, read from the profile keys <prefix>HideRested,
 -- <prefix>HideSolo, <prefix>ShowParty and <prefix>ShowRaid. `resting` is
