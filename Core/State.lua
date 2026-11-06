@@ -142,6 +142,21 @@ Nock.state = {
     -- wind-up itself (the server picks the wind-up up on a tick after a
     -- stop). nil until a stop read exists.
     stopByRatio    = nil,
+    -- The ranged fill as drawn (Nock.AutoShotHoldStep): swingRemaining, except
+    -- that on Forever a shot that cannot start its wind-up holds the fill at
+    -- the wind-up line (`held`) and a released hold runs one wind-up from the
+    -- release. TBC mirrors swingRemaining. Views draw the fill from this; every
+    -- timing consumer keeps reading swingRemaining.
+    displayRemaining = 0,
+    held           = false,
+    -- Forever: when the shot is expected (nil while held), the last server
+    -- retry of a held shot (UNIT_SPELLCAST_FAILED_QUIET, not a press) and the
+    -- shot the 0.5 s retry rhythm predicts from it (probe evidence: nothing
+    -- draws from it yet), and the last !Auto Shot press that went through.
+    shotEta        = nil,
+    retryAt        = nil,
+    retryShotAt    = nil,
+    pressThroughAt = nil,
   },
   melee = {
     swingStart     = 0,
@@ -229,6 +244,12 @@ Nock.state = {
     -- tick's speed read is secret in combat there, so these own `moving` too.
     movingSince  = nil,
     stoppedAt    = nil,
+    -- Forever: in the air after a jump (JumpOrAscendStart, cleared on landing
+    -- by IsFalling). A jump in place fires no PLAYER_STARTED_MOVING, but the
+    -- bow cannot wind up in the air. Kept apart from `moving` so the weave
+    -- helper's key-intent model is untouched.
+    airborne     = false,
+    airborneAt   = nil,
     conserveMana = false,
     controlLost  = false,
   },
@@ -735,6 +756,85 @@ end
 function Nock.AutoShotWindup()
   local r = Nock.state.ranged
   return r.windup or (Nock.Constants and Nock.Constants.AUTO_SHOT_CAST) or 0.5
+end
+
+-- The held shot (WeaponSwingTimer's rule, user ruling 2026-11-01): nothing is
+-- predicted, the fill only follows what the client says. One step per tick;
+-- `h` is the producer's own table, reset when the swing changes.
+--   * Before the wind-up line (W before the due mark) the fill is the plain
+--     progress.
+--   * At the line, if the shot cannot start (`ready` false: moving, in the
+--     air, casting, auto off, target out of range or dead) the fill HOLDS at
+--     the line and `held` is true.
+--   * Once ready, a held fill runs from where it stands to full over one
+--     wind-up W. A wind-up broken by a move freezes where it is (it never
+--     steps back) and runs again from there once ready.
+--   * A press that went through (`pressAt`, the Forever spam bug) releases a
+--     hold at once, and restarts a wind-up it lands in at least `lead` after
+--     that wind-up began (it reached the server after the start); a press
+--     before the line changes nothing.
+-- The server may still wait for its next 0.5 s retry after the release, so a
+-- full fill can sit up to that long before the shot: never ahead of it.
+-- Returns displayRemaining, held, shotEta (nil while held). Pure.
+function Nock.AutoShotHoldStep(h, S, D, W, now, ready, pressAt, lead)
+  if not S or S <= 0 or not D or D <= 0 then
+    h.start = nil
+    return 0, false, nil
+  end
+  W = tonumber(W) or 0
+  if W < 0 then W = 0 elseif W > D then W = D end
+  lead = tonumber(lead) or 0
+  if h.start ~= S then
+    h.start, h.p, h.windAt, h.windFrom, h.frozen, h.press = S, nil, nil, nil, false, nil
+  end
+  local due, line = S + D, 1 - W / D
+  local nat = 1 - (due - now) / D
+  if nat < 0 then nat = 0 elseif nat > 1 then nat = 1 end
+  if pressAt and pressAt >= S and pressAt <= now and pressAt ~= h.press then
+    h.press = pressAt
+    local cur = h.p or nat
+    if h.windAt then
+      cur = (W > 0) and (h.windFrom + (1 - h.windFrom) * math.min(1, (now - h.windAt) / W)) or 1
+    elseif not h.frozen and nat >= line then
+      cur = nat
+    end
+    if h.frozen then
+      h.frozen, h.windAt, h.windFrom = false, now, cur
+    elseif h.windAt and pressAt >= h.windAt + lead then
+      h.windAt, h.windFrom = now, cur
+    end
+  end
+  local p
+  if h.windAt then
+    if not ready then
+      h.frozen, h.windAt, h.windFrom = true, nil, nil
+      p = h.p or nat
+    elseif W <= 0 then
+      p = 1
+    else
+      local t = (now - h.windAt) / W
+      if t > 1 then t = 1 end
+      p = h.windFrom + (1 - h.windFrom) * t
+    end
+  elseif h.frozen then
+    p = h.p or line
+    if ready then h.frozen, h.windAt, h.windFrom = false, now, p end
+  elseif nat >= line then
+    if ready then
+      h.windAt, h.windFrom = due - W, line
+      p = nat
+    else
+      h.frozen = true
+      p = line
+    end
+  else
+    p = nat
+  end
+  if h.p and p < h.p then p = h.p end   -- never steps back
+  h.p = p
+  local eta = h.windAt and (h.windAt + W) or nil
+  if not h.frozen and not h.windAt then eta = due end
+  return D * (1 - p), h.frozen == true, eta
 end
 
 -- Should the auto-swing views (React auto bar, release bar always-mode) render?

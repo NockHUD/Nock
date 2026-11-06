@@ -113,6 +113,40 @@ local MOVE_PAIR_WINDOW = 0.4    -- an INTERRUPTED(75) this soon after a move sta
 -- reads from before the rule pass the same ceiling on restore.
 local INTERRUPT_RATIO_MAX = 0.5
 
+-- THE HELD SHOT and what feeds it (2026-11-01, taken over from
+-- WeaponSwingTimer-SixxFix `forever` 1.60.2 and AppelSwingsForever 1.7.4).
+-- The fill holds at the wind-up line while a shot cannot start and runs one
+-- wind-up from the moment it can (Nock.AutoShotHoldStep); nothing predicted.
+-- A press is told apart from the server's own retry by its SENT cast GUID:
+-- a press that fails fails in the same frame, so one with no FAILED_QUIET
+-- PRESS_OK after its SENT went through and starts the wind-up there.
+local PRESS_OK    = 0.1
+local PRESS_KEEP  = 5      -- own presses remembered this long
+local PRESS_NEAR  = 0.05   -- a server failure this close to a press is the press's own
+local AUTO_RETRY  = 0.5    -- the server retries a held shot this often
+-- A jump in place fires no PLAYER_STARTED_MOVING: the air time is read from
+-- JumpOrAscendStart and IsFalling, which is only asked after JUMP_GRACE (the
+-- jump's first frame can still read the ground) and given up after AIR_MAX.
+local JUMP_GRACE, AIR_MAX = 0.1, 3
+-- Quick Shots (+30 % ranged speed, 12 s; Appel's measurement). Auras are
+-- secret in combat, but UNIT_AURA still fires, and a player aura event in
+-- the frame of a ranged swing is a proc or a refresh. The reload part of a
+-- reload runs at the haste the shot reported; its wind-up at the haste when
+-- the wind-up begins. So a fresh proc shortens this reload's wind-up (the
+-- bar's end moves ~0.1 s sooner) and an expiry before a wind-up begins
+-- lengthens it. A reported reload already QS_ALREADY faster than the last
+-- carries the proc; an aura event within QS_END_SLOP of the expiry is the
+-- expiry's own.
+local QS_HASTE, QS_DURATION, QS_END_SLOP, QS_ALREADY = 1.3, 12, 0.15, 1.15
+-- Parry haste on the player's own main hand: a parry with more than 60 % of
+-- the swing left takes 40 % off; with 20-60 % left it leaves 20 %; under 20 %
+-- nothing. Read from UNIT_COMBAT, which arrives after the parry itself (Appel
+-- measured ~0.47 s on mobs): the 40 % cut is exact whenever it applies, the
+-- 20 % floor lands that much late.
+local PARRY_CUT, PARRY_FLOOR = 0.4, 0.2
+local SLOT_MH, SLOT_OH, SLOT_RANGED = 16, 17, 18
+local jumpHooked = false   -- hooksecurefunc cannot be undone: one hook per session
+
 local function swingType(name)
   local E = _G.Enum and _G.Enum.PlayerSwingType
   return E and E[name]
@@ -149,6 +183,29 @@ function SwingTimer:OnEnable()
   self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", "OnAutoShotEdge")
   self:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED", "OnAutoShotEdge")
   self:RegisterEvent("UNIT_SPELLCAST_FAILED", "OnAutoShotEdge")
+  -- The held shot's feeds: own presses (SENT), the server's retries and
+  -- failed presses (FAILED_QUIET), jumps.
+  self._hold, self._presses, self._pending = {}, {}, {}
+  self:RegisterEvent("UNIT_SPELLCAST_SENT", "OnAutoShotSent")
+  self:RegisterEvent("UNIT_SPELLCAST_FAILED_QUIET", "OnAutoShotFailedQuiet")
+  if not jumpHooked and type(_G.JumpOrAscendStart) == "function" and _G.hooksecurefunc then
+    jumpHooked = true
+    hooksecurefunc("JumpOrAscendStart", function() SwingTimer:OnJump() end)
+  end
+  -- Player-only unit events (parry haste, Quick Shots) on a frame of their
+  -- own: AceEvent would hand this module every unit's UNIT_AURA.
+  if _G.CreateFrame and not self._unitFrame then
+    local f = CreateFrame("Frame")
+    f:RegisterUnitEvent("UNIT_COMBAT", "player")
+    f:RegisterUnitEvent("UNIT_AURA", "player")
+    f:SetScript("OnEvent", function(_, ev, ...)
+      if ev == "UNIT_COMBAT" then SwingTimer:OnPlayerCombat(...) else SwingTimer:OnPlayerAura() end
+    end)
+    self._unitFrame = f
+  end
+  -- Each weapon's printed speed, for the swap estimate (read before the swap).
+  self._heldSpeed = {}
+  self:RefreshHeldSpeeds()
   self:RefreshQueueWindow()
   -- The client's own ranged range check: off until asked for, then it
   -- signals PLAYER_SWING_RANGE_UPDATE on every edge (plain in combat).
@@ -197,6 +254,7 @@ function SwingTimer:PLAYER_TARGET_CHANGED()
 end
 
 function SwingTimer:PLAYER_SWING_RANGE_UPDATE(event, kind, isInRange, checksRange)
+  self:PushRangeRow(kind, isInRange, checksRange)
   if kind ~= swingType("Ranged") then return end
   -- Seen once: the client's signal owns targetInRange from here on and the
   -- range finder's shoot probe stops writing it.
@@ -216,6 +274,7 @@ function SwingTimer:PLAYER_STARTED_MOVING()
   local c = Nock.state.context
   c.moving, c.movingSince = true, now
   if self._switchOn then self._switchOn.moved = true end
+  self:FeignGetUp(now)
   -- A move inside a running swing is a probe of the wind-up's start (see
   -- the INTERRUPTED note above); the ring pairs it with any interrupt.
   local r = Nock.state.ranged
@@ -283,11 +342,22 @@ function SwingTimer:PLAYER_SWING(event, duration, kind, ...)
       self:UpdateWindupFromStop(now, duration)
       self:UpdateAutoDelay(now)
       self:UpdateWindupAtRelease(now, duration)
+      self:CheckShotModels(now)
     end
     self._switchOn = nil
+    self._feignAt = nil
+    local prevRaw = self._rawDur
     r.swingStart = now
     r.swingDuration = duration
-    self:ApplyWindupEstimate(duration)   -- rtt / reload follows the reload
+    self._rawDur, self._prevRawDur, self._qsMul, self._shotAt = duration, prevRaw, 1, now
+    self._shotWasReset = isReset
+    -- A Quick Shots expiry before this reload's wind-up begins: the reload
+    -- was reported hasted, the wind-up runs without it.
+    local qe = self._qsEndAt
+    if qe and qe > now and qe < now + duration - (r.windup or 0) then self._qsMul = 1 / QS_HASTE end
+    -- A melee reset of the reload is not a shot: no proc on its frame.
+    if self._auraAt == now and not isReset then self:QuickShotsOnShot(now, prevRaw) end
+    self:ApplyQuickShots()   -- the bar's end and the band (rtt / reload follows the reload)
   elseif kind == swingType("MainHand") then
     local m = Nock.state.melee
     m.swingStart = now
@@ -314,6 +384,14 @@ local function pushWindup(self, sample)
   if #W > WINDUP_RING then table.remove(W, 1) end
 end
 
+-- A range edge, for the probe: with the game's auto-switch option on, these
+-- are what the client swaps the attack on.
+function SwingTimer:PushRangeRow(kind, isInRange, checksRange)
+  if not self._windups then return end
+  pushWindup(self, { t = GetTime(), ev = "RANGE", kind = kind, inRange = isInRange, checks = checksRange,
+                     swingRemaining = Nock.state.ranged.swingRemaining })
+end
+
 -- The client's cast edges for Auto Shot (spell 75). START opens a wind-up
 -- and, when UnitCastingInfo reports the cast, samples it on the spot. STOP
 -- and INTERRUPTED stamp the end (a STOP at the release is normal; one well
@@ -330,6 +408,13 @@ function SwingTimer:OnAutoShotEdge(event, unit, castGUID, spellID)
     if event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_SUCCEEDED" then
       self._lastCastAt = GetTime()
       if self._switchOn then self._switchOn.cast = true end
+      -- Feign Death: getting up (a move or a jump) restarts the reload; a
+      -- cast after it gets up without one (both reference addons agree).
+      if event == "UNIT_SPELLCAST_SUCCEEDED" and P(spellID) == Nock.Spells.FEIGN_DEATH then
+        self._feignAt = self._lastCastAt
+      else
+        self._feignAt = nil
+      end
     end
     return
   end
@@ -496,11 +581,269 @@ function SwingTimer:ApplyWindupEstimate(duration)
   self._shareServer = pub
   local d = tonumber(duration) or r.swingDuration or 0
   local ratio = pub
-  if d > 0 then ratio = pub + rttNow(true) / d end
+  -- The server's part runs on the reload the shot reported (raw), at the
+  -- haste the wind-up begins under (Quick Shots, see ApplyQuickShots).
+  local raw, mul = self._rawDur or d, self._qsMul or 1
+  if d > 0 and raw > 0 and mul > 0 then ratio = (pub * raw / mul + rttNow(true)) / d end
   if ratio > 0.9 then ratio = 0.9 end
   r.windupRatio, r.windupMeasured = ratio, true
   r.windupSource = (#R > 0) and "switch-on" or "seed"
   r.stopByRatio = #S > 0 and SwingTimer.UpperMedian(S) or nil
+end
+
+-- Quick Shots on a shot's frame (UNIT_AURA and PLAYER_SWING, either order).
+-- A refresh while the buff is up, or the expiry's own aura event, starts
+-- nothing; a reload reported already QS_ALREADY faster than the last one
+-- carries the proc in its own number.
+function SwingTimer:QuickShotsOnShot(now, prevRaw)
+  local qe = self._qsEndAt
+  if qe and math.abs(now - qe) <= QS_END_SLOP then return end
+  local up = qe and now < qe
+  self._qsEndAt = now + QS_DURATION
+  if up then return end
+  local raw = self._rawDur
+  if prevRaw and raw and raw < prevRaw / QS_ALREADY then return end
+  self._qsMul = QS_HASTE
+  pushWindup(self, { t = now, ev = "QS_PROC", swingRemaining = Nock.state.ranged.swingRemaining })
+end
+
+-- This reload's bar end from the reported reload and the Quick Shots shift
+-- of its wind-up part (the server's share; the round trip does not scale).
+function SwingTimer:ApplyQuickShots()
+  local r = Nock.state.ranged
+  local raw, mul = self._rawDur, self._qsMul or 1
+  if raw and raw > 0 and mul > 0 then
+    local pure = (self._shareServer or SEED_SHARE_SERVER) * raw
+    r.swingDuration = raw + pure / mul - pure
+  end
+  self:ApplyWindupEstimate(r.swingDuration)
+end
+
+function SwingTimer:OnPlayerAura()
+  local now = GetTime()
+  self._auraAt = now
+  if self._shotAt == now and not self._shotWasReset and (self._qsMul or 1) == 1 then
+    self:QuickShotsOnShot(now, self._prevRawDur)
+    if self._qsMul ~= 1 then self:ApplyQuickShots() end
+  end
+end
+
+-- Parry haste (see PARRY_CUT above). The cut moves the swing's start, so the
+-- views read it as the same swing re-anchored, not as a new one.
+function SwingTimer:OnPlayerCombat(unit, action)
+  if Nock.Flavor.Plain(action) ~= "PARRY" then return end
+  local m = Nock.state.melee
+  local D = m.swingDuration
+  if m.swingStart <= 0 or not D or D <= 0 then return end
+  local now = GetTime()
+  local rem = m.swingStart + D - now
+  local cut
+  if rem > (1 - PARRY_CUT) * D then cut = PARRY_CUT * D
+  elseif rem > PARRY_FLOOR * D then cut = rem - PARRY_FLOOR * D end
+  if not cut then return end
+  m.swingStart = m.swingStart - cut
+  m.swingRemaining = math.max(0, m.swingStart + D - now)
+  pushWindup(self, { t = now, ev = "PARRY", swingRemaining = rem, cut = cut, swingDuration = D })
+end
+
+-- Getting up from Feign Death (a move or a jump after a feign, no cast in
+-- between) restarts the ranged reload at its last length. Whether the client
+-- raises a PLAYER_SWING of its own for it is not known yet: the FD_GETUP row
+-- and the next shot's FD_CHECK row in the probe answer that.
+function SwingTimer:FeignGetUp(now)
+  if not self._feignAt then return end
+  self._feignAt = nil
+  local r = Nock.state.ranged
+  if r.swingStart <= 0 or r.swingDuration <= 0 then return end
+  r.swingStart = now
+  r.swingRemaining = r.swingDuration
+  self._fdRestartAt = now
+  pushWindup(self, { t = now, ev = "FD_GETUP", swingRemaining = r.swingDuration, swingDuration = r.swingDuration })
+end
+
+function SwingTimer:OnJump()
+  local now, c = GetTime(), Nock.state.context
+  c.airborne, c.airborneAt = true, now
+  if self._switchOn then self._switchOn.moved = true end
+  self:FeignGetUp(now)
+  local r = Nock.state.ranged
+  if r.swingStart > 0 and self._windups then
+    pushWindup(self, { t = now, ev = "JUMP", swingRemaining = r.swingRemaining, swingDuration = r.swingDuration })
+  end
+end
+
+-- A !Auto Shot press: remembered by cast GUID (a later FAILED_QUIET with it
+-- is the press's own failure), and pending while auto is already on, until
+-- PRESS_OK says whether it went through.
+function SwingTimer:OnAutoShotSent(event, unit, target, castGUID, spellID)
+  if unit ~= "player" then return end
+  local P = Nock.Flavor.Plain
+  if P(spellID) ~= Nock.Spells.AUTO_SHOT then return end
+  local now = GetTime()
+  self._lastPressAt = now
+  local guid = P(castGUID)
+  if type(guid) ~= "string" then return end
+  for id, at in pairs(self._presses) do
+    if now - at > PRESS_KEEP then self._presses[id] = nil end
+  end
+  self._presses[guid] = now
+  if Nock.state.ranged.repeating then self._pending[guid] = now end
+end
+
+-- A FAILED_QUIET on Auto Shot: a press's own failure (its GUID was SENT), or
+-- the server's retry of a held shot. Sent twice: read once. One in the frame
+-- of the switch-off is the switch-off (STOP_AUTOREPEAT_SPELL undoes it when it
+-- comes second); one at a press is the press's; a retry that still lands
+-- before the reload's end changes nothing. A counted retry predicts the shot
+-- AUTO_RETRY + wind-up later -- published for the probe (RETRY_CHECK compares
+-- it with the shot), drawn by nothing until the logs confirm the phase.
+function SwingTimer:OnAutoShotFailedQuiet(event, unit, castGUID, spellID)
+  if unit ~= "player" then return end
+  local P = Nock.Flavor.Plain
+  if P(spellID) ~= Nock.Spells.AUTO_SHOT then return end
+  local now = GetTime()
+  local guid = P(castGUID)
+  if type(guid) ~= "string" then guid = nil end
+  if now == self._fqAt and guid == self._fqGuid then return end
+  self._fqAt, self._fqGuid = now, guid
+  local r = Nock.state.ranged
+  if guid and self._presses[guid] then
+    self._pending[guid] = nil
+    pushWindup(self, { t = now, ev = "PRESS_FAILED", swingRemaining = r.swingRemaining })
+    return
+  end
+  if self._autoOffAt == now or not r.repeating or r.swingStart <= 0 then return end
+  if self._lastPressAt and math.abs(now - self._lastPressAt) <= PRESS_NEAR then return end
+  local shot = now + AUTO_RETRY + (r.windup or 0)
+  if shot <= r.swingStart + r.swingDuration then return end
+  r.retryAt, r.retryShotAt = now, shot
+  pushWindup(self, { t = now, ev = "RETRY", swingRemaining = r.swingRemaining, predicted = shot })
+end
+
+-- At a ranged shot: how the retry model and a Feign Death restart did.
+function SwingTimer:CheckShotModels(now)
+  local r = Nock.state.ranged
+  if r.retryShotAt then
+    pushWindup(self, { t = now, ev = "RETRY_CHECK", err = now - r.retryShotAt, retryAt = r.retryAt })
+    r.retryAt, r.retryShotAt = nil, nil
+  end
+  if self._fdRestartAt then
+    pushWindup(self, { t = now, ev = "FD_CHECK", gap = now - self._fdRestartAt, swingDuration = r.swingDuration })
+    self._fdRestartAt = nil
+  end
+end
+
+-- Whether a shot can start its wind-up now, from what the client says
+-- (WeaponSwingTimer's CanBeginAutoVisual): auto on, standing on the ground,
+-- no cast in flight, the target in range, there and alive. Unknown is no
+-- evidence against.
+function SwingTimer:HoldReady()
+  local st = Nock.state
+  local r, c = st.ranged, st.context
+  if not r.repeating or c.moving or c.airborne then return false end
+  if r.targetInRange == false or st.player.casting then return false end
+  local P = Nock.Flavor.Plain
+  if _G.UnitExists and P(UnitExists("target")) == false then return false end
+  if _G.UnitIsDeadOrGhost and P(UnitIsDeadOrGhost("target")) == true then return false end
+  return true
+end
+
+-- The tick's part (Core calls it after the wind-up seconds are derived):
+-- landing after a jump, presses that went through, the held fill.
+function SwingTimer:TickHold(now)
+  local st = Nock.state
+  local r, c = st.ranged, st.context
+  if c.airborne and c.airborneAt and now - c.airborneAt >= JUMP_GRACE then
+    local f = nil
+    if _G.IsFalling then f = Nock.Flavor.Plain(IsFalling()) end
+    if f == false or (f ~= true and now - c.airborneAt > AIR_MAX) then
+      c.airborne = false
+      if not self._moving then c.stoppedAt, self._stoppedAt = now, now end
+    end
+  end
+  if next(self._pending) then
+    local through
+    for guid, at in pairs(self._pending) do
+      if now - at >= PRESS_OK then
+        self._pending[guid] = nil
+        if not through or at > through then through = at end
+      end
+    end
+    if through and r.repeating and not c.moving and not c.airborne then
+      r.pressThroughAt = through
+      pushWindup(self, { t = now, ev = "PRESS_THROUGH", pressAt = through, swingRemaining = r.swingRemaining })
+    end
+  end
+  -- A press that went through is the client's own word that the shot
+  -- started: for one wind-up after it, it outweighs a readiness read that
+  -- has not caught up (a range edge not reported yet). Never on the move.
+  local ready = self:HoldReady()
+  local pa = r.pressThroughAt
+  if not ready and pa and not (c.moving or c.airborne) and now - pa <= (r.windup or 0) + PRESS_OK then ready = true end
+  local rem, held, eta = Nock.AutoShotHoldStep(self._hold, r.swingStart, r.swingDuration, r.windup, now,
+                                               ready, pa, rttNow() / 2)
+  if r.swingStart <= 0 then rem = r.swingRemaining end
+  r.displayRemaining, r.held, r.shotEta = rem, held, eta
+end
+
+-- A weapon's printed speed from its tooltip (the right-hand "Speed N.NN"),
+-- or nil. C_TooltipInfo: the hidden GameTooltip scan is refused here.
+function SwingTimer.ItemSpeed(slot)
+  local TI = _G.C_TooltipInfo
+  if not (TI and TI.GetInventoryItem) then return nil end
+  local okCall, data = pcall(TI.GetInventoryItem, "player", slot)
+  if not okCall or type(data) ~= "table" or type(data.lines) ~= "table" then return nil end
+  for _, line in ipairs(data.lines) do
+    local txt = Nock.Flavor.Plain(line.rightText)
+    local num = type(txt) == "string" and txt:match("(%d+[%.,]%d+)") or nil
+    local sp = num and tonumber((num:gsub(",", ".")))
+    if sp and sp > 0 then return sp end
+  end
+  return nil
+end
+
+function SwingTimer:RefreshHeldSpeeds()
+  local H = self._heldSpeed
+  H[SLOT_MH], H[SLOT_OH], H[SLOT_RANGED] =
+    SwingTimer.ItemSpeed(SLOT_MH), SwingTimer.ItemSpeed(SLOT_OH), SwingTimer.ItemSpeed(SLOT_RANGED)
+end
+
+-- A swap restarts the swapped weapon's swing (a melee hand restarts both
+-- melee bars) at the new weapon's printed speed times the haste the old one
+-- ran at. With no estimate the bar goes idle until its next PLAYER_SWING.
+-- Only a live bar restarts (running, or held in combat).
+local function restart(dur, now, est)
+  if est and est > 0 then return now, est end
+  return 0, dur
+end
+
+function SwingTimer:OnWeaponSwap(slot, now)
+  local H = self._heldSpeed
+  local old, new = H[slot], SwingTimer.ItemSpeed(slot)
+  H[slot] = new
+  local fighting = Nock.state.player.inCombat
+  local function est(dur) return (old and old > 0 and new and dur and dur > 0) and new * dur / old or nil end
+  if slot == SLOT_RANGED then
+    local r = Nock.state.ranged
+    if r.swingStart <= 0 or not (now < r.swingStart + r.swingDuration or fighting) then return end
+    r.swingStart, r.swingDuration = restart(r.swingDuration, now, est(self._rawDur or r.swingDuration))
+    r.swingRemaining = r.swingStart > 0 and r.swingDuration or 0
+    self._rawDur, self._qsMul = r.swingDuration, 1
+    self:ApplyWindupEstimate(r.swingDuration)
+    pushWindup(self, { t = now, ev = "SWAP", swingDuration = r.swingDuration, idle = r.swingStart <= 0 })
+  elseif slot == SLOT_MH or slot == SLOT_OH then
+    local m = Nock.state.melee
+    if m.swingStart > 0 and (now < m.swingStart + m.swingDuration or fighting) then
+      local e = slot == SLOT_MH and est(m.swingDuration) or m.swingDuration
+      m.swingStart, m.swingDuration = restart(m.swingDuration, now, e)
+      m.swingRemaining = m.swingStart > 0 and m.swingDuration or 0
+    end
+    if m.dualWield and m.offStart > 0 and (now < m.offStart + m.offDuration or fighting) then
+      local e = slot == SLOT_OH and est(m.offDuration) or m.offDuration
+      m.offStart, m.offDuration = restart(m.offDuration, now, e)
+      m.offRemaining = m.offStart > 0 and m.offDuration or 0
+    end
+  end
 end
 
 -- The published server share and the reads behind it (for the probe).
@@ -585,8 +928,10 @@ function SwingTimer:RefreshDualWield()
   if not m.dualWield then m.offStart, m.offRemaining = 0, 0 end
 end
 
-function SwingTimer:PLAYER_EQUIPMENT_CHANGED()
+function SwingTimer:PLAYER_EQUIPMENT_CHANGED(event, slot)
   self:RefreshDualWield()
+  slot = Nock.Flavor.Plain(slot)
+  if slot == SLOT_RANGED or slot == SLOT_MH or slot == SLOT_OH then self:OnWeaponSwap(slot, GetTime()) end
   local k = SwingTimer.WeaponKey()
   if k ~= self._onKey then
     self._onKey, self._shareServer, self._onMedian = k, nil, nil
@@ -616,17 +961,24 @@ function SwingTimer:START_AUTOREPEAT_SPELL()
 end
 
 function SwingTimer:STOP_AUTOREPEAT_SPELL()
-  Nock.state.ranged.repeating = false
+  local r, now = Nock.state.ranged, GetTime()
+  r.repeating = false
   self._switchOn = nil
+  -- A FAILED_QUIET in this frame was the switch-off, not a retry.
+  self._autoOffAt = now
+  if r.retryAt == now then r.retryAt, r.retryShotAt = nil, nil end
+  if self._pending then for k in pairs(self._pending) do self._pending[k] = nil end end
   pushAutoRow(self, "AUTO_OFF", GetTime())
 end
 
 function SwingTimer:PLAYER_ENTER_COMBAT()
   Nock.state.melee.attacking = true
+  pushAutoRow(self, "MELEE_ON", GetTime())
 end
 
 function SwingTimer:PLAYER_LEAVE_COMBAT()
   Nock.state.melee.attacking = false
+  pushAutoRow(self, "MELEE_OFF", GetTime())
 end
 
 function SwingTimer:PLAYER_ENTERING_WORLD()
@@ -637,6 +989,12 @@ function SwingTimer:PLAYER_ENTERING_WORLD()
   self._lastShotAt, self._lastHitAt = nil, nil
   self._windupStart, self._windupSd, self._windupEndAt, self._windupFromCast = nil, nil, nil, false
   self._lastCastAt, self._lastInterruptAt = nil, nil
+  self._feignAt, self._fdRestartAt = nil, nil
+  local r, c = Nock.state.ranged, Nock.state.context
+  r.retryAt, r.retryShotAt, r.pressThroughAt, r.held = nil, nil, nil, false
+  c.airborne, c.airborneAt = false, nil
+  if self._pending then for k in pairs(self._pending) do self._pending[k] = nil end end
+  if self._heldSpeed then self:RefreshHeldSpeeds() end
   -- the median window survives a loading screen: the wind-up is the server's, not the zone's
   Nock.state.melee.attacking = false
   self:RefreshDualWield()

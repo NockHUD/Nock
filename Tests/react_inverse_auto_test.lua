@@ -37,7 +37,7 @@ RC:OnInitialize()
 local function eq(c, ref) return c and c[1] == ref[1] and c[2] == ref[2] and c[3] == ref[3] end
 local GOLD, RED = { 1.00, 0.84, 0.00, 1.00 }, { 0.85, 0.10, 0.10, 1.00 }
 local auto = RC.auto
-local state = { ranged = { swingStart = 10, swingDuration = 2.0, swingRemaining = 1.2, queueWindow = 0.4, autoDelay = 0 }, gcd = {} }
+local state = { ranged = { swingStart = 10, swingDuration = 2.0, swingRemaining = 1.2, displayRemaining = 1.2, queueWindow = 0.4, autoDelay = 0 }, gcd = {} }
 
 profile.reactDirAuto = "inverse"
 RC:ApplyLayout()
@@ -56,6 +56,7 @@ ok(auto.windupL:IsShown() == false and auto.windupR:IsShown() == false,
    "inverse: no wind-up / queue mark (it would sit on the centre)")
 
 state.ranged.swingRemaining = 0.2
+state.ranged.displayRemaining = state.ranged.swingRemaining  -- the tick mirrors it on TBC
 RC:RefreshAuto(state)
 ok(math.abs(auto.fillL._w - 0.5 * half) <= 0.5, "inverse: halfway through the wind-up = half extent")
 ok(eq(auto.fillL._color, RED) and eq(auto.fillR._color, RED), "inverse: wind-up in its own colour (default red)")
@@ -67,14 +68,17 @@ ok(eq(auto.fillL._color, { 0.2, 0.4, 0.6 }), "inverse: the wind-up colour follow
 profile.reactColorAutoWindup = nil
 
 state.ranged.swingRemaining = 0
+state.ranged.displayRemaining = state.ranged.swingRemaining  -- the tick mirrors it on TBC
 RC:RefreshAuto(state)
 ok(auto.fillL._w == half, "inverse: full at the release")
 
 -- The Forever cycle log records converge/directional resets; a draining
 -- inverse fill shrinks every pixel and must not flood it.
 state.ranged.swingRemaining = 1.9
+state.ranged.displayRemaining = state.ranged.swingRemaining  -- the tick mirrors it on TBC
 RC:RefreshAuto(state)
 state.ranged.swingRemaining = 1.5
+state.ranged.displayRemaining = state.ranged.swingRemaining  -- the tick mirrors it on TBC
 RC:RefreshAuto(state)
 ok(RC._cycleLog == nil or #RC._cycleLog == 0, "inverse: the draining fill is not logged as a cycle reset")
 
@@ -86,6 +90,7 @@ live = true
 -- No wind-up to show (Forever today with the queue window at 0): plain drain.
 windup = 0
 state.ranged.swingRemaining = 0.5
+state.ranged.displayRemaining = state.ranged.swingRemaining  -- the tick mirrors it on TBC
 RC:RefreshAuto(state)
 ok(math.abs(auto.fillL._w - 0.25 * half) <= 0.5 and eq(auto.fillL._color, GOLD), "inverse without a wind-up: one draining phase")
 windup = 0.4
@@ -94,6 +99,7 @@ windup = 0.4
 profile.reactDirAuto = "converge"
 RC:ApplyLayout()
 state.ranged.swingRemaining = 1.0
+state.ranged.displayRemaining = state.ranged.swingRemaining  -- the tick mirrors it on TBC
 RC:RefreshAuto(state)
 ok(auto.fillL._point[1] == "BOTTOMLEFT" and auto.fillL._point[3] == "BOTTOMLEFT"
    and auto.fillR._point[1] == "BOTTOMRIGHT" and auto.fillR._point[3] == "BOTTOMRIGHT",

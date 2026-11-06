@@ -244,6 +244,7 @@ do
   local band = st.ranged.windupRatio
 
   -- Cast-edge and release feeds (never seen on this client): tagged rows, band untouched.
+  for i = #module._windups, 1, -1 do module._windups[i] = nil end   -- earlier melee and range rows
   now = 401.65
   _G.__autoCast = { "Auto Shot", "", 132369, 401650, 402000, false, "cast-a", false, 75 }
   fire("UNIT_SPELLCAST_START", "player", "cast-a", 75)

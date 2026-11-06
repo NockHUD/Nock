@@ -146,6 +146,7 @@ Nock.UI = {
   SWING_CLOSE        = { ease = 0.06, hold = 0.04, catch = 0.30 },
   SwingFillProgress  = function(_, start, rem, dur) return math.max(0, math.min(1, 1 - rem / dur)) end,
   SwingFillBlank     = function() end,
+  PaintHeld          = function() end,
   -- Order resolver stub (the real one is Widgets', tested in react_order_test).
   ResolveFluffyBarOrder = function(stored)
     if type(stored) ~= "table" then return { "swing", "ranged", "melee", "range", "mana" } end
@@ -291,7 +292,7 @@ FC:Refresh(Nock.state)
 -- (Steady/Multi clip via Nock.ClipThreshold, wind-up commit), delay readout.
 -- halfW = (320 - 2) / 2 = 159.
 -- ---------------------------------------------------------------------------
-Nock.state.ranged = { swingStart = 999, swingDuration = 2.0, swingRemaining = 1.0,
+Nock.state.ranged = { swingStart = 999, swingDuration = 2.0, swingRemaining = 1.0, displayRemaining = 1.0,
                       windup = 0.4, autoDelay = 0, repeating = true }
 Nock.state.player.inCombat = true
 FC:Refresh(Nock.state)
@@ -316,6 +317,7 @@ end
 
 -- Held shot: expired swing stays full while fighting + auto still armed.
 Nock.state.ranged.swingRemaining = -0.1
+Nock.state.ranged.displayRemaining = Nock.state.ranged.swingRemaining  -- the tick mirrors it
 FC:Refresh(Nock.state)
 ok(math.abs(FC.swing.fillL._w - 159) < 0.01, "auto: held shot stays full (repeating in combat)")
 
@@ -325,6 +327,7 @@ FC:Refresh(Nock.state)
 ok(FC.swing.fillL._w == 0.01, "auto: no live swing → empty fill")
 Nock.state.ranged.swingStart = 999
 Nock.state.ranged.swingRemaining = 1.0
+Nock.state.ranged.displayRemaining = Nock.state.ranged.swingRemaining  -- the tick mirrors it
 
 -- The vertical marks are individually hideable: fluffyShowClipTicks owns the
 -- Steady/Multi pairs, the SHARED showWindupMark owns the commit mark.
@@ -401,6 +404,7 @@ ok(FC.swing.fillR._shown == false, "auto: ltr hides the mirrored half")
 p.fluffyDirAuto = "inverse"
 FC:ApplyLayout()
 Nock.state.ranged.swingRemaining = 1.2
+Nock.state.ranged.displayRemaining = Nock.state.ranged.swingRemaining  -- the tick mirrors it
 FC:Refresh(Nock.state)
 ok(FC.swing.fillR._shown == true, "auto inverse: both halves drawn")
 ok(FC.swing.fillL._point[1] == "BOTTOMRIGHT" and FC.swing.fillL._point[3] == "BOTTOM"
@@ -422,11 +426,13 @@ do
   end
 end
 Nock.state.ranged.swingRemaining = 0.2
+Nock.state.ranged.displayRemaining = Nock.state.ranged.swingRemaining  -- the tick mirrors it
 FC:Refresh(Nock.state)
 ok(math.abs(FC.swing.fillL._w - 0.5 * 159) <= 0.5, "auto inverse: halfway through the wind-up = half extent")
 ok(eqColor(FC.swing.fillL._color, p.fluffyColorSwingWindup) and eqColor(FC.swing.fillR._color, p.fluffyColorSwingWindup),
    "auto inverse: wind-up in its own colour")
 Nock.state.ranged.swingRemaining = -0.1
+Nock.state.ranged.displayRemaining = Nock.state.ranged.swingRemaining  -- the tick mirrors it
 FC:Refresh(Nock.state)
 ok(FC.swing.fillL._w == 159, "auto inverse: held shot stays full")
 Nock.state.ranged.swingStart = 0
@@ -434,6 +440,7 @@ FC:Refresh(Nock.state)
 ok(FC.swing.fillL._w == 0.01 and FC.swing.fillR._w == 0.01, "auto inverse: no live swing -> empty")
 Nock.state.ranged.swingStart = 999
 Nock.state.ranged.swingRemaining = 1.0
+Nock.state.ranged.displayRemaining = Nock.state.ranged.swingRemaining  -- the tick mirrors it
 
 p.fluffyDirAuto = "converge"
 FC:ApplyLayout()

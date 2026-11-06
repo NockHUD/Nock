@@ -341,6 +341,23 @@ ok(cat:find("| Arc$", 1) or cat:find("| Arc\n", 1, true), "the tracked catalog k
 ok(cat:find("spells: 5  active: 4  active with a cooldown signal: 2", 1, true), "summary counts (BW by base cd, Hawk by tooltip)")
 ok(Probe.CdCatalogReport({ inCombat = true }):find("IN COMBAT", 1, true), "in-combat warning")
 
+-- WindupReport: the rows that show what the game's auto-switch option does.
+do
+  local rep = Probe.WindupReport({
+    state = {}, autoSwitchCvar = "1",
+    swings = {},
+    windups = {
+      { t = 100.0, ev = "RANGE", kind = 2, inRange = false, checks = true, swingRemaining = 1.2 },
+      { t = 100.1, ev = "MELEE_ON", swingRemaining = 1.1 },
+      { t = 103.0, ev = "MELEE_OFF", swingRemaining = 0 },
+    },
+  })
+  ok(rep:find("autoRangedCombat): 1", 1, true), "windup report: the option's value")
+  ok(rep:find("RANGE  swing type 2  in range false  checked true  auto bar rem 1.200", 1, true), "windup report: a range edge")
+  ok(rep:find("MELEE_ON  (auto attack on)  auto bar rem 1.100", 1, true), "windup report: melee switched on")
+  ok(rep:find("MELEE_OFF  (auto attack off)  auto bar rem 0.000", 1, true), "windup report: melee switched off")
+end
+
 -- WindupReport: the spell-75 edges merged with the ranged swings, and the
 -- phase verdict that decides the bar's anchor.
 do

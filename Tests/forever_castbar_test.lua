@@ -225,12 +225,17 @@ do
   c.moving = true
   tick(201.5)
   ok(st.autoShotCast == nil, "model: nothing while moving")
-  -- Stopped past the due mark: runs from the stop for W.
-  c.moving, c.stoppedAt = false, 202.3
+  -- Held past the due mark (the producer's r.held), then released by the
+  -- stop: the hold publishes the expected shot one W after it.
+  c.moving = false
+  r.held = true
+  tick(202.2)
+  ok(st.autoShotCast == nil, "model: nothing while the shot is held")
+  r.held, r.shotEta, c.stoppedAt = false, 203.05, 202.3
   tick(202.4)
   ok(st.autoShotCast and math.abs(st.autoShotCast.startTime - 202.3) < 1e-9 and math.abs(st.autoShotCast.endTime - 203.05) < 1e-9, "model: after a late stop it runs stop -> stop + W")
   -- The shot: the next cycle begins, the record goes.
-  r.swingStart = 203.05
+  r.swingStart, r.shotEta = 203.05, nil
   tick(203.06)
   ok(st.autoShotCast == nil, "model: the shot ends it")
   -- A stop from BEFORE this cycle's shot does not move the start.

@@ -74,12 +74,14 @@ function CastBar.ModelWindup(state, now, rec)
   if not r.windupMeasured then return false end
   local W = r.windup
   if not W or W <= 0 then return false end
-  if state.context.moving then return false end
+  if state.context.moving or state.context.airborne then return false end
   if not Nock.AutoSwingLive() then return false end
-  local due = r.swingStart + r.swingDuration
-  local start = due - W
-  local stoppedAt = state.context.stoppedAt
-  if stoppedAt and stoppedAt > start and stoppedAt >= r.swingStart then start = stoppedAt end
+  -- The held shot (Forever/SwingTimer TickHold) owns when the wind-up runs:
+  -- nothing while it holds, else one wind-up ending at its expected shot (the
+  -- due mark, or a release by a stop, a range edge or a press).
+  if r.held then return false end
+  local endAt = r.shotEta or (r.swingStart + r.swingDuration)
+  local start = endAt - W
   if now < start then return false end
   local endT = start + W
   if now > endT + 0.5 then return false end

@@ -358,6 +358,16 @@ function Nock:Tick()
   -- is the ratio (see Core/State.lua), so this tracks a haste proc the instant
   -- swingDuration moves rather than lagging behind a running average.
   state.ranged.windup = state.ranged.windupRatio * state.ranged.swingDuration
+  -- The ranged fill as drawn: Forever holds a shot that cannot start its
+  -- wind-up (Forever/SwingTimer TickHold, Nock.AutoShotHoldStep); everywhere
+  -- else, and in a practice fight, it is the plain remaining time.
+  local st = self._swingTimer
+  if st and st.TickHold and not state.sim.active then
+    st:TickHold(now)
+  else
+    state.ranged.displayRemaining = state.ranged.swingRemaining
+    state.ranged.held = false
+  end
 
   -- Weave-release retry cost (Nock.ReleaseCost). Latency-shifted: the press
   -- reaches the server ~latency later, so the effective release moment sits

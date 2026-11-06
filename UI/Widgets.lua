@@ -1986,6 +1986,19 @@ end
 -- The timings every swing bar uses (React, Classic, Fluffy): one definition.
 Nock.UI.SWING_CLOSE = { ease = 0.06, hold = 0.04, catch = 0.30 }
 
+-- A held Auto Shot (state.ranged.held, Forever: the shot cannot start its
+-- wind-up) dims the ranged fill to this alpha; the fill itself sits at the
+-- wind-up line. `cache` is the view's own table. One definition for the three
+-- swing bars.
+Nock.UI.SWING_HELD_ALPHA = 0.45
+function Nock.UI.PaintHeld(cache, held, a, b)
+  local alpha = held and Nock.UI.SWING_HELD_ALPHA or 1
+  if cache.heldAlpha == alpha then return end
+  cache.heldAlpha = alpha
+  if a then a:SetAlpha(alpha) end
+  if b then b:SetAlpha(alpha) end
+end
+
 -- A blank bar (no swing to show): the next live cycle is a fresh start, not
 -- a shot to close.
 function Nock.UI.SwingFillBlank(h)

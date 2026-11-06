@@ -951,13 +951,14 @@ function ReactCluster:RefreshAuto(state)
   -- a stale swing doesn't sit fully filled (solid gold).
   local h = self._autoFill
   if not h then h = {}; self._autoFill = h end
+  Nock.UI.PaintHeld(h, r.held, auto.fillL, auto.fillR)
   if self._dirAuto == "inverse" then
     -- Centred halves: full at the shot, drained at the wind-up edge, full
     -- again (wind-up colour) at the release. Continuous on its own, so no
     -- close/catch-up; a blank bar is simply empty.
     local frac, isWindup = 0, false
     if Nock.AutoSwingLive() then
-      frac, isWindup = Nock.UI.InverseAutoPhase(r.swingRemaining, r.swingDuration, Nock.AutoShotWindup())
+      frac, isWindup = Nock.UI.InverseAutoPhase(r.displayRemaining, r.swingDuration, Nock.AutoShotWindup())
     end
     Nock.UI.SwingFillBlank(h)
     local inv = self._autoInv
@@ -967,7 +968,7 @@ function ReactCluster:RefreshAuto(state)
   else
     local p01 = 0
     if Nock.AutoSwingLive() then
-      p01 = Nock.UI.SwingFillProgress(h, r.swingStart, r.swingRemaining, r.swingDuration,
+      p01 = Nock.UI.SwingFillProgress(h, r.swingStart, r.displayRemaining, r.swingDuration,
                                       GetTime(), HOLD_SEC, EASE_SEC, CATCH_SEC)
     else
       -- Blank bar (auto-repeat off, target out of range): the next live cycle

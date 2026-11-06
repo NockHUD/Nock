@@ -452,8 +452,9 @@ function SwingTimers:Refresh(state)
     local r = state.ranged
     local h = self._rangedFill
     if not h then h = {}; self._rangedFill = h end
+    Nock.UI.PaintHeld(h, r.held, self.ranged.fill)
     if r.swingDuration > 0 and r.swingStart > 0 then
-      local p01 = swingProgress(h, r.swingStart, r.swingRemaining, r.swingDuration)
+      local p01 = swingProgress(h, r.swingStart, r.displayRemaining, r.swingDuration)
       Nock.UI.SetBarFill(self.ranged, isFillR and p01 or (1 - p01))
     else
       Nock.UI.SwingFillBlank(h)

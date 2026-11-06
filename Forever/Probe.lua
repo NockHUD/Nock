@@ -236,6 +236,7 @@ function Probe.WindupReport(d)
   L[#L + 1] = "Enum.PlayerSwingType: " .. (#parts > 0 and table.concat(parts, "  ") or "nil")
   L[#L + 1] = "globals matching Swing/Windup/AutoShot: " .. ((d.globals and #d.globals > 0) and table.concat(d.globals, ", ") or "none")
   L[#L + 1] = "UnitCastingInfo now: " .. tostring(d.castingInfo)
+  L[#L + 1] = "Auto Attack/Auto Shot option (autoRangedCombat): " .. tostring(d.autoSwitchCvar)
   L[#L + 1] = ""
   -- Merge the two rings on time.
   local rows = {}
@@ -479,6 +480,34 @@ function Probe.WindupReport(d)
         what = ("RELEASE  start->swing %.3f s  dur %.3f  delay %.3f%s%s"):format(
           w.measured or 0, w.duration or 0, w.autoDelay or 0,
           w.fromCast and "  (cast-sampled shot)" or "", w.sampled and ("  SAMPLED " .. w.sampled) or "")
+      -- The held shot's feeds (Forever/SwingTimer, THE HELD SHOT).
+      elseif w.ev == "PRESS_THROUGH" then
+        what = ("PRESS_THROUGH  !Auto Shot went through (no failure in 0.1 s)  bar rem %.3f"):format(w.swingRemaining or 0)
+      elseif w.ev == "PRESS_FAILED" then
+        what = ("PRESS_FAILED  your !Auto Shot press failed  bar rem %.3f"):format(w.swingRemaining or 0)
+      elseif w.ev == "RETRY" then
+        what = ("RETRY  server retry of a held shot  model shot in %.3f s"):format((w.predicted or w.t) - w.t)
+      elseif w.ev == "RETRY_CHECK" then
+        what = ("RETRY_CHECK  shot vs the retry model %+.3f s"):format(w.err or 0)
+      elseif w.ev == "JUMP" then
+        what = ("JUMP  bar rem %.3f"):format(w.swingRemaining or 0)
+      elseif w.ev == "FD_GETUP" then
+        what = ("FD_GETUP  feign ended by a move/jump: reload restarted at %.3f s"):format(w.swingDuration or 0)
+      elseif w.ev == "FD_CHECK" then
+        what = ("FD_CHECK  next shot %.3f s after the get-up (restart length %.3f)"):format(w.gap or 0, w.swingDuration or 0)
+      elseif w.ev == "QS_PROC" then
+        what = "QS_PROC  Quick Shots on this shot: this reload's wind-up shortened"
+      elseif w.ev == "PARRY" then
+        what = ("PARRY  main hand rem %.3f of %.3f, cut %.3f s"):format(w.swingRemaining or 0, w.swingDuration or 0, w.cut or 0)
+      elseif w.ev == "MELEE_ON" then
+        what = ("MELEE_ON  (auto attack on)  auto bar rem %.3f"):format(w.swingRemaining or 0)
+      elseif w.ev == "MELEE_OFF" then
+        what = ("MELEE_OFF  (auto attack off)  auto bar rem %.3f"):format(w.swingRemaining or 0)
+      elseif w.ev == "RANGE" then
+        what = ("RANGE  swing type %s  in range %s  checked %s  auto bar rem %.3f"):format(tostring(w.kind), tostring(w.inRange), tostring(w.checks), w.swingRemaining or 0)
+      elseif w.ev == "SWAP" then
+        what = w.idle and "SWAP  ranged weapon swapped: no speed estimate, bar idle"
+          or ("SWAP  ranged weapon swapped: reload restarted at %.3f s"):format(w.swingDuration or 0)
       else
         what = ("feed %s(75)  bar rem %.3f%s"):format((w.ev or "?"):gsub("^UNIT_SPELLCAST_", ""), w.swingRemaining or 0,
           w.sampled == "interrupt" and ("  SAMPLED interrupt (move at rem %.3f)"):format(w.pairedMoveRem or 0)
@@ -899,6 +928,7 @@ function Probe:WindupData()
               queueWindow = r.queueWindow, swingDuration = r.swingDuration,
               latency = ((Nock.state.network and Nock.state.network.latencyMs) or 0) / 1000 },
     api = api, enum = enum, globals = globals, castingInfo = castingInfo,
+    autoSwitchCvar = _G.C_CVar and _G.C_CVar.GetCVar and describe(_G.C_CVar.GetCVar("autoRangedCombat")) or "unknown",
     windups = (ST and ST.WindupSamples) and ST:WindupSamples() or {},
     swings = (ST and ST.Samples) and ST:Samples() or {},
     casts = self:Casts(),

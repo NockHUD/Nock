@@ -620,7 +620,7 @@ local function refreshSwing(self, state)
     -- close/catch-up; a blank bar is simply empty.
     local frac, isWindup = 0, false
     if Nock.AutoSwingLive() then
-      frac, isWindup = Nock.UI.InverseAutoPhase(r.swingRemaining, r.swingDuration, windup)
+      frac, isWindup = Nock.UI.InverseAutoPhase(r.displayRemaining, r.swingDuration, windup)
     end
     Nock.UI.SwingFillBlank(h)
     local inv = self._swingInv
@@ -631,7 +631,7 @@ local function refreshSwing(self, state)
     local p01 = 0
     if Nock.AutoSwingLive() then
       local sc = Nock.UI.SWING_CLOSE
-      p01 = Nock.UI.SwingFillProgress(h, r.swingStart, r.swingRemaining, r.swingDuration,
+      p01 = Nock.UI.SwingFillProgress(h, r.swingStart, r.displayRemaining, r.swingDuration,
                                       GetTime(), sc.hold, sc.ease, sc.catch)
     else
       Nock.UI.SwingFillBlank(h)
@@ -648,6 +648,8 @@ local function refreshSwing(self, state)
       self._swingP = p01
     end
   end
+
+  Nock.UI.PaintHeld(h, r.held, bar.fillL, bar.fillR)
 
   -- Marks reposition only when their inputs change (the bar's left edge is
   -- an input: positions snap in absolute screen space).
