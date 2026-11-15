@@ -17,7 +17,7 @@ _G.UnitCastingInfo = function(u) if u == "player" and casting then return unpack
 _G.UnitChannelInfo = function(u) if u == "player" and channel then return unpack(channel) end end
 
 local hideCalls = {}
-local Nock = { Flavor = { forever = true, Plain = function(v) return v end }, Spells = { AUTO_SHOT = 75 },
+local Nock = { Flavor = { forever = true, Plain = function(v) return v end }, Spells = { AUTO_SHOT = 75, MULTI_SHOT = 2643, MULTI_SHOT_CAST = 0.5 },
                db = { profile = { hideBlizzardCastBar = true } },
                UI = { SetBlizzardCastBarHidden = function(h) hideCalls[#hideCalls + 1] = h; return true end } }
 local module
@@ -276,6 +276,35 @@ do
   tick(401.3)
   ok(st.autoShotCast and math.abs(st.autoShotCast.startTime - 401.25) < 1e-9, "...and the model resumes")
 end
+
+-- Build 70938: Multi-Shot's spell data reports 0 ms. Its bar seeds 0.5 s,
+-- then runs the last press-to-release time; ranks by name; a real instant
+-- (0 ms, another name) still raises nothing.
+Nock.API = { SpellInfo = function(id)
+  if id == 2643 or id == 14290 then return "Multi-Shot", 132330, 0 end
+  if id == 999 then return "Instant", 1, 0 end
+  if id == 75 then return "Auto Shot", 132222, 0 end
+end }
+casting, channel = nil, nil
+st.casting = nil
+now = 900
+fire("UNIT_SPELLCAST_SENT", "player", "", "h-1", 2643)
+ok(st.casting and st.casting.spellId == 2643 and st.casting.endTime == 900.5, "0 ms Multi-Shot: seeded 0.5 s bar")
+now = 900.462
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "h-1", 2643)
+ok(st.casting == nil, "its release ends it")
+now = 1000
+fire("UNIT_SPELLCAST_SENT", "player", "", "h-2", 14290)
+ok(st.casting and st.casting.spellId == 14290 and math.abs(st.casting.endTime - 1000.462) < 1e-6, "next bar (a higher rank) runs the learned 0.462 s")
+now = 1003
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "h-2", 14290)
+now = 1100
+fire("UNIT_SPELLCAST_SENT", "player", "", "h-3", 2643)
+ok(st.casting and math.abs(st.casting.endTime - 1100.462) < 1e-6, "an outlier gap (lost event) is not learned")
+fire("UNIT_SPELLCAST_FAILED", "player", "h-3", 2643)
+ok(st.casting == nil, "a failed press clears")
+fire("UNIT_SPELLCAST_SENT", "player", "", "i-9", 999)
+ok(st.casting == nil, "a real instant still raises no bar")
 
 print(("forever_castbar: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

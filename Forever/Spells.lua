@@ -12,6 +12,12 @@ local Spells = {
   RAPTOR_STRIKE = 2973, -- rank 1; the melee range probe (IsSpellInRange)
   HUNTERS_MARK = 1130,  -- rank 1 (ranks map to it through C_Spell.GetBaseSpell)
   HUNTERS_MARK_DURATION = 120,
+  -- Multi-Shot rank 1: its name finds every rank. Its cast is hidden: the
+  -- spell data reports 0 ms (build 70938; 500 on the beta) while the shot
+  -- leaves ~0.5 s after the press, so the cast bar seeds that and learns the
+  -- rest from the player's own presses (Forever/CastBar.lua).
+  MULTI_SHOT = 2643,
+  MULTI_SHOT_CAST = 0.5,
   FEIGN_DEATH = 5384,   -- icon only (the wizard's No HUD card); the cooldown is the FD row below
   -- Aspects by base id (vanilla ids; Forever/Auras.lua). A cast or aura of
   -- a higher rank resolves to the base id by name.

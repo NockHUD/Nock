@@ -99,6 +99,21 @@ local function publishCast()
   return true
 end
 
+-- Multi-Shot's cast is hidden: build 70938 reports 0 ms in its spell data
+-- (500 on the beta), so a zero there cannot mean "instant" for it. Its bar
+-- runs the press-to-release time of the player's last Multi-Shot (haste moves
+-- it: 0.462 s measured on 70938), seeded at MULTI_SHOT_CAST. Ranks are
+-- separate spells on Forever and are matched by name.
+local hiddenLearned
+local HIDDEN_MIN, HIDDEN_MAX = 0.2, 1.0
+
+local function isHiddenCast(name)
+  local S = Nock.Spells
+  if not (S.MULTI_SHOT and type(name) == "string") then return false end
+  local P = Nock.Flavor and Nock.Flavor.Plain or function(v) return v end
+  return P((Nock.API.SpellInfo(S.MULTI_SHOT))) == name
+end
+
 -- Ranged shots with a cast (Multi-Shot) never enter UnitCastingInfo and fire
 -- no UNIT_SPELLCAST_START here (probed 2026-09-24: only SUCCEEDED), so the bar
 -- is raised on the press (SENT) and runs the spell's own cast time.
@@ -107,10 +122,15 @@ local function publishFromSpell(castGUID, spellID)
   spellID = P(spellID)
   if not spellID or spellID == Nock.Spells.AUTO_SHOT or not (Nock.API and Nock.API.SpellInfo) then return false end
   local name, icon, castTime = Nock.API.SpellInfo(spellID)
-  castTime = P(castTime)
+  name, castTime = P(name), P(castTime)
+  local hidden = false
+  if (type(castTime) ~= "number" or castTime <= 0) and isHiddenCast(name) then
+    castTime = (hiddenLearned or Nock.Spells.MULTI_SHOT_CAST or 0.5) * 1000
+    hidden = true
+  end
   if type(castTime) ~= "number" or castTime <= 0 then return false end
   local now = GetTime()
-  rec.name, rec.spellId, rec.icon = name, spellID, icon
+  rec.name, rec.spellId, rec.icon, rec.hidden = name, spellID, icon, hidden
   rec.startTime, rec.endTime, rec.isChannel = now, now + castTime / 1000, false
   fallbackGUID = castGUID or true
   Nock.state.player.casting = rec
@@ -190,6 +210,11 @@ function CastBar:OnCastFailed(event, unit, castGUID, spellID)
   end
   if not fallbackGUID then return end
   if fallbackGUID ~= true and castGUID ~= fallbackGUID then return end
+  -- A hidden cast's own release: its press-to-release time is the next bar's.
+  if event == "UNIT_SPELLCAST_SUCCEEDED" and rec.hidden and Nock.state.player.casting == rec then
+    local gap = GetTime() - rec.startTime
+    if gap >= HIDDEN_MIN and gap <= HIDDEN_MAX then hiddenLearned = gap end
+  end
   fallbackGUID = nil
   clear()
 end
