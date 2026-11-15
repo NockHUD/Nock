@@ -114,6 +114,18 @@ local function readTrueshot(AC)
   end
 end
 
+-- Which unit our mark is on, so a switch back to it in combat brings the
+-- mark back: the target's auras cannot be read there and a target change
+-- would otherwise blank it until combat ends. One slot: a hunter has one
+-- mark up at a time. nil when the GUID is secret (instances) -- the switch
+-- back then stays blank, as before.
+local markGUID, markExp, markDur
+
+local function targetGUID()
+  local g = Nock.Flavor.Plain(_G.UnitGUID and _G.UnitGUID("target"))
+  return type(g) == "string" and g or nil
+end
+
 local function setMark(expirationTime, duration)
   local t = Nock.state.target
   if not expirationTime then t.huntersMark = nil; return end
@@ -257,13 +269,23 @@ function Auras:UNIT_SPELLCAST_SUCCEEDED(event, unit, castGUID, spellID)
   if S.ASPECTS[id] then
     setAspect(id)
   elseif id == S.HUNTERS_MARK then
-    setMark(GetTime() + S.HUNTERS_MARK_DURATION, S.HUNTERS_MARK_DURATION)
+    local now = GetTime()
+    markGUID, markExp, markDur = targetGUID(), now + S.HUNTERS_MARK_DURATION, S.HUNTERS_MARK_DURATION
+    setMark(markExp, markDur)
   end
 end
 
--- The mark is per target; a new target has none until it is cast (or read).
+-- The mark is per target: a new target has none until it is cast (or read),
+-- unless it is the unit our mark went on, still alive and inside the mark's
+-- duration.
 function Auras:PLAYER_TARGET_CHANGED()
-  setMark(nil)
+  local g = targetGUID()
+  if g and g == markGUID and markExp and markExp > GetTime()
+     and Nock.Flavor.Plain(_G.UnitIsDead and _G.UnitIsDead("target")) ~= true then
+    setMark(markExp, markDur)
+  else
+    setMark(nil)
+  end
 end
 
 -- Out of combat the cache is the truth and overrides the ledger both ways.
@@ -298,4 +320,12 @@ function Auras:Refresh()
     if type(hmName) == "string" then m = AC.ByName("target", hmName) end
   end
   if m then setMark(m.expirationTime or 0, m.duration or 0) else setMark(nil) end
+  -- The cache is the truth here: keep the remembered mark in step with it.
+  local g = targetGUID()
+  if m and m.sourceUnit == "player" and g then
+    local exp, dur = tonumber(m.expirationTime), tonumber(m.duration)
+    if exp and exp > 0 then markGUID, markExp, markDur = g, exp, dur or 0 end
+  elseif not m and g and g == markGUID then
+    markGUID = nil
+  end
 end

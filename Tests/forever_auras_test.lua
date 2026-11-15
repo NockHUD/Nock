@@ -218,5 +218,53 @@ secretAuras = true
 now = 7000
 fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", TSA)
 ok(p.trueshotExpires == 7000 + 1800, "no duration ever read: 30 minutes")
+-- 13. switch away from the marked mob and back, in combat: the mark returns
+-- for the unit it went on (by GUID), not for any other, a dead one, or after
+-- it ran out; a secret GUID (instances) keeps the old blank.
+local guid, dead = "Creature-A", false
+_G.UnitGUID = function() return guid end
+_G.UnitIsDead = function() return dead end
+secretAuras = true
+now = 8000
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 1130)
+guid = "Creature-B"; fire("PLAYER_TARGET_CHANGED")
+ok(t.huntersMark == nil, "another mob: no mark")
+now = 8010
+guid = "Creature-A"; fire("PLAYER_TARGET_CHANGED")
+ok(t.huntersMark and t.huntersMark.expirationTime == 8120 and t.huntersMark.remaining == 110, "back on the marked mob: the mark returns")
+dead = true; guid = "Creature-B"; fire("PLAYER_TARGET_CHANGED"); guid = "Creature-A"; fire("PLAYER_TARGET_CHANGED")
+ok(t.huntersMark == nil, "the marked mob dead: no mark")
+dead = false
+now = 8121; fire("PLAYER_TARGET_CHANGED")
+ok(t.huntersMark == nil, "after the mark ran out: no mark")
+now = 8200
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 1130)   -- on A
+guid = "Creature-B"; fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 1130)   -- moved to B
+guid = "Creature-A"; fire("PLAYER_TARGET_CHANGED")
+ok(t.huntersMark == nil, "the mark moved on: the old mob has none")
+guid = "Creature-B"; fire("PLAYER_TARGET_CHANGED")
+ok(t.huntersMark and t.huntersMark.expirationTime == 8320, "the new mob has it")
+-- out of combat the cache feeds the memory: a read mark survives a switch in combat
+secretAuras = false
+guid = "Creature-C"
+cache = { ["target1130"] = { spellId = 1130, duration = 120, expirationTime = 8250, sourceUnit = "player" } }
+A:Refresh()
+secretAuras = true
+guid = "Creature-B"; fire("PLAYER_TARGET_CHANGED")
+guid = "Creature-C"; fire("PLAYER_TARGET_CHANGED")
+ok(t.huntersMark and t.huntersMark.expirationTime == 8250, "a mark read from the cache returns on switch back")
+-- another hunter's mark is not remembered as ours
+secretAuras = false
+guid = "Creature-D"
+cache = { ["target1130"] = { spellId = 1130, duration = 120, expirationTime = 8260, sourceUnit = "party1" } }
+A:Refresh()
+secretAuras = true
+guid = "Creature-C"; fire("PLAYER_TARGET_CHANGED")
+ok(t.huntersMark and t.huntersMark.expirationTime == 8250, "another hunter's mark does not take the slot")
+-- a secret GUID: nothing remembered, nothing restored
+_G.UnitGUID = function() return nil end
+fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 1130)
+fire("PLAYER_TARGET_CHANGED")
+ok(t.huntersMark == nil, "no GUID: switch back stays blank")
 print(("forever_auras: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)
