@@ -2296,6 +2296,15 @@ local function buildOptionsTable()
             get = get,
             set = set,
           },
+          warningIconSpacing = {
+            type = "range",
+            name = "Spacing",
+            desc = "Space between the squares when more than one warning is up.",
+            min = 0, max = 40, step = 1,
+            order = 11.5,
+            get = get,
+            set = set,
+          },
           warningBorderSize = {
             type = "range",
             name = "Border thickness",
@@ -8595,7 +8604,7 @@ local function buildOptionsTable()
   -- toggle + intro.
   regroup("warnings", "settings", "Appearance & Preview", 1,
     { "appearanceHeader", "warningsPositionNote", "warningsResetPosition",
-      "warningIconSize", "warningBorderSize", "warningLabelOffset",
+      "warningIconSize", "warningIconSpacing", "warningBorderSize", "warningLabelOffset",
       "warningLabelSize", "warningLabelFont", "warningLabelStyle", "warningLabelUpper",
       "previewHeader", "previewIntro", "previewButton", "noReleasePreview" }, true)
 

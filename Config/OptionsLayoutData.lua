@@ -350,7 +350,7 @@ L.TABS = {
   {
     path = "alerts.warnings.settings",
     cards = {
-      { key = "squaresCard", name = "Squares", icon = { glyph = "warn" }, desc = "The alert squares; drag the row while frames are unlocked, Reset puts it back top centre.", actions = { "warningsResetPosition" }, rows = { "warningsResetPosition", "warningIconSize", "warningBorderSize" } },
+      { key = "squaresCard", name = "Squares", icon = { glyph = "warn" }, desc = "The alert squares; drag the row while frames are unlocked, Reset puts it back top centre.", actions = { "warningsResetPosition" }, rows = { "warningsResetPosition", "warningIconSize", "warningIconSpacing", "warningBorderSize" } },
       { key = "labelsCard", name = "Labels", icon = { glyph = "text" }, advanced = true, stack = true, rows = { "warningLabelOffset", "warningLabelSize", "warningLabelFont", "warningLabelStyle", "warningLabelUpper" } },
       { key = "previewCard", name = "Preview", icon = { glyph = "play" }, desc = "Fire a sample so you can dial in size, fonts, offset and thickness without waiting for a real trigger.", stack = true, rows = { "previewButton", "noReleasePreview" } },
     },

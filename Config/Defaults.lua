@@ -153,6 +153,7 @@ Nock.Defaults = {
     warningsPosition   = false,  -- false = stock spot (top centre, 25% down); a table once dragged
     warningIconSize    = 44,
     warningBorderSize  = 3,
+    warningIconSpacing = 8,      -- px between squares (C.DIM.WARN_ICON_GAP, the stock gap)
     warningLabelOffset = 10,
     warningLabelFont   = "Friz Quadrata TT",
     warningLabelSize   = 12,

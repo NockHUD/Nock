@@ -629,7 +629,7 @@ ok(ex.grpStrip and ex.grpStrip.args.reactRangeStrip and ex.grpStrip.args.reactRa
 onlyKeys(wa, { "masterToggle", "intro", "settings" }, "warnings", { "cat_" })
 onlyKeys(wa.settings and wa.settings.args or {},
   { "appearanceHeader", "warningsPositionNote", "warningsResetPosition",
-    "warningIconSize", "warningBorderSize", "warningLabelOffset",
+    "warningIconSize", "warningIconSpacing", "warningBorderSize", "warningLabelOffset",
     "warningLabelSize", "warningLabelFont", "warningLabelStyle", "warningLabelUpper",
     "previewHeader", "previewIntro", "previewButton", "noReleasePreview" },
   "warnings settings")

@@ -226,7 +226,7 @@ function WarningsView:Refresh(state)
   local labelUpper = p.warningLabelUpper
   local labelFontName = p.warningLabelFont
   local labelFontPath = (LSM and labelFontName and LSM:Fetch("font", labelFontName)) or Nock.UI.GetFont()
-  local gap = C.DIM.WARN_ICON_GAP
+  local gap = p.warningIconSpacing or C.DIM.WARN_ICON_GAP
   local durFontSize = math.max(12, math.floor(size * 0.32))
 
   local n = math.min(#list, C.WARNING_SLOTS)
