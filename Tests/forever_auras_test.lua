@@ -261,10 +261,19 @@ A:Refresh()
 secretAuras = true
 guid = "Creature-C"; fire("PLAYER_TARGET_CHANGED")
 ok(t.huntersMark and t.huntersMark.expirationTime == 8250, "another hunter's mark does not take the slot")
+-- identity hidden flag (the corner container's switch): a target whose GUID
+-- reads, none, or a target with a secret GUID
+_G.UnitExists = function() return true end
+fire("PLAYER_TARGET_CHANGED")
+ok(t.markHidden == false, "readable GUID: not hidden")
 -- a secret GUID: nothing remembered, nothing restored
 _G.UnitGUID = function() return nil end
 fire("UNIT_SPELLCAST_SUCCEEDED", "player", "g", 1130)
 fire("PLAYER_TARGET_CHANGED")
 ok(t.huntersMark == nil, "no GUID: switch back stays blank")
+ok(t.markHidden == true, "a target with a secret GUID: hidden")
+_G.UnitExists = function() return false end
+fire("PLAYER_TARGET_CHANGED")
+ok(t.markHidden == false, "no target: not hidden")
 print(("forever_auras: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

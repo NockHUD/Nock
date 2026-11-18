@@ -17,6 +17,14 @@
 -- 2:1 rectangles centred above the cluster: the aspect alone in the middle,
 -- joined by Hunter's Mark only while the target carries it, the pair growing
 -- out from the centre. No caster caption in that style.
+--
+-- Forever, target identity hidden (dungeons, raids: state.target.markHidden):
+-- Nock cannot tell one mob from another there, so its own mark record cannot
+-- follow a target switch. The mark slot then shows its idle face and a
+-- one-button client aura container (Forever/StingTiles.lua's recipe, filter
+-- HARMFUL, Hunter's Mark ranks) draws the real mark over it, with its true
+-- countdown. No caster caption and no range tint on the client's button. In
+-- the open world the slot keeps painting Nock's own record.
 
 local Nock = LibStub("AceAddon-3.0"):GetAddon("Nock")
 local ReactCorners = Nock:NewModule("ReactCorners", "AceEvent-3.0")
@@ -32,6 +40,9 @@ local ASPECT_FALLBACK = 136116
 -- Hunter's Mark ranks, max first (mirrors UI/Frame_Rotation.lua's HM_RANKS) --
 -- a leveling hunter has no rank 5, so the ladder is walked until one resolves.
 local HM_RANKS = { 27322, 14325, 14324, 14323, 1130 }
+-- Forever's container filter: the vanilla ranks, kept only while the client
+-- names them Hunter's Mark (Forever/StingTiles.lua ST.Ids).
+local HM_CANDIDATES = { 1130, 14323, 14324, 14325 }
 local HM_FALLBACK = 132212
 -- Out-of-range tint: the React grid's red (UI/Frame_ReactCooldowns.lua TINT).
 local MARK_OUT_TINT = { 0.77, 0.12, 0.23, 1 }
@@ -138,6 +149,53 @@ function ReactCorners:OnInitialize()
   self:ApplyLock()
   self:RegisterMessage("NOCK_VISUALS_CHANGED", "ApplyLayout")
   self:RegisterMessage("NOCK_LOCK_CHANGED",    "ApplyLock")
+  -- The mark container follows the unit's aura events, not the token moving
+  -- to another unit: re-read on every target change (Forever only).
+  if Nock.Flavor and Nock.Flavor.forever and self.RegisterEvent then
+    self:RegisterEvent("PLAYER_TARGET_CHANGED", "RereadMarkContainer")
+  end
+end
+
+-- Forever: the Hunter's Mark ids for the container filter, or nil while the
+-- client has not resolved the name yet.
+function ReactCorners:MarkContainerIds()
+  local P = Nock.Flavor.Plain
+  local S = Nock.Spells
+  local name = P(Nock.API.SpellName(S and S.HUNTERS_MARK or 1130))
+  if type(name) ~= "string" then return nil end
+  local ids = Nock.ForeverStingTiles.Ids(HM_CANDIDATES, name, function(id) return P(Nock.API.SpellName(id)) end)
+  return #ids > 0 and ids or nil
+end
+
+-- Forever: the mark container over the mark slot while `want`, parked
+-- otherwise. Built once, out of combat, as soon as the mark icon is on (so
+-- it is ready when a switch in combat needs it); resized out of combat only.
+-- false = the client refused it: the slot keeps its idle face.
+function ReactCorners:SyncMarkContainer(enabled, want, w, h)
+  local ST = Nock.ForeverStingTiles
+  if not (ST and Nock.Flavor and Nock.Flavor.forever) then return end
+  local tile = self._markTile
+  local inCombat = InCombatLockdown and InCombatLockdown()
+  if tile == nil then
+    if not enabled or inCombat then return end
+    local ids = self:MarkContainerIds()
+    if not ids then return end
+    tile = ST.Create(self._parent, "Mark", w, h, ids, nil, false, "HARMFUL") or false
+    self._markTile = tile
+    if tile then ST.Park(tile) end
+  end
+  if not tile then return end
+  if want then
+    if (tile.w ~= w or tile.h ~= h) and not inCombat then ST.Resize(tile, w, h, nil) end
+    if tile.parked or tile.slot ~= self.mark then ST.Place(tile, self.mark) end
+  elseif not tile.parked then
+    ST.Park(tile)
+  end
+end
+
+function ReactCorners:RereadMarkContainer()
+  local tile = self._markTile
+  if tile and not tile.parked then pcall(tile.c.UpdateAllAuras, tile.c) end
 end
 
 -- Cluster-relative screen capture (the cast bar's CaptureFreePos, but against
@@ -301,14 +359,18 @@ function ReactCorners:Refresh(state)
   -- Guided wizard: the corners come with the React page, not the HUD page.
   local react = Nock.HudIsReact() and not Nock.WizardHides("react.corners")
   local rect  = isRect()
-  local mk    = state.target.huntersMark
+  -- Forever, identity hidden: the client's container draws the mark (header).
+  local hidden = (Nock.Flavor and Nock.Flavor.forever and state.target.markHidden == true) or false
+  local mk    = (not hidden) and state.target.huntersMark or nil
   local showA = react and p.reactShowAspectIcon == true
+  local wantM = react and p.reactShowMarkIcon == true
   -- Redtuzk: the mark exists only while it is on the target (or while
-  -- unlocked, so it can be placed with nothing targeted).
-  local showM = react and p.reactShowMarkIcon == true
+  -- unlocked, so it can be placed with nothing targeted). Under the
+  -- container our slot stays hidden; the pair keeps the mark's spot open.
+  local showM = wantM
     and (not rect or mk ~= nil or not Nock.IsLockedFor("react.corners"))
   if rect then
-    local pair = (showA and showM
+    local pair = (showA and (showM or (wantM and hidden))
       and not storedPos(posKey("aspect")) and not storedPos(posKey("mark"))) or false
     if pair ~= self._pair then self:AnchorRect(pair) end
   end
@@ -360,5 +422,10 @@ function ReactCorners:Refresh(state)
     if not self.mark:IsShown() then self.mark:Show() end
   elseif self.mark:IsShown() then
     self.mark:Hide()
+  end
+
+  if Nock.Flavor and Nock.Flavor.forever then
+    local mw, mh = self.mark:GetSize()
+    self:SyncMarkContainer(wantM, wantM and hidden, mw, mh)
   end
 end

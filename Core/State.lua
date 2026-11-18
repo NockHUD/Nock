@@ -231,6 +231,7 @@ Nock.state = {
     ladderRestRaw = nil,  -- the same from the unsettled shoot reading (the strip's SWEET SPOT: a 0.3 s run across the band has no room for the settle)
     ladderLayout = nil,   -- the segment list the Range Finder draws
     ladderRev    = 0,     -- moves whenever ladderLayout is rebuilt (spell / talent change)
+    markHidden = false,  -- Forever: the target's identity is secret (instances); Forever/Auras.lua
     huntersMark = nil,  -- { name, spellId, icon, remaining, duration, fromPlayer,
                         --   sourceName } or nil. sourceName is the casting
                         --   hunter's display name, or nil when the client

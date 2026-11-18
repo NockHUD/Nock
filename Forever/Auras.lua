@@ -126,6 +126,16 @@ local function targetGUID()
   return type(g) == "string" and g or nil
 end
 
+-- Whether the target's identity is hidden from Nock (dungeons, raids): no
+-- GUID to remember the mark by, so the corner icon hands the mark to a
+-- client-drawn aura container instead (UI/Frame_ReactCorners.lua). Published
+-- whatever the corner settings are; false without a target.
+local function publishHidden()
+  local exists = Nock.Flavor.Plain(_G.UnitExists and _G.UnitExists("target"))
+  -- a secret UnitExists (nil here) counts as a target: hidden, not absent
+  Nock.state.target.markHidden = exists ~= false and targetGUID() == nil
+end
+
 local function setMark(expirationTime, duration)
   local t = Nock.state.target
   if not expirationTime then t.huntersMark = nil; return end
@@ -254,6 +264,8 @@ function Auras:OnEnable()
   p.canWeave = true
   self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
   self:RegisterEvent("PLAYER_TARGET_CHANGED")
+  self:RegisterEvent("PLAYER_ENTERING_WORLD", "PLAYER_TARGET_CHANGED")
+  publishHidden()
   hookCancels()
 end
 
@@ -279,6 +291,7 @@ end
 -- unless it is the unit our mark went on, still alive and inside the mark's
 -- duration.
 function Auras:PLAYER_TARGET_CHANGED()
+  publishHidden()
   local g = targetGUID()
   if g and g == markGUID and markExp and markExp > GetTime()
      and Nock.Flavor.Plain(_G.UnitIsDead and _G.UnitIsDead("target")) ~= true then

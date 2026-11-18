@@ -124,8 +124,9 @@ end
 -- Build one sting's container on `parent` (the grid). nil on a client
 -- without the template or one that refuses the configuration: the sting then
 -- keeps its plain tile. Out of combat only (the caller's rule). `reverse`:
--- the swipe drains (gridStingGrey).
-function ST.Create(parent, key, w, h, ids, zoom, reverse)
+-- the swipe drains (gridStingGrey). `filter` defaults to ST.FILTER (own
+-- auras); the corner mark passes "HARMFUL" to take any hunter's mark.
+function ST.Create(parent, key, w, h, ids, zoom, reverse, filter)
   local okc, c = pcall(CreateFrame, "AuraContainer", "NockStingTile" .. key, parent, "CustomAuraContainerTemplate")
   if not okc or not c then return nil end
   local tile = { c = c, key = key, w = w, h = h, zoom = zoom, buttons = {}, sig = ST.Signature(ids), reverse = reverse == true }
@@ -137,7 +138,7 @@ function ST.Create(parent, key, w, h, ids, zoom, reverse)
     c:SetFlowLayoutAxis(axis.Horizontal or 0)
     c:SetFlowLayoutGrowthDirection(dir.Right or 1, dir.Down or -1)
     c:SetFlowLayoutAnchorPoint("TOPLEFT")
-    c:AddAuraGroup(ST.GROUP, ST.FILTER, {
+    c:AddAuraGroup(ST.GROUP, filter or ST.FILTER, {
       maxFrameCount = 1,
       candidateFilters = filtersFor(ids),
       -- one button: should the unified tile ever find two of your stings on
@@ -258,6 +259,9 @@ function ST.Sync(tiles, slots, parent, env)
   end
   return pending
 end
+
+-- For a single container outside the grid (UI/Frame_ReactCorners.lua's mark).
+ST.Place, ST.Park, ST.Resize = place, park, resize
 
 -- The spellbook changed (a new rank): the ids are checked at the next sync.
 function ST.MarkIdsStale(tiles)

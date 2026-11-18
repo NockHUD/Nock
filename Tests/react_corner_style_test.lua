@@ -13,6 +13,7 @@ local function newFrame()
   local f = { shown = false, points = {} }
   function f:SetSize(w, h) self.w, self.h = w, h end
   function f:SetWidth(w) self.w = w end
+  function f:GetSize() return self.w, self.h end
   function f:ClearAllPoints() self.points = {} end
   function f:SetPoint(point, rel, relPoint, x, y) self.points[#self.points + 1] = { point, rel, relPoint, x, y } end
   function f:Show() self.shown = true end
@@ -143,6 +144,85 @@ RC:ApplyLayout()
 RC:Refresh(state)
 ok(RC.aspect.h == 42 and RC.aspect.points[1][1] == "BOTTOMRIGHT", "nock: back to the corner, rectangle position not applied")
 ok(painted[RC.mark].sub == "Redtuzk" or painted[RC.mark].sub == nil, "nock: caption path intact")
+
+-- Forever, target identity hidden (instances): the slot shows its idle face
+-- and a client aura container takes the mark; in the open world it is parked
+-- and the slot paints Nock's own record. Built out of combat only.
+do
+  local combat = false
+  _G.InCombatLockdown = function() return combat end
+  local reread = 0
+  local created, lastCreate = 0, nil
+  Nock.Flavor = { forever = true, Plain = function(v) return v end }
+  Nock.Spells = { HUNTERS_MARK = 1130 }
+  Nock.API.SpellName = function(id) if id == 99999 then return "Other" end return "Hunter's Mark" end
+  local ST = { Ids = function(cands, name, nameOf)
+    local out = {}
+    for _, id in ipairs(cands) do if nameOf(id) == name then out[#out + 1] = id end end
+    return out
+  end }
+  function ST.Create(parent, key, w, h, ids, zoom, reverse, filter)
+    created = created + 1
+    lastCreate = { parent = parent, w = w, h = h, ids = ids, filter = filter }
+    return { c = { UpdateAllAuras = function() reread = reread + 1 end }, w = w, h = h, parked = false }
+  end
+  function ST.Park(t) t.parked, t.slot = true, nil end
+  function ST.Place(t, slot) t.parked, t.slot = false, slot end
+  function ST.Resize(t, w, h) t.w, t.h = w, h end
+  Nock.ForeverStingTiles = ST
+  p.reactCornerStyle = "nock"
+  p.reactAspectRectPos = false
+  RC._markTile = nil
+  RC:ApplyLayout()
+
+  -- built once the mark icon is on, out of combat, and parked in the open world
+  state.target.markHidden = false
+  state.target.huntersMark = { icon = "hm", expirationTime = 200, duration = 120 }
+  RC:Refresh(state)
+  ok(created == 1 and lastCreate.filter == "HARMFUL" and #lastCreate.ids == 4, "forever: container built with any hunter's mark, the four ranks")
+  ok(RC._markTile.parked == true and painted[RC.mark].desat == false, "forever open world: container parked, our record painted")
+
+  -- identity hidden: our slot idle, the container placed over it
+  state.target.markHidden = true
+  RC:Refresh(state)
+  ok(RC._markTile.parked == false and RC._markTile.slot == RC.mark, "forever hidden: container over the mark slot")
+  ok(RC.mark:IsShown() and painted[RC.mark].desat == true and painted[RC.mark].sub == nil, "forever hidden: slot idle, no caption from a stale record")
+  RC:RereadMarkContainer()
+  ok(reread == 1, "forever hidden: a target change re-reads the container")
+  RC:Refresh(state)
+  ok(created == 1, "forever: built once")
+
+  -- redtuzk: our rectangle stays hidden, the pair keeps the mark's spot
+  p.reactCornerStyle = "redtuzk"
+  RC:ApplyLayout()
+  RC:Refresh(state)
+  ok(not RC.mark:IsShown() and RC.aspect.points[1][1] == "BOTTOMRIGHT", "forever hidden redtuzk: slot hidden, pair layout holds the spot")
+  ok(RC._markTile.w == 42 and RC._markTile.h == 21, "forever hidden redtuzk: container resized to the rectangle")
+  p.reactCornerStyle = "nock"
+  RC:ApplyLayout()
+
+  -- back to the open world: parked again
+  state.target.markHidden = false
+  RC:Refresh(state)
+  ok(RC._markTile.parked == true, "forever: parked again when identity is readable")
+
+  -- mark icon off: parked
+  state.target.markHidden = true
+  p.reactShowMarkIcon = false
+  RC:Refresh(state)
+  ok(RC._markTile.parked == true, "forever: mark icon off parks the container")
+  p.reactShowMarkIcon = true
+
+  -- a container is never built in combat
+  RC._markTile = nil
+  combat = true
+  RC:Refresh(state)
+  ok(RC._markTile == nil and created == 1, "forever: no build in combat")
+  combat = false
+  RC:Refresh(state)
+  ok(created == 2 and RC._markTile.parked == false, "forever: built after combat and placed")
+  Nock.Flavor, Nock.ForeverStingTiles = nil, nil
+end
 
 print(("react_corner_style_test: %d passed, %d failed"):format(pass, fail))
 if fail > 0 then os.exit(1) end
