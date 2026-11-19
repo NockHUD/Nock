@@ -161,6 +161,11 @@ Spells.TRACKED = {
   { key = "ImmoTrap",  id = 13795,   name = "Immolation Trap", label = "Immo",    cat = "Class", row = 2, shared = "traps" },
   { key = "FrostTrap", id = 13809,   name = "Frost Trap",      label = "Frost",   lv = 28, cat = "Class", row = 2, shared = "traps" },
   { key = "ExploTrap", id = 13813,   name = "Explosive Trap",  label = "Explo",   lv = 34, cat = "Class", row = 2, shared = "traps" },
+  -- Trinket slots (user request 2026-11-19): a tile per slot shows whatever is
+  -- equipped there, its cooldown read live from GetInventoryItemCooldown (plain
+  -- in combat, probed). No spell id: Forever/Cooldowns.lua tracks `slot`.
+  { key = "Trinket1", slot = 13, title = "Trinket 1", label = "Trinket 1", cat = "Class", row = 2 },
+  { key = "Trinket2", slot = 14, title = "Trinket 2", label = "Trinket 2", cat = "Class", row = 2 },
   -- Stings. `debuff` marks a tile whose timer is the sting on the current
   -- target, drawn over the tile by the client (Forever/StingTiles.lua);
   -- Serpent and Scorpid have no cooldown of their own, Viper keeps its under

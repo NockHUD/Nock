@@ -147,7 +147,15 @@ function Cooldowns:RebuildLists()
     if not clash then all[#all + 1] = e end
   end
   for _, e in ipairs(all) do
-    if e.type == "spell" and #entryIds(e) > 0 and not self._byKey[e.key] then
+    if e.slot and not self._byKey[e.key] then
+      -- an equipment slot (a trinket): no spell, no ledger; Refresh reads it
+      self._tracked[#self._tracked + 1] = e
+      self._byKey[e.key] = e
+      ensureStateSlot(e.key)
+      local s = Nock.state.cooldowns[e.key]
+      s.spellId, s.rangeIds, s.melee, s.icon2 = nil, nil, nil, nil
+      s.icon = (_G.GetInventoryItemTexture and Nock.Flavor.Plain(_G.GetInventoryItemTexture("player", e.slot))) or 134400
+    elseif e.type == "spell" and #entryIds(e) > 0 and not self._byKey[e.key] then
       self._tracked[#self._tracked + 1] = e
       self._byKey[e.key] = e
       ensureStateSlot(e.key)
@@ -337,7 +345,7 @@ function Cooldowns:UpdateKnown()
     -- A custom entry (a pet ability, a proc/item spell) is never in the
     -- player's own spellbook by design; leave it unset rather than false so
     -- consumers read it as "known" (grid tiles greyed unlearned on false).
-    if not e.custom and not e.pet then
+    if not e.custom and not e.pet and not e.slot then
       known[e.key] = entryKnown(e, names)
     end
   end
@@ -942,7 +950,7 @@ end
 function Cooldowns:Seed()
   if Nock.Restricted("cooldowns") then return end
   for _, e in ipairs(self._tracked) do
-    if not e.pet then
+    if not e.pet and not e.slot then
       local id = ledgerId(e)
       local start, duration = Nock.API.SpellCooldown(id)
       start = Nock.Flavor.Plain(start); duration = Nock.Flavor.Plain(duration)
@@ -982,7 +990,7 @@ function Cooldowns:Reread()
   local reads = {}
   local groupRunning = {}
   for _, e in ipairs(self._tracked) do
-    if not e.pet and self:IsEntryKnown(e.key) ~= false then
+    if not e.pet and not e.slot and self:IsEntryKnown(e.key) ~= false then
       local id = ledgerId(e)
       local start, duration = Nock.API.SpellCooldown((self._readId and self._readId[e.key]) or id)
       start = Nock.Flavor.Plain(start); duration = Nock.Flavor.Plain(duration)
@@ -1037,13 +1045,32 @@ local function refreshPet(e, s, bar)
   end
 end
 
+-- A trinket slot: the item's cooldown and icon read live every slow tick.
+-- Item cooldowns are plain on Forever, in combat too (probed 2026-11-19:
+-- "300020.173 30 false"); a hidden read simply shows nothing.
+local function refreshSlot(e, s)
+  local P = Nock.Flavor.Plain
+  local tex = _G.GetInventoryItemTexture and P(_G.GetInventoryItemTexture("player", e.slot))
+  s.icon = tex or 134400
+  local start, dur
+  if _G.GetInventoryItemCooldown then start, dur = _G.GetInventoryItemCooldown("player", e.slot) end
+  start, dur = P(start), P(dur)
+  if type(start) == "number" and type(dur) == "number" and start > 0 and dur > GCD_TOLERANCE then
+    s.startTime, s.duration = start, dur
+  else
+    s.startTime, s.duration = 0, 0
+  end
+end
+
 function Cooldowns:Refresh()
   if self._reread then self:Reread() end
   local now = GetTime()
   local bar
   for _, e in ipairs(self._tracked) do
     local s = Nock.state.cooldowns[e.key]
-    if e.pet then
+    if e.slot then
+      refreshSlot(e, s)
+    elseif e.pet then
       if petKnows(self, e) and Nock.PetAbilities then
         bar = bar or Nock.PetAbilities.ClientBar(self._petBar)
         self._petBar = bar

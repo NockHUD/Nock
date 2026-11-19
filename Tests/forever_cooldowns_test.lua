@@ -692,6 +692,37 @@ do
   apiCd[5384] = nil
 end
 
+-- Trinkets (user request 2026-11-19): one tile per slot, whatever is
+-- equipped, read live from GetInventoryItemCooldown -- plain in combat too
+-- (probed: "300020.173 30 false" in combat).
+do
+  local invCd, invTex = {}, {}
+  _G.GetInventoryItemCooldown = function(unit, slot) local c = invCd[slot]; if c then return c[1], c[2], 1 end; return 0, 0, 1 end
+  _G.GetInventoryItemTexture = function(unit, slot) return invTex[slot] end
+  CD:RebuildLists()
+  local t1, t2 = CD:GetEntry("Trinket1"), CD:GetEntry("Trinket2")
+  ok(t1 and t1.slot == 13 and t2 and t2.slot == 14, "two trinket tiles, slots 13 and 14")
+  ok(t1 and t1.title == "Trinket 1", "named Trinket 1 in the picker")
+  invTex[13] = 135000
+  invCd[13] = { 950, 30 }
+  now = 960
+  secretCds = true                          -- in combat: still read
+  CD:Refresh()
+  ok(st.cooldowns.Trinket1.startTime == 950 and st.cooldowns.Trinket1.duration == 30, "in combat: the slot's cooldown, read live")
+  ok(st.cooldowns.Trinket1.icon == 135000, "the equipped trinket's icon")
+  ok(st.cooldowns.Trinket2.startTime == 0, "nothing on cooldown in slot 14")
+  invCd[13] = { 960, 1.5 }                  -- a GCD-length reading is not a cooldown
+  CD:Refresh()
+  ok(st.cooldowns.Trinket1.startTime == 0, "a GCD-length reading shows nothing")
+  invTex[13] = nil; invCd[13] = nil
+  CD:Refresh()
+  ok(st.cooldowns.Trinket1.icon == 134400, "an empty slot shows the question mark")
+  secretCds = false
+  local r0 = apiReads
+  msg("NOCK_RESCAN"); msg("NOCK_SNAPSHOT", "activating")
+  ok(true, "rescan and snapshot skip the trinket tiles without error")
+end
+
 -- Traps share one cooldown in the game (user report 2026-11-19): an
 -- Explosive Trap cast in combat starts the Freezing Trap tile, so one trap
 -- tile on the grid covers them all.
