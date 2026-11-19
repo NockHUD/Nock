@@ -111,9 +111,10 @@ Nock.Spells = Spells
 -- maps it to the base id (C_Spell.GetBaseSpell) before it touches the ledger.
 -- `shared` names a shared-cooldown group: every member is its OWN catalog
 -- entry and its own tile, all timed by one cooldown (Engine.Link in
--- Forever/Cooldowns.lua). Two groups exist: `arcaneHawk` (Arcane Shot, Summon
--- Hawk, Hydra Shot) and `aimedMulti` (Multi-Shot, Aimed Shot, plus the
--- AimMulti pair tile below, kept as an extra placeable option). Nothing takes
+-- Forever/Cooldowns.lua). Three groups exist: `arcaneHawk` (Arcane Shot,
+-- Summon Hawk, Hydra Shot), `aimedMulti` (Multi-Shot, Aimed Shot, plus the
+-- AimMulti pair tile below, kept as an extra placeable option) and `traps`
+-- (every trap: one trap tile on the grid covers them all). Nothing takes
 -- over another tile; the user places whichever member(s) they want.
 -- A `pair` entry is ONE tile for two spells that share a cooldown (Multi on
 -- the left half, Aimed on the right): `ids` in that draw order, the second
@@ -146,7 +147,7 @@ Spells.TRACKED = {
   -- locale-safe matching; lv marks spells not trained by level 20.
   { key = "Mongoose",  id = 1495,  name = "Mongoose Bite",      label = "Mongoose", cat = "Class",  row = 2, melee = true },
   { key = "Disengage", id = 781,   name = "Disengage",          label = "Diseng",   cat = "Class",  row = 2, melee = true },
-  { key = "FrzTrap",   id = 1499,  name = "Freezing Trap",      label = "Trap",     cat = "Class",  row = 2 },
+  { key = "FrzTrap",   id = 1499,  name = "Freezing Trap",      label = "Trap",     cat = "Class",  row = 2, shared = "traps" },
   { key = "Scare",     id = 1513,  name = "Scare Beast",        label = "Scare",    cat = "Class",  row = 2 },
   { key = "Flare",     id = 1543,  name = "Flare",              label = "Flare",    lv = 32, cat = "Class",  row = 2 },
   { key = "Tranq",     id = 19801, name = "Tranquilizing Shot", label = "Tranq",    lv = 60, cat = "Class",  row = 2 },
@@ -157,9 +158,9 @@ Spells.TRACKED = {
   { key = "Counter",   id = 19306, name = "Counterattack",      label = "Counter",  talent = true, cat = "Talent", row = 2, melee = true },
   { key = "Sniper",    id = 1310687, name = "Sniper Shot",     label = "Sniper",  talent = true, cat = "Talent", row = 2 },               -- MM talent (Forever)
   { key = "Strider",   id = 1317257, name = "Strider Kick",    label = "Strider", talent = true, cat = "Talent", row = 2, melee = true }, -- SV talent (Forever)
-  { key = "ImmoTrap",  id = 13795,   name = "Immolation Trap", label = "Immo",    cat = "Class", row = 2 },
-  { key = "FrostTrap", id = 13809,   name = "Frost Trap",      label = "Frost",   lv = 28, cat = "Class", row = 2 },
-  { key = "ExploTrap", id = 13813,   name = "Explosive Trap",  label = "Explo",   lv = 34, cat = "Class", row = 2 },
+  { key = "ImmoTrap",  id = 13795,   name = "Immolation Trap", label = "Immo",    cat = "Class", row = 2, shared = "traps" },
+  { key = "FrostTrap", id = 13809,   name = "Frost Trap",      label = "Frost",   lv = 28, cat = "Class", row = 2, shared = "traps" },
+  { key = "ExploTrap", id = 13813,   name = "Explosive Trap",  label = "Explo",   lv = 34, cat = "Class", row = 2, shared = "traps" },
   -- Stings. `debuff` marks a tile whose timer is the sting on the current
   -- target, drawn over the tile by the client (Forever/StingTiles.lua);
   -- Serpent and Scorpid have no cooldown of their own, Viper keeps its under

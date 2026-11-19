@@ -187,6 +187,8 @@ end
 function Checks.trueshot(reads)
   if not isEnabled("warnTrueshotEnabled") then return nil end
   if reads.trueshotTalented ~= true or reads.playerDead == true then return nil end
+  -- nothing to cast on a flight path (user report 2026-11-19)
+  if reads.onTaxi == true then return nil end
   local rem = reads.trueshotRemaining
   local lead = tonumber(threshold("warnTrueshotLead", 60)) or 60
   local low = reads.trueshotOn == true and type(rem) == "number" and lead > 0 and rem <= lead
@@ -255,6 +257,7 @@ function Warnings:Reads(state)
   local exp = pl and pl.trueshotExpires
   r.trueshotRemaining = type(exp) == "number" and math.max(0, exp - GetTime()) or nil
   r.playerDead = P(_G.UnitIsDeadOrGhost and UnitIsDeadOrGhost("player")) == true
+  r.onTaxi = P(_G.UnitOnTaxi and UnitOnTaxi("player")) == true
   local CV = _G.C_CVar
   r.autoSwitchCvar = (CV and CV.GetCVar) and P(CV.GetCVar("autoRangedCombat")) or nil
   r.now = GetTime()

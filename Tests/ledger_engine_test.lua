@@ -80,5 +80,20 @@ E.Reconcile(s, AIMED, 400, 6)
 local sm2 = E.Cooldown(s, MULTI, 401)
 ok(sm2 == 400, "Reconcile on one member updates the group")
 
+-- A linked member never learned on its own (Explosive Trap never cast out of
+-- combat) borrows a learned duration from its group (Freezing Trap's): the
+-- traps share one cooldown (2026-11-19).
+do
+  local t = E.New()
+  E.Link(t, { 1499, 13795, 13809, 13813 })
+  E.Learn(t, 1499, 15)
+  E.OnCast(t, 13813, 500)
+  local st, dur = E.Cooldown(t, 1499, 501)
+  ok(st == 500 and dur == 15, "an unlearned group member stamps with the group's learned duration")
+  local u = E.New()
+  E.OnCast(u, 42, 500)
+  ok(E.Cooldown(u, 42, 501) == nil or select(1, E.Cooldown(u, 42, 501)) == 0, "an unlinked unlearned spell still stamps nothing")
+end
+
 print(("ledger_engine: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

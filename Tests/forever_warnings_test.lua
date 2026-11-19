@@ -274,6 +274,7 @@ do
   unk = tsa(); unk.trueshotTalented = nil
   ok(C.trueshot(unk) == nil, "talent unknown: quiet")
   ok(C.trueshot(tsa({ playerDead = true })) == nil, "dead: quiet")
+  ok(C.trueshot(tsa({ onTaxi = true })) == nil, "on a flight path: quiet (user report 2026-11-19)")
   Nock.db.profile.warnTrueshotGate = "dungeon"
   ok(C.trueshot(tsa()) == nil and C.trueshot(tsa({ instanceKind = "party" })) ~= nil and C.trueshot(tsa({ instanceKind = "raid" })) ~= nil, "gate dungeon: dungeons and raids only")
   Nock.db.profile.warnTrueshotGate = "raid"

@@ -896,6 +896,10 @@ function Cooldowns:UNIT_SPELLCAST_SUCCEEDED(event, unit, castGUID, spellID)
   self:BreakHeld(e and e.key)
   if not e then self:NoteRecent(spellID); return end
   stampBuff(self, e, GetTime())
+  -- the rank actually cast is the one the client times (ranks are not linked
+  -- to their base here): Reread asks for it, not the catalog's base id
+  self._readId = self._readId or {}
+  self._readId[e.key] = spellID
   local sm = summonOf(spellID, id)
   if sm then
     self._summons = self._summons or {}
@@ -915,6 +919,8 @@ end
 
 function Cooldowns:SPELL_UPDATE_COOLDOWN()
   self:ScanUsable()
+  -- out of combat the client is the truth: re-read on the next slow lane
+  if not Nock.Restricted("cooldowns") then self._reread = true end
   if self._watch then
     local now = GetTime()
     for _, w in pairs(self._watch) do
@@ -961,13 +967,24 @@ end
 function Cooldowns:Rescan()
   self:UpdateKnown()
   self:ScanUsable()
+  self:Reread()
+end
+
+-- The reconcile half of Rescan: every tracked cooldown read from the client
+-- and the ledger set to it. Also run (throttled through Refresh) on every
+-- out-of-combat SPELL_UPDATE_COOLDOWN: a cooldown that starts or changes
+-- with no cast of ours pending -- Feign Death's, held back until FD fades
+-- after the leave-combat rescan read 0 -- otherwise stayed off the tile until
+-- the next combat's Seed (user report 2026-11-19).
+function Cooldowns:Reread()
+  self._reread = nil
   if Nock.Restricted("cooldowns") then return end
   local reads = {}
   local groupRunning = {}
   for _, e in ipairs(self._tracked) do
     if not e.pet and self:IsEntryKnown(e.key) ~= false then
       local id = ledgerId(e)
-      local start, duration = Nock.API.SpellCooldown(id)
+      local start, duration = Nock.API.SpellCooldown((self._readId and self._readId[e.key]) or id)
       start = Nock.Flavor.Plain(start); duration = Nock.Flavor.Plain(duration)
       local running = type(duration) == "number" and duration > GCD_TOLERANCE
         and type(start) == "number" and start > 0
@@ -1021,6 +1038,7 @@ local function refreshPet(e, s, bar)
 end
 
 function Cooldowns:Refresh()
+  if self._reread then self:Reread() end
   local now = GetTime()
   local bar
   for _, e in ipairs(self._tracked) do

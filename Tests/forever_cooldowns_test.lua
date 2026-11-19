@@ -74,6 +74,7 @@ for _, e in ipairs(Nock.Spells.TRACKED) do
   elseif e.key == "Meld" then e.cd = 10
   elseif e.key == "WillSurv" then e.cd = 180
   elseif e.key == "Fury" then e.cd = 120
+  elseif e.key == "FrzTrap" then e.cd = 15
   end
 end
 -- Rebuild Constants from the seeded TRACKED
@@ -663,6 +664,50 @@ do
   ok(s.startTime == 0, "a hidden pet ability publishes nothing")
   Nock.db.profile.petCdAbilities = nil
   CD:RebuildLists()
+end
+
+-- Out of combat the client is the truth on EVERY cooldown update, not only
+-- after a cast (user report 2026-11-19: Feign Death's tile empty out of
+-- combat, right once combat started -- the combat Seed read it). The leave-
+-- combat rescan can run while FD still holds its cooldown back (reads 0); the
+-- cooldown that starts later must still reach the tile.
+do
+  secretCds = false; now = 1000
+  apiCd[5384] = nil
+  msg("NOCK_RESCAN")                       -- leaving combat: FD reads 0
+  CD:Refresh()
+  ok(st.cooldowns.FD.startTime == 0, "FD not cooling down yet: tile empty")
+  now = 1004
+  apiCd[5384] = { 1004, 30 }               -- FD fades, its cooldown starts
+  fire("SPELL_UPDATE_COOLDOWN")            -- no cast of ours pending
+  CD:Refresh()
+  ok(st.cooldowns.FD.startTime == 1004 and st.cooldowns.FD.duration == 30, "an out-of-combat cooldown update reaches the tile")
+  -- in combat nothing is read (secret)
+  secretCds = true
+  local r0 = apiReads
+  fire("SPELL_UPDATE_COOLDOWN")
+  CD:Refresh()
+  ok(apiReads == r0, "in combat: no reads on a cooldown update")
+  secretCds = false
+  apiCd[5384] = nil
+end
+
+-- Traps share one cooldown in the game (user report 2026-11-19): an
+-- Explosive Trap cast in combat starts the Freezing Trap tile, so one trap
+-- tile on the grid covers them all.
+do
+  local trapKeys = { FrzTrap = true, ImmoTrap = true, FrostTrap = true, ExploTrap = true }
+  local groups = {}
+  for _, e in ipairs(Nock.Spells.TRACKED) do
+    if trapKeys[e.key] then groups[#groups + 1] = e.shared or "none" end
+  end
+  ok(#groups == 4 and groups[1] == "traps" and groups[2] == "traps" and groups[3] == "traps" and groups[4] == "traps", "every trap is in the shared traps group")
+  secretCds = true; now = 900
+  fire("UNIT_SPELLCAST_SUCCEEDED", "player", "guid", 13813)
+  CD:Refresh()
+  ok(st.cooldowns.FrzTrap and st.cooldowns.FrzTrap.startTime == 900 and st.cooldowns.FrzTrap.duration == 15, "Explosive Trap starts the Freezing Trap tile")
+  ok(st.cooldowns.ImmoTrap and st.cooldowns.ImmoTrap.startTime == 900, "and every other trap tile")
+  secretCds = false
 end
 
 print(("forever_cooldowns: %d passed, %d failed"):format(pass, fail))

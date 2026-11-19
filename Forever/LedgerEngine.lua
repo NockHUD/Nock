@@ -43,9 +43,17 @@ local function setIfLater(s, key, start, duration)
 end
 
 function Engine.OnCast(s, spellID, now)
+  local key = groupOf(s, spellID)
   local cd = s.learned[spellID]
+  if not cd and s.group[spellID] then
+    -- a linked member never learned on its own (an Explosive Trap never cast
+    -- out of combat) borrows the group's: the members share one cooldown
+    for id, g in pairs(s.group) do
+      if g == key and s.learned[id] then cd = s.learned[id]; break end
+    end
+  end
   if not cd then return end
-  setIfLater(s, groupOf(s, spellID), now, cd)
+  setIfLater(s, key, now, cd)
 end
 
 -- A plain API reading (snapshot at combat start). Zero readings are ignored:
