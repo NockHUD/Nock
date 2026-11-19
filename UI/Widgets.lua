@@ -1141,6 +1141,29 @@ function Nock.UI.SetBlizzardCastBarHidden(hide)
   return false
 end
 
+-- The game's breath / fatigue / Feign Death bars (MirrorTimerContainer on a
+-- modern client, MirrorTimer1..3 on an older one): hidden while Nock's cast bar
+-- shows the timers. No events are unregistered, so showing again needs no
+-- reload: the next timer the client starts shows as before.
+local blizzMirrorHidden = false
+function Nock.UI.SetBlizzardMirrorTimersHidden(hide)
+  blizzMirrorHidden = hide and true or false
+  local frames = {}
+  if _G.MirrorTimerContainer then frames[1] = _G.MirrorTimerContainer end
+  for i = 1, (_G.MIRRORTIMER_NUMTIMERS or 3) do
+    local f = _G["MirrorTimer" .. i]
+    if f then frames[#frames + 1] = f end
+  end
+  for _, f in ipairs(frames) do
+    if not f._nockMirrorGuard and f.HookScript then
+      f._nockMirrorGuard = true
+      f:HookScript("OnShow", function(fr) if blizzMirrorHidden then fr:Hide() end end)
+    end
+    if blizzMirrorHidden then f:Hide() end
+  end
+  return true
+end
+
 function Nock.UI.PairIconCoords(tileW, tileH, zoomPct)
   local half = (tileW or 0) / 2
   local h = tileH or 0

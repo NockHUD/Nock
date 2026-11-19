@@ -133,6 +133,15 @@ end
 -- Recolour the fill when the source flips between a real cast and the Auto
 -- Shot wind-up (reactColorCastFill / reactColorAutoShotFill).
 function ReactCastBar:ApplyFillColor(c)
+  if c.mirror then
+    -- a mirror timer wears the game's colour for its kind
+    local kind = "mirror:" .. c.mirror
+    if kind == self._fillKind then return end
+    self._fillKind = kind
+    local col = c.color or REACT.CAST_FILL
+    self.bar.fill:SetVertexColor(col[1], col[2], col[3], col[4] or 1)
+    return
+  end
   local kind = Nock.CastFillKind(c)
   if kind == self._fillKind then return end
   self._fillKind = kind
@@ -147,6 +156,8 @@ function ReactCastBar:Refresh(state)
   -- On by default here — the glued cast bar is expected to show it — where the
   -- classic HUD leaves it opt-in.
   local c = Nock.CastBarSource(p and p.reactShowAutoShotCast ~= false)
+  -- breath / fatigue / Feign Death behind its toggle, only with no cast running
+  if not c and Nock.MirrorTimers then c = Nock.MirrorTimers.Source(p, nil, state.player.mirrorTimer) end
   local show = p and Nock.HudIsReact() and p.reactShowCastBar ~= false and c
   if not show then
     if self.frame:IsShown() then self.frame:Hide() end

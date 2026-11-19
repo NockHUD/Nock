@@ -6526,6 +6526,15 @@ local function buildOptionsTable()
     sizeArgs.reactCastLatency.disabled = function()
       return notReact() or Nock.db.profile.reactShowCastBar == false
     end
+    -- Forever/MirrorTimers.lua: the client's breath / fatigue / Feign Death
+    -- bars on the cast bar while nothing is cast (user request 2026-11-19).
+    sizeArgs.reactCastMirrorTimers = reactOptInToggle("reactCastMirrorTimers", "Breath, fatigue and Feign Death",
+      "Show the breath, fatigue and Feign Death timers on the cast bar while you're not casting (a cast takes over and the timer comes back after it), and hide the game's own timer bars. Off by default.",
+      25.53)
+    sizeArgs.reactCastMirrorTimers.disabled = function()
+      return notReact() or Nock.db.profile.reactShowCastBar == false
+    end
+    sizeArgs.reactCastMirrorTimers.hidden = function() return not (Nock.Flavor and Nock.Flavor.forever) end
     sizeArgs.castBarNonCombatCasts =
       castBarSharedArgs("(same setting as General → Cast bar)").castBarNonCombatCasts
     sizeArgs.castBarNonCombatCasts.order = 25.5

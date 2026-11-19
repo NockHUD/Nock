@@ -658,7 +658,7 @@ onlyKeys(raSize, { "sizeHeader", "reactWidth", "reactScale", "elementsHeader", "
   "reactShowAutoBar", "reactShowMeleeBar", "reactMeleeStageCue", "stagePreview",
   "weaveHelperEnabled", "reactShowWeaveStrip", "weaveStripRangeText", "weaveStripRangeTint", "weaveLegSeed", "weaveStartWindow", "reactWeaveH", "weaveLegsReset",
   "reactShowRangeBar", "reactRangeStyle", "reactRangeLabels", "reactShowManaBar", "reactManaText", "reactManaTick", "reactManaTickDirCombat", "reactManaTickDirOoc",
-  "reactShowCastBar", "reactShowAutoShotCast", "reactCastLatency", "hideBlizzardCastBar", "reactShowGrid", "reactShowPetRow", "reactPetRowW", "reactShowAspectIcon", "reactShowMarkIcon",
+  "reactShowCastBar", "reactShowAutoShotCast", "reactCastLatency", "reactCastMirrorTimers", "hideBlizzardCastBar", "reactShowGrid", "reactShowPetRow", "reactPetRowW", "reactShowAspectIcon", "reactShowMarkIcon",
   "reactCornerStyle", "reactCornerIconSize", "reactCornerIconX", "reactCornerIconY",
   "reactAutoH", "reactMeleeH", "reactRangeH", "reactManaH", "reactCastH", "reactPetRowH",
   "orderHeader", "order_reset", "castBarNonCombatCasts" }, "react tabSize",

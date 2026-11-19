@@ -35,6 +35,9 @@ Nock.state = {
     -- cycle. Separate fields make that unrepresentable rather than merely
     -- documented. Views merge the two via Nock.CastBarSource.
     autoShotCast = nil,
+    -- breath / fatigue / Feign Death (Forever/MirrorTimers.lua): a cast-bar
+    -- record for the timer closest to empty, nil when none runs
+    mirrorTimer = nil,
     aspect   = nil,  -- { name, spellId, icon, expirationTime, duration } or nil
     feign    = nil,  -- { icon, expirationTime, duration } while Feign Death buff is up, else nil
     dazed    = nil,  -- { name, spellId, icon, expirationTime, duration } while Dazed, else nil

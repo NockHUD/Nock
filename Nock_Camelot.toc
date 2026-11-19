@@ -74,6 +74,7 @@ Forever\RangeFinder.lua
 Forever\WeaveEngine.lua
 Forever\WeaveHelper.lua
 Forever\CastBar.lua
+Forever\MirrorTimers.lua
 Forever\Auras.lua
 Forever\Buffs.lua
 Forever\AuraRow.lua

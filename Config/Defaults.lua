@@ -770,6 +770,7 @@ Nock.Defaults = {
     -- Quartz's latency zone: the last `latency` of a cast, where a move or the
     -- next press already reaches the server after the cast has finished there.
     reactCastLatency     = false,       -- opt-in
+    reactCastMirrorTimers = false,      -- opt-in: breath / fatigue / Feign Death on the cast bar (Forever)
     reactShowGrid       = true,        -- 3-row cooldown grid
     reactShowPetRow      = false,       -- Forever: pet happiness lamps under the grid (opt-in)
     reactPetRowW         = 25,          -- Forever: pet lamps strip width, % of the HUD
