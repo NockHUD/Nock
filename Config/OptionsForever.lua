@@ -13,7 +13,7 @@ F.FAMILIES = { general = true, hud = true, profiles = true, alerts = true, quick
 -- Utilities is the TBC toolbox (practice, mailbox, weave binds, ...); only
 -- the Quality of life page has a feed on Forever (Modules/QoL.lua), plus the
 -- Forever-only Aspect ring, Tracking wheel and Camera flip pages added below.
-F.KEEP_PAGES = { utilities = { qol = true, aspectRing = true, cameraFlip = true, trackingWheel = true, weaveKey = true } }
+F.KEEP_PAGES = { utilities = { qol = true, aspectRing = true, cameraFlip = true, trackingWheel = true, weaveKey = true, keyBinds = true } }
 
 -- Dotted args paths removed inside the surviving families. A trailing `*`
 -- matches every key with that prefix (same convention as OptionsLayout rows).
@@ -357,6 +357,13 @@ function F.WeaveKeyPage()
             Nock:Print(("Weave key: refusing to override the '%s' key, you would lose chat or the game menu."):format(_G["BINDING_NAME_" .. action] or action))
             return
           end
+          -- Utilities > Key binds: two override bindings on one key fight.
+          local KB = Nock.KeyBinds
+          local owner = KB and KB.KeyOwner(KB.List(p()), v, nil, nil)
+          if owner then
+            Nock:Print(("Weave key: %s is already the key of the bind \"%s\" (Utilities > Key binds)."):format(v, owner:sub(6)))
+            return
+          end
         end
         p().weaveKey = (type(v) == "string" and v ~= "") and v or nil
         changed()
@@ -435,6 +442,120 @@ function F.WeaveKeyPage()
     },
   }
   return { type = "group", name = "Weave key", order = 14, args = args }
+end
+
+-- Utilities -> Key binds (Forever/KeyBinds.lua): one card drawn as a board
+-- (UI/Settings_KeyBinds.lua: the bind list on the left, these rows on the
+-- right). Every row edits the SELECTED bind (KeyBinds.selected) and hides
+-- while the list is empty, except New. Profile key keyBinds.
+local REFUSE_ACTIONS = { OPENCHAT = true, OPENCHATSLASH = true, TOGGLEGAMEMENU = true }
+
+function F.KeyBindsPage()
+  local function KB() return Nock.KeyBinds end
+  local function p() return Nock.db.profile end
+  local function list() return KB().List(p()) end
+  local function cur() return list()[KB().selected] end
+  local function empty() return cur() == nil end
+  local function changed() Nock:SendMessage("NOCK_KEYBINDS_CHANGED") end
+  local function say(msg) Nock:Print("Key binds: " .. msg) end
+  local function body(which, label)
+    return {
+      type = "input", multiline = 4, width = "full",
+      name = function()
+        local b = cur()
+        return ("%s  ·  %d / %d"):format(label, #((b and b[which]) or ""), KB().MAX_BODY)
+      end,
+      desc = which == "down" and "Runs when you push the key." or "Runs when you let go, whether or not the press fired.",
+      hidden = empty,
+      get = function() local b = cur(); return b and b[which] or "" end,
+      set = function(_, v)
+        local b = cur(); if not b then return end
+        v = v or ""
+        if #v > KB().MAX_BODY then
+          say(("that macro is %d characters; the game runs at most %d."):format(#v, KB().MAX_BODY))
+          return
+        end
+        b[which] = v
+        changed()
+      end,
+    }
+  end
+  local args = {
+    kbHeader = { type = "header", name = "Key binds", order = 1,
+      desc = "One key, two tries: press runs one macro, release runs the other." },
+    kbNew = {
+      type = "execute", name = "+ New bind", order = 2,
+      desc = "Add an empty bind and select it.",
+      func = function() KB().selected = KB().New(list()); changed() end,
+    },
+    kbName = {
+      type = "input", name = "Name", order = 10, hidden = empty,
+      get = function() local b = cur(); return b and b.name or "" end,
+      set = function(_, v)
+        local b = cur(); if not b then return end
+        v = tostring(v or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        b.name = v ~= "" and v or "Untitled bind"
+        changed()
+      end,
+    },
+    kbKey = {
+      type = "keybinding", name = "Key", order = 11, hidden = empty,
+      desc = "The key to press and let go. Mouse buttons work too. It overrides the key's normal action while it's set; a change made in combat applies when combat ends. Right-click to clear.",
+      get = function() local b = cur(); return b and b.key or "" end,
+      set = function(_, v)
+        local b = cur(); if not b then return end
+        if type(v) ~= "string" or v == "" then b.key = nil; changed(); return end
+        local action = GetBindingAction and GetBindingAction(v)
+        if REFUSE_ACTIONS[action] then
+          say(("refusing %s: you would lose chat or the game menu."):format(v))
+          return
+        end
+        local owner = KB().KeyOwner(list(), v, KB().selected, p().weaveKey)
+        if owner then
+          say(("%s is already the %s."):format(v, owner == "weave key" and "weave key" or ("key of \"" .. owner:sub(6) .. "\"")))
+          return
+        end
+        b.key = v
+        changed()
+      end,
+    },
+    kbConflict = {
+      type = "description", order = 12, fontSize = "small", hidden = empty,
+      name = function()
+        local b = cur()
+        local action = b and b.key and GetBindingAction and GetBindingAction(b.key)
+        if type(action) ~= "string" or action == "" or action:find("^CLICK Nock") then return "" end
+        local label = _G["BINDING_NAME_" .. action] or action
+        return ("|cffd9b866%s is also \"%s\" in the game's Key Bindings. Nock's bind wins while it's set.|r"):format(b.key, label)
+      end,
+    },
+    kbDuplicate = {
+      type = "execute", name = "Duplicate", order = 30, hidden = empty,
+      desc = "A copy of this bind, without its key.",
+      func = function() KB().selected = KB().Duplicate(list(), KB().selected); changed() end,
+    },
+    kbDelete = {
+      type = "execute", name = "Delete", order = 31, hidden = empty,
+      desc = "Remove this bind. Its key goes back to its normal action.",
+      func = function() KB().selected = KB().Remove(list(), KB().selected); changed() end,
+    },
+    kbStatus = {
+      type = "description", order = 32, fontSize = "small", hidden = empty,
+      name = function()
+        if KB():Pending() then return "|cffd9b866Waiting for combat to end to apply.|r" end
+        return "Saved as you type. Combat edits apply after combat."
+      end,
+    },
+  }
+  args.kbDown = body("down", "↓ On press"); args.kbDown.order = 20
+  args.kbUp = body("up", "↑ On release"); args.kbUp.order = 21
+  local W = Nock.OptionsWalk
+  if W and W.SetMeta then
+    W.SetMeta(args.kbHeader, "board", "keybinds")
+    W.SetMeta(args.kbHeader, "icon", { glyph = "keyboard" })
+    W.SetMeta(args.kbHeader, "actions", { "kbNew" })
+  end
+  return { type = "group", name = "Binds / Grounded", order = 14.5, args = args }
 end
 
 -- Alerts -> Eating pill (UI/Frame_ConsumeBanner.lua): the pill's own rows,
@@ -602,6 +723,9 @@ function F.Apply(root)
   end
   if type(util) == "table" and type(util.args) == "table" and not util.args.weaveKey and Nock.WeaveKey then
     util.args.weaveKey = F.WeaveKeyPage()
+  end
+  if type(util) == "table" and type(util.args) == "table" and not util.args.keyBinds and Nock.KeyBinds then
+    util.args.keyBinds = F.KeyBindsPage()
   end
   if type(util) == "table" and type(util.args) == "table" and not util.args.trackingWheel and Nock.TrackingWheelScale then
     util.args.trackingWheel = F.TrackingWheelPage()

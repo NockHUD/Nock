@@ -1016,7 +1016,20 @@ kinds.input = {
     end
     local function wire(box)
       box:SetAutoFocus(false); Skin.Font(box, "ui", 12); box:SetTextColor(Skin.Color("ink"))
-      box:SetScript("OnEnterPressed", function(b) if not b:IsMultiLine() or IsControlKeyDown() then commit() end end)
+      -- Multi-line: Enter types a newline (a set OnEnterPressed stops the
+      -- client inserting one itself), Ctrl+Enter commits; focus loss commits too.
+      box:SetScript("OnEnterPressed", function(b)
+        if not b:IsMultiLine() or IsControlKeyDown() then commit() else b:Insert("\n") end
+      end)
+      -- Live saving, opt-in (a board sets ctl.live after Bind): every typed
+      -- change is stored at once, without a host refresh -- that would rebuild
+      -- the box under the cursor. Focus loss still commits and refreshes.
+      box:SetScript("OnTextChanged", function(b, user)
+        if not user or not ctl.live or not ctl.row then return end
+        local v = b:GetText() or ""
+        if W.Validate(ctl.row, v) then W.Set(ctl.row, v) end
+        if ctl.onText then ctl.onText(v) end
+      end)
       box:SetScript("OnEscapePressed", function(b) ctl.escaping = true; b:ClearFocus(); ctl.escaping = nil; ctl.host:AfterSet(ctl.row) end)
       box:SetScript("OnEditFocusLost", function(b)
         if not ctl.row or ctl.escaping then return end
@@ -1043,6 +1056,8 @@ kinds.input = {
   end,
   bind = function(ctl, row)
     bindText(ctl, row)
+    ctl.live, ctl.onText = nil, nil
+    if ctl.multi and ctl.multi.SetMaxLetters then ctl.multi:SetMaxLetters(0) end
     local n, f = row.node, ctl.frame
     local lines = n.multiline and (tonumber(n.multiline) or 4) or 1
     local box
@@ -1060,6 +1075,14 @@ kinds.input = {
         multi:SetTextInsets(2, 2, 2, 2)
         scroll:SetScrollChild(multi)
         multi:SetPoint("TOPLEFT", scroll, "TOPLEFT", 0, 0)
+        -- the EditBox is only as tall as its text: a click anywhere in the
+        -- drawn box lands on the holder, which hands focus on, cursor at the end
+        holder:EnableMouse(true)
+        holder:SetScript("OnMouseDown", function()
+          if ctl.row and ctl.row.disabled then return end
+          multi:SetFocus()
+          multi:SetCursorPosition(#(multi:GetText() or ""))
+        end)
         ctl.holder, ctl.scroll, ctl.multi = holder, scroll, multi
       end
       box = ctl.multi
@@ -1109,6 +1132,11 @@ kinds.keybinding = {
       end, { refuse = Nock.UI.KeyCapture.REFUSE })
     end)
     return ctl
+  end,
+  -- a board may stretch the capture over its cell (UI/Settings_KeyBinds.lua);
+  -- the pool hands it back at its own size
+  restore = function(ctl)
+    ctl.cap:ClearAllPoints(); ctl.cap:SetHeight(24); ctl.cap:SetPoint("RIGHT", ctl.frame.ctl, "RIGHT", 0, 0)
   end,
   bind = function(ctl, row)
     bindText(ctl, row)

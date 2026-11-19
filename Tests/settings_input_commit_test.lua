@@ -105,5 +105,57 @@ execRow.disabled = true
 exec.btn._scripts.OnClick(exec.btn)
 ok(ran == 1, "a disabled button with no pending edit does not run")
 
+-- A multi-line box is only as tall as its text: a click anywhere in the
+-- holder (the whole drawn box) focuses it, cursor at the end (2026-11-18).
+do
+  local mctl = SC.Acquire("input", stub())
+  local mrow = { key = "body", type = "input", name = "Body", node = { multiline = 4 } }
+  store.body = "/cast Raptor Strike"
+  mctl:Bind(mrow, host)
+  local focusedMulti, cursor = false, nil
+  mctl.multi.SetFocus = function() focusedMulti = true end
+  mctl.multi.SetCursorPosition = function(_, n) cursor = n end
+  local down = mctl.holder._scripts.OnMouseDown
+  ok(type(down) == "function", "the multi-line holder takes clicks")
+  if down then down(mctl.holder) end
+  ok(focusedMulti and cursor == #"/cast Raptor Strike", "a click in the holder focuses the box, cursor at the end")
+
+  -- Enter in a multi-line box types a newline (macros are lines); Ctrl+Enter
+  -- commits. The client inserts nothing itself once OnEnterPressed is set.
+  local inserted = {}
+  mctl.multi.Insert = function(self, s) inserted[#inserted + 1] = s; self._text = self._text .. s end
+  local ctrl = false
+  _G.IsControlKeyDown = function() return ctrl end
+  local before = sets
+  mctl.multi._scripts.OnEnterPressed(mctl.multi)
+  ok(inserted[1] == "\n" and sets == before, "Enter inserts a newline and does not commit")
+  ctrl = true
+  -- the client fires focus-lost once; the generic stub would recurse here
+  mctl.multi.ClearFocus = function() end
+  mctl.multi._scripts.OnEnterPressed(mctl.multi)
+  ok(#inserted == 1 and sets == before + 1 and store.body == "/cast Raptor Strike\n", "Ctrl+Enter commits the text, newline kept")
+
+  -- Live saving: opt-in per control (a board sets ctl.live after Bind). Each
+  -- typed change is stored without a host refresh (that would rebuild the
+  -- box and drop focus); ctl.onText hears every change. Rebinding clears both.
+  local changed = mctl.multi._scripts.OnTextChanged
+  ok(type(changed) == "function", "the box listens to text changes")
+  local s0, a0 = sets, after
+  mctl.multi._text = "/cast A"
+  changed(mctl.multi, true)
+  ok(sets == s0, "not live: typing stores nothing")
+  mctl.live = true
+  local heard
+  mctl.onText = function(v) heard = v end
+  mctl.multi._text = "/cast A\n/cast B"
+  changed(mctl.multi, true)
+  ok(sets == s0 + 1 and store.body == "/cast A\n/cast B" and after == a0, "live: each change stored, no refresh")
+  ok(heard == "/cast A\n/cast B", "live: onText hears the change")
+  changed(mctl.multi, false)
+  ok(sets == s0 + 1, "a change made by code (SetText) is not a user edit")
+  mctl:Bind(mrow, host)
+  ok(mctl.live == nil and mctl.onText == nil, "Bind clears live and onText")
+end
+
 print(("settings_input_commit: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

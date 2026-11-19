@@ -1409,6 +1409,9 @@ if Nock.Flavor and Nock.Flavor.forever then
   p.weaveKey             = nil
   p.weaveKeyMacroDown    = nil
   p.weaveKeyMacroUp      = nil
+  -- Key binds (Forever/KeyBinds.lua): user-made press/release binds,
+  -- { name, key, down, up } in list order.
+  p.keyBinds             = {}
   -- Weave stage cues (Forever/RangeCues.lua OnWeaveStage; Alerts -> Sounds
   -- -> Weaving): a clip when the melee bar says STRIKE and one for RELEASE.
   p.weaveStrikeEnabled   = false

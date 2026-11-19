@@ -371,5 +371,62 @@ ok(wk.args.weaveKey.disabled() == false, "key row live while the mode is on")
 p.weaveKeyEnabled = false
 ok(wk.args.weaveKey.disabled() == true, "key row greyed while the mode is off")
 
+-- Utilities -> Key binds (Forever/KeyBinds.lua): the list card with the
+-- editor rows bound to the selected bind.
+do
+  local sent = 0
+  local was = Nock.SendMessage
+  Nock.SendMessage = function(_, m) if m == "NOCK_KEYBINDS_CHANGED" then sent = sent + 1 end end
+  _G.GetBindingAction = _G.GetBindingAction or function() return "" end
+  Nock.Print = Nock.Print or function() end
+  dofile("Forever/KeyBinds.lua")
+  local KB = Nock.KeyBinds
+  p.keyBinds = {}
+  KB.selected = 1
+  F.Apply(opts)
+  local kb = nodeAt(opts, "utilities.keyBinds")
+  ok(kb and kb.type == "group" and kb.name == "Binds / Grounded", "the page is called Binds / Grounded in the menu")
+  local a = kb and kb.args or {}
+  for _, k in ipairs({ "kbHeader", "kbNew", "kbName", "kbKey", "kbConflict", "kbDown", "kbUp", "kbDuplicate", "kbDelete", "kbStatus" }) do
+    ok(a[k] ~= nil, "row " .. k)
+  end
+  ok(a.kbFill == nil and a.kbEmpty == nil, "no Start from: a bind always starts empty")
+  local Wm = Nock.OptionsWalk
+  ok(Wm.Meta(a.kbHeader) and Wm.Meta(a.kbHeader).board == "keybinds", "the card is the key binds board")
+  ok(a.kbName.hidden() == true and a.kbNew.hidden ~= true, "empty: the editor hides, New stays")
+  a.kbNew.func()
+  ok(#p.keyBinds == 1 and a.kbName.hidden() == false and sent >= 1, "New makes a bind and shows the editor")
+  ok(p.keyBinds[1].down == "" and p.keyBinds[1].up == "", "a new bind starts empty")
+  a.kbDown.set(nil, "/cast Raptor Strike")
+  ok(p.keyBinds[1].down == "/cast Raptor Strike", "typing stores the press body")
+  a.kbDown.set(nil, string.rep("x", 256))
+  ok(p.keyBinds[1].down == "/cast Raptor Strike", "a 256-character body is refused")
+  a.kbDown.set(nil, string.rep("x", 255))
+  ok(#p.keyBinds[1].down == 255, "255 characters are stored")
+  a.kbKey.set(nil, "SHIFT-E")
+  ok(p.keyBinds[1].key == "SHIFT-E" and a.kbKey.get() == "SHIFT-E", "the key is stored")
+  a.kbNew.func()
+  ok(KB.selected == 2, "New selects the new bind")
+  a.kbKey.set(nil, "SHIFT-E")
+  ok(p.keyBinds[2].key == nil, "a key bind 1 holds is refused for bind 2")
+  p.weaveKey = "G"
+  a.kbKey.set(nil, "G")
+  ok(p.keyBinds[2].key == nil, "the weave key's key is refused")
+  p.weaveKey = nil
+  a.kbDelete.func()
+  ok(#p.keyBinds == 1 and KB.selected == 1, "Delete removes it and selects the neighbour")
+  a.kbDelete.func()
+  ok(#p.keyBinds == 0 and a.kbName.hidden() == true, "Delete the last one: the editor hides")
+  -- the weave key refuses a key a bind holds (both overrides on one key fight)
+  p.keyBinds = { { name = "Mine", key = "SHIFT-Q", down = "", up = "" } }
+  p.weaveKeyEnabled, p.weaveKey = true, nil
+  wk.args.weaveKey.set(nil, "SHIFT-Q")
+  ok(p.weaveKey == nil, "the weave key refuses a bind's key")
+  wk.args.weaveKey.set(nil, "SHIFT-R")
+  ok(p.weaveKey == "SHIFT-R", "a free key is taken")
+  p.weaveKey, p.weaveKeyEnabled, p.keyBinds = nil, false, {}
+  Nock.SendMessage = was
+end
+
 print(("options_forever: %d passed, %d failed"):format(pass, fail))
 os.exit(fail == 0 and 0 or 1)

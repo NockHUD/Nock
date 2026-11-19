@@ -213,6 +213,16 @@ else
   function API.ItemIcon() return nil end
 end
 
+-- An item's icon by its NAME (a macro's /use line), for items in the bags or
+-- cached; nil otherwise. GetItemInfoInstant takes a name and answers from the
+-- local cache without a server query.
+local gInstant = (CI and CI.GetItemInfoInstant) or _G.GetItemInfoInstant
+function API.ItemIconByName(name)
+  if not gInstant or type(name) ~= "string" or name == "" then return nil end
+  local okc, _, _, _, _, icon = pcall(gInstant, name)
+  return okc and icon or nil
+end
+
 if gGetItemCount then
   function API.ItemCount(id, includeBank, includeUses) return gGetItemCount(id, includeBank, includeUses) end
 elseif cGetItemCount then

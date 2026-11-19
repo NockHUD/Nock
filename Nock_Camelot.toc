@@ -62,6 +62,7 @@ UI\Frame_Settings.lua
 UI\SettingsLauncher.lua
 UI\SettingsLayouts.lua
 UI\Settings_CooldownBoard.lua
+UI\Settings_KeyBinds.lua
 UI\CooldownDrag.lua
 UI\HUD.lua
 
@@ -83,6 +84,7 @@ Forever\Cooldowns.lua
 Forever\CameraSetupView.lua
 Forever\CameraFlip.lua
 Forever\WeaveKey.lua
+Forever\KeyBinds.lua
 Forever\Quickstart.lua
 Forever\Probe.lua
 Forever\Traits.lua

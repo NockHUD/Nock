@@ -60,6 +60,7 @@ local function acquire(self, name, build)
 end
 function Settings:ReleaseLayouts()
   if self.HideCooldownBoard then self:HideCooldownBoard() end
+  if self.HideKeyBindsBoard then self:HideKeyBindsBoard() end
   for _, name in ipairs({ "lyIconBtn", "lyBtn", "lyPill", "lyFrame", "lyText", "lyTex" }) do
     local p = self[name]
     if p then
@@ -237,7 +238,9 @@ function Settings:DrawActions(c, rows, anchorRight)
         end)
       end
     else
-      b = ghostBtn(self, right, W.Strip(row.name), function() runRow(self, row) end, W.Strip(row.name):lower():find("reset", 1, true) and "danger" or "ghost")
+      -- "+ New ..." is the card's one thing to press: primary
+      local nm = W.Strip(row.name)
+      b = ghostBtn(self, right, nm, function() runRow(self, row) end, nm:lower():find("reset", 1, true) and "danger" or (nm:sub(1, 2) == "+ " and "primary") or "ghost")
       b:SetAlpha(row.disabled and 0.45 or 1)
     end
     b:ClearAllPoints()
@@ -645,7 +648,11 @@ function Settings:LayoutCard(c, card, top, width)
     if #ctls > 0 then y = y + self:DrawForm(c, ctls, y, width) end
     rest = {}
   end
-  if card.board and self.DrawCooldownBoard then y = y + self:DrawCooldownBoard(c, y, width) end
+  if card.board == "keybinds" and self.DrawKeyBindsBoard then
+    local h
+    h, rest = self:DrawKeyBindsBoard(c, card, rest, y, width)
+    y = y + h
+  elseif card.board and self.DrawCooldownBoard then y = y + self:DrawCooldownBoard(c, y, width) end
   if card.entries then y = y + self:DrawEntries(c, card.entries, y, width) end
   if card.items then y = y + self:DrawItems(c, card.items, y, width, true) end
   if #rest > 0 then y = y + self:LayoutLines(c, rest, y, width) end
